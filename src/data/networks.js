@@ -1,0 +1,51 @@
+// Auto-generated snapshot from MySQL reference_data.
+// Source query:
+//   SELECT name FROM counterparty
+//   WHERE deletedAt IS NULL AND type='BLOCKCHAIN'
+//   ORDER BY name
+// TODO: replace with live fetch when the booking-API service is up.
+
+export const NETWORKS = [
+  "APTOS",
+  "ARBITRUM",
+  "AVALANCHE",
+  "BASE",
+  "BERACHAIN",
+  "BINANCE SMART CHAIN",
+  "BITCOIN",
+  "BITCOIN CASH",
+  "BLAST",
+  "CARDANO",
+  "CELO",
+  "CITREA",
+  "DOGE",
+  "ETHEREUM",
+  "GNOSIS",
+  "HEDERA",
+  "HYPERCORE",
+  "HYPEREVM",
+  "LINEA",
+  "MANTLE",
+  "MANTRA",
+  "MODE",
+  "OPTIMISM",
+  "PEAQ",
+  "PLASMA",
+  "POLKADOT",
+  "POLYGON",
+  "RIPPLE",
+  "SAGAEVM",
+  "SCROLL",
+  "SOLANA",
+  "SONEIUM",
+  "SONIC",
+  "STELLAR",
+  "SUI",
+  "TEMPO",
+  "TON",
+  "TRON",
+  "UNICHAIN",
+  "XRPLEVM",
+  "ZETA",
+  "ZKSYNC",
+];

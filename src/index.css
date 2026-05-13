@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Altas editorial baseline — mirrors the dashboard's bone/ink palette.
+   All other styling stays scoped inside TradeBookingForm.jsx. */
+html,
+body,
+#root {
+  margin: 0;
+  background-color: #f2efe8;
+  color: #0d0d0d;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Force 24-hour time on datetime-local / time inputs.
+   The display format follows the browser's locale; setting lang="en-GB" on the
+   inputs (24h locale) handles Firefox/Safari, and these WebKit rules strip
+   the AM/PM picker in Chromium/Edge/Safari. */
+input[type="datetime-local"]::-webkit-datetime-edit-ampm-field,
+input[type="time"]::-webkit-datetime-edit-ampm-field {
+  display: none;
+}
+input[type="datetime-local"],
+input[type="time"],
+input[type="date"] {
+  color-scheme: light;
+}
