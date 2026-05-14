@@ -318,7 +318,7 @@ const FUTURE_MARGIN_MODES = ["CROSS", "ISOLATED"];
 
 // CASHFLOW constants — direction-aware subtype menus.
 // Captures the original brainstorm's 34 trade-types collapsed into one flow.
-const CASHFLOW_DIRECTIONS = ["RECEIVE", "PAY"];
+const CASHFLOW_DIRECTIONS = ["PAY", "RECEIVE"];
 // Placeholder cashflow types — backend will swap to MySQL select_category=CASHFLOW TYPE (28 values).
 const CASHFLOW_TYPES = [
   "INTER PTF FUNDING",
@@ -1773,6 +1773,7 @@ export default function TradeBookingForm() {
     // CASHFLOW (absorbs old TRANSFER + EXPENSE + INCOME + OTHER)
     cf_direction: "PAY",
     cf_type: "",
+    cf_mirror: false,
     cf_asset: "USDT",
     cf_amount: "",
     network: "",
@@ -1805,8 +1806,68 @@ export default function TradeBookingForm() {
   const [env, setEnv] = useState("PROD");
   const [view, setView] = useState("TRADE_INPUT");
   const [tradeInputOpen, setTradeInputOpen] = useState(true);
+  // Per-category snapshot of shared fields. When you switch from SPOT to
+  // LOAN, the current SPOT values for dates/portfolio/counterparty/status/etc.
+  // are stashed here under "SPOT"; when you switch back to SPOT, they're
+  // restored. This keeps each product form independent.
+  const [categoryCache, setCategoryCache] = useState({});
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v, last_modified_at: isoNow() }));
   const setMany = (patch) => setForm((f) => ({ ...f, ...patch, last_modified_at: isoNow() }));
+
+  // Fields that EVERY product form has but with its own value space — these
+  // get snapshotted on category switch.
+  const SHARED_KEYS = [
+    "trade_id", "external_trade_id",
+    "trade_date", "value_date",
+    "portfolio", "status",
+    "counterparty",
+    "account_venue_type", "account_name", "account_id",
+    "fee_asset", "fee_amount",
+    "network", "tx_hash", "gas_fee", "gas_asset",
+    "venue_type", "venue", "tx_id",
+    "notes",
+  ];
+
+  const initialSharedForCategory = (cat) => ({
+    trade_id: genTradeId(cat),
+    external_trade_id: "",
+    trade_date: nowUtc(),
+    value_date: nowUtc(),
+    portfolio: "",
+    status: defaultStatusFor(cat),
+    counterparty: "",
+    account_venue_type: "EXCHANGE",
+    account_name: "",
+    account_id: "",
+    fee_asset: "USDT",
+    fee_amount: "",
+    network: "",
+    tx_hash: "",
+    gas_fee: "",
+    gas_asset: "ETH",
+    venue_type: "CEX",
+    venue: "Binance",
+    tx_id: "",
+    notes: "",
+  });
+
+  const switchCategory = (newCat) => {
+    if (newCat === form.category) return;
+    // 1. Snapshot the current category's shared fields.
+    const snapshot = SHARED_KEYS.reduce((acc, k) => {
+      acc[k] = form[k];
+      return acc;
+    }, {});
+    setCategoryCache((c) => ({ ...c, [form.category]: snapshot }));
+    // 2. Restore the new category's snapshot, or initialize fresh.
+    const restored = categoryCache[newCat] || initialSharedForCategory(newCat);
+    setForm((f) => ({
+      ...f,
+      ...restored,
+      category: newCat,
+      last_modified_at: isoNow(),
+    }));
+  };
 
   // SPOT auto-compute. Rule: base × price = quote.
   // Editing base or price recomputes quote. Editing quote recomputes price.
@@ -1948,6 +2009,76 @@ export default function TradeBookingForm() {
     const portfolioEntry = PORTFOLIOS.find(
       (p) => String(p.number) === String(form.portfolio)
     );
+
+    // ─── CASHFLOW: flat, schema-aligned to trades_cashflow ──────────────
+    // Every top-level key maps 1:1 to a column in the trades_cashflow
+    // table (see trade-booking/docs/cashflow-schema-mapping.md). Backend
+    // can build INSERT VALUES (...) without renaming. UI-only metadata
+    // sits in `_meta` so the backend can strip it cleanly.
+    if (form.category === "CASHFLOW") {
+      // Key order mirrors trades_cashflow column order exactly. effective_*
+      // are server-set on INSERT; emitted here as null placeholders so the
+      // JSON shape lines up 1:1 with the table for backend mapping.
+      const cfRecord = {
+        deal_ref: form.trade_id,
+        external_trade_id: form.external_trade_id || null,
+        txn_type: "CASHFLOW",
+        cashflow_type: form.cf_type || null,
+        direction: form.cf_direction,
+        entity: portfolioEntry ? portfolioEntry.entity : null,
+        portfolio_id: portfolioEntry ? portfolioEntry.number : null,
+        portfolio_name: portfolioEntry ? portfolioEntry.name : null,
+        counterparty: form.counterparty || null,
+        account: form.account_name || null,
+        account_type: form.account_venue_type,
+        asset: form.cf_asset,
+        amount: parseFloat(form.cf_amount) || 0,
+        fee_asset: form.fee_asset,
+        fee_amount: parseFloat(form.fee_amount) || 0,
+        trade_date: form.trade_date,
+        value_date: form.value_date,
+        network: form.network || null,
+        txid_reference: form.tx_hash || null,
+        effective_start: null,
+        effective_end: null,
+        user_id: form.created_by || null,
+        status: form.status,
+        comment: form.notes || null,
+        // Non-schema metadata
+        _meta: {
+          mirror: form.cf_type === "INTER PTF FUNDING" && form.cf_mirror,
+          attachments: form.attachments.map(({ _file, ...rest }) => rest),
+        },
+      };
+
+      // Mirror Trade → two flat records (leg 1 + offsetting leg 2).
+      if (cfRecord._meta.mirror && cfRecord.counterparty) {
+        const cpEntry = PORTFOLIOS.find(
+          (p) => String(p.number) === String(form.counterparty)
+        );
+        const leg2 = {
+          ...cfRecord,
+          deal_ref: genTradeId("CASHFLOW"),
+          entity: cpEntry ? cpEntry.entity : null,
+          portfolio_id: cpEntry ? cpEntry.number : null,
+          portfolio_name: cpEntry ? cpEntry.name : null,
+          counterparty: portfolioEntry ? String(portfolioEntry.number) : null,
+          account: null,
+          account_type: null,
+          direction: cfRecord.direction === "PAY" ? "RECEIVE" : "PAY",
+          _meta: { ...cfRecord._meta, mirror_leg: 2 },
+        };
+        return [
+          { ...cfRecord, _meta: { ...cfRecord._meta, mirror_leg: 1 } },
+          leg2,
+        ];
+      }
+      return cfRecord;
+    }
+
+    // ─── SPOT / FUTURE / LOAN: legacy base+payload split ────────────────
+    // Their target tables haven't been designed yet, so the JSON keeps a
+    // form-driven shape until schemas are nailed down.
     const base = {
       trade_id: form.trade_id,
       external_trade_id: form.external_trade_id || null,
@@ -1963,12 +2094,8 @@ export default function TradeBookingForm() {
           }
         : null,
       entity: portfolioEntry ? portfolioEntry.entity : null,
-      account_id: form.account_id || null,
-      venue_type: form.venue_type,
-      venue: form.venue,
       category: form.category,
       status: form.status,
-      tx_id: form.tx_id || null,
       notes: form.notes || null,
       attachments: form.attachments.map(({ _file, ...rest }) => rest),
     };
@@ -2016,20 +2143,15 @@ export default function TradeBookingForm() {
         realized_pnl: form.fut_is_closing
           ? parseFloat(form.fut_pnl_realized) || 0
           : null,
-      };
-    } else if (form.category === "CASHFLOW") {
-      payload = {
-        direction: form.cf_direction,
-        cashflow_type: form.cf_type || null,
-        notional_asset: form.cf_asset,
-        notional_amount: parseFloat(form.cf_amount) || 0,
-        fee_asset: form.fee_asset,
-        fee_amount: parseFloat(form.fee_amount) || 0,
-        account_venue_type: form.account_venue_type,
-        account_name: form.account_name || null,
-        network: form.network || null,
+        // tradeVenueFields — only FUTURE renders these in the UI.
+        venue_type: form.venue_type,
+        venue: form.venue,
+        account_id: form.account_id || null,
+        tx_id: form.tx_id || null,
         tx_hash: form.tx_hash || null,
-        counterparty: form.counterparty || null,
+        network: form.network || null,
+        gas_fee: parseFloat(form.gas_fee) || null,
+        gas_asset: form.network ? form.gas_asset : null,
       };
     } else if (form.category === "LOAN") {
       const hedgedQty = parseFloat(form.hedged_qty) || 0;
@@ -2037,7 +2159,10 @@ export default function TradeBookingForm() {
       payload = {
         direction: form.loan_direction,
         loan_type: form.loan_type,
+        loan_term_days: parseInt(form.loan_term_days, 10) || null,
         counterparty: form.counterparty || null,
+        account_venue_type: form.account_venue_type,
+        account_name: form.account_name || null,
         principal_asset: form.principal_asset,
         principal_amount: parseFloat(form.principal_amount) || 0,
         interest_asset: form.interest_asset,
@@ -2157,6 +2282,7 @@ export default function TradeBookingForm() {
     CASHFLOW: {
       cf_direction: "PAY",
       cf_type: "",
+      cf_mirror: false,
       cf_asset: "USDT",
       cf_amount: "",
       fee_asset: "USDT",
@@ -2190,9 +2316,26 @@ export default function TradeBookingForm() {
   };
 
   const handleReset = () => {
-    const slice = RESET_SLICES[form.category];
+    // Hard-refresh equivalent — scoped to the active product. Resets BOTH the
+    // category-specific economics (RESET_SLICES) AND the shared identity
+    // fields (initialSharedForCategory). Attachments + submitted record
+    // also wipe since the user is starting a new trade for this product.
+    // Other categories' state (in form + categoryCache) stays untouched.
+    const cat = form.category;
+    const slice = RESET_SLICES[cat];
     if (!slice) return;
-    setForm((prev) => ({ ...prev, ...slice, last_modified_at: isoNow() }));
+    setForm((prev) => ({
+      ...prev,
+      ...initialSharedForCategory(cat),
+      ...slice,
+      attachments: [],
+      last_modified_at: isoNow(),
+    }));
+    setCategoryCache((c) => {
+      const next = { ...c };
+      delete next[cat];
+      return next;
+    });
     setSubmittedRecord(null);
   };
 
@@ -2263,11 +2406,9 @@ export default function TradeBookingForm() {
             </Select>
           </Field>
           <Field label="Gas Fee" span={4}>
-            <Input
-              type="number"
-              step="any"
+            <NumberInput
               value={form.gas_fee}
-              onChange={(e) => set("gas_fee", e.target.value)}
+              onChange={(v) => set("gas_fee", v)}
             />
           </Field>
           <Field label="Gas Asset" span={4}>
@@ -2435,11 +2576,7 @@ export default function TradeBookingForm() {
                     active={view === "TRADE_INPUT" && form.category === c.key}
                     onClick={() => {
                       setView("TRADE_INPUT");
-                      setMany({
-                        category: c.key,
-                        trade_id: genTradeId(c.key),
-                        status: defaultStatusFor(c.key),
-                      });
+                      switchCategory(c.key);
                     }}
                   />
                 ))}
@@ -2632,13 +2769,10 @@ export default function TradeBookingForm() {
                       title="Open-term loan — type a number to set a fixed term"
                     />
                   ) : (
-                    <Input
-                      type="number"
-                      min="0"
-                      step="1"
+                    <NumberInput
                       placeholder="days"
                       value={form.loan_term_days}
-                      onChange={(e) => setLoanField("loan_term_days", e.target.value)}
+                      onChange={(v) => setLoanField("loan_term_days", v)}
                     />
                   )}
                 </Field>
@@ -2702,15 +2836,25 @@ export default function TradeBookingForm() {
               required={form.category === "LOAN"}
               span={6}
             >
-              <CounterpartyPicker
-                value={form.counterparty}
-                onChange={(v) => set("counterparty", v)}
-                options={
-                  form.category === "LOAN"
-                    ? COUNTERPARTIES.filter((c) => c.subType === "LENDER")
-                    : COUNTERPARTIES
-                }
-              />
+              {form.category === "CASHFLOW" && form.cf_type === "INTER PTF FUNDING" ? (
+                <PortfolioPicker
+                  value={form.counterparty}
+                  onChange={(v) => set("counterparty", String(v))}
+                  options={PORTFOLIOS.filter(
+                    (p) => String(p.number) !== String(form.portfolio)
+                  )}
+                />
+              ) : (
+                <CounterpartyPicker
+                  value={form.counterparty}
+                  onChange={(v) => set("counterparty", v)}
+                  options={
+                    form.category === "LOAN"
+                      ? COUNTERPARTIES.filter((c) => c.subType === "LENDER")
+                      : COUNTERPARTIES
+                  }
+                />
+              )}
             </Field>
             <Field label="Status" required span={6}>
               <Select
@@ -2878,12 +3022,10 @@ export default function TradeBookingForm() {
                 />
               </Field>
               <Field label="Contract Size" span={3}>
-                <Input
-                  type="number"
-                  step="any"
+                <NumberInput
                   placeholder="multiplier (e.g. 1)"
                   value={form.fut_contract_size}
-                  onChange={(e) => set("fut_contract_size", e.target.value)}
+                  onChange={(v) => set("fut_contract_size", v)}
                 />
               </Field>
               <Field label="Margin Mode" span={3}>
@@ -2897,19 +3039,15 @@ export default function TradeBookingForm() {
                 </Select>
               </Field>
               <Field label="Quantity (contracts)" required span={4}>
-                <Input
-                  type="number"
-                  step="any"
+                <NumberInput
                   value={form.fut_quantity}
-                  onChange={(e) => set("fut_quantity", e.target.value)}
+                  onChange={(v) => set("fut_quantity", v)}
                 />
               </Field>
               <Field label="Price" required span={4}>
-                <Input
-                  type="number"
-                  step="any"
+                <NumberInput
                   value={form.fut_price}
-                  onChange={(e) => set("fut_price", e.target.value)}
+                  onChange={(v) => set("fut_price", v)}
                 />
               </Field>
               <Field label="Notional (auto)" span={4}>
@@ -2928,12 +3066,10 @@ export default function TradeBookingForm() {
                 />
               </Field>
               <Field label="Leverage (x)" span={3}>
-                <Input
-                  type="number"
-                  step="any"
+                <NumberInput
                   placeholder="e.g. 5"
                   value={form.fut_leverage}
-                  onChange={(e) => set("fut_leverage", e.target.value)}
+                  onChange={(v) => set("fut_leverage", v)}
                 />
               </Field>
               {form.fut_contract_type === "DATED" ? (
@@ -2946,21 +3082,17 @@ export default function TradeBookingForm() {
                 </Field>
               ) : (
                 <Field label="Funding Rate %" span={3}>
-                  <Input
-                    type="number"
-                    step="any"
+                  <NumberInput
                     placeholder="snapshot, e.g. 0.01"
                     value={form.fut_funding_rate}
-                    onChange={(e) => set("fut_funding_rate", e.target.value)}
+                    onChange={(v) => set("fut_funding_rate", v)}
                   />
                 </Field>
               )}
               <Field label="Fee" span={3}>
-                <Input
-                  type="number"
-                  step="any"
+                <NumberInput
                   value={form.fut_fee}
-                  onChange={(e) => set("fut_fee", e.target.value)}
+                  onChange={(v) => set("fut_fee", v)}
                 />
               </Field>
               <Field label="Fee Asset" span={3}>
@@ -2987,12 +3119,10 @@ export default function TradeBookingForm() {
               </div>
               {form.fut_is_closing && (
                 <Field label="Realized PnL" span={6}>
-                  <Input
-                    type="number"
-                    step="any"
+                  <NumberInput
                     placeholder="positive = profit, negative = loss"
                     value={form.fut_pnl_realized}
-                    onChange={(e) => set("fut_pnl_realized", e.target.value)}
+                    onChange={(v) => set("fut_pnl_realized", v)}
                   />
                 </Field>
               )}
@@ -3033,15 +3163,55 @@ export default function TradeBookingForm() {
               </Field>
 
               <Field label="Cashflow Type" required span={4}>
-                <Select value={form.cf_type} onChange={(e) => set("cf_type", e.target.value)}>
+                <Select
+                  value={form.cf_type}
+                  onChange={(e) => {
+                    // Counterparty semantics change between INTER PTF FUNDING
+                    // (portfolio number) and other types (counterparty name).
+                    // Also reset the mirror flag when leaving INTER PTF FUNDING.
+                    const nextType = e.target.value;
+                    const wasIPF = form.cf_type === "INTER PTF FUNDING";
+                    const nowIPF = nextType === "INTER PTF FUNDING";
+                    if (wasIPF !== nowIPF) {
+                      setMany({
+                        cf_type: nextType,
+                        counterparty: "",
+                        cf_mirror: false,
+                      });
+                    } else {
+                      set("cf_type", nextType);
+                    }
+                  }}
+                >
                   <option value="">— select —</option>
                   {CASHFLOW_TYPES.map((x) => (
                     <option key={x}>{x}</option>
                   ))}
                 </Select>
               </Field>
-              {/* Row-break spacer so Notional Asset/Amount fall onto their own row */}
-              <div className="col-span-8" />
+              {/* Mirror checkbox sits in the same row as Cashflow Type when
+                  INTER PTF FUNDING is selected; otherwise the row spacer just
+                  fills the remaining 8 cols. Checking Mirror flags that an
+                  offsetting leg should be auto-booked on the counterparty
+                  portfolio — no extra portfolio picker needed. */}
+              {form.cf_type === "INTER PTF FUNDING" ? (
+                <div
+                  className="col-span-8 flex items-end pb-1.5 pl-3"
+                  style={{ minHeight: 0 }}
+                >
+                  <label className="text-[11px] cursor-pointer flex items-center gap-2 font-mono" style={{ color: BB.text }}>
+                    <input
+                      type="checkbox"
+                      checked={form.cf_mirror}
+                      onChange={(e) => set("cf_mirror", e.target.checked)}
+                      style={{ accentColor: BB.orange }}
+                    />
+                    Mirror Trade
+                  </label>
+                </div>
+              ) : (
+                <div className="col-span-8" />
+              )}
 
               <Field label="Notional Asset" required span={3}>
                 <AssetPicker value={form.cf_asset} onChange={(v) => set("cf_asset", v)} />
@@ -3169,11 +3339,9 @@ export default function TradeBookingForm() {
                   />
                 </Field>
                 <Field label="Principal Amount" required span={3}>
-                  <Input
-                    type="number"
-                    step="any"
+                  <NumberInput
                     value={form.principal_amount}
-                    onChange={(e) => set("principal_amount", e.target.value)}
+                    onChange={(v) => set("principal_amount", v)}
                   />
                 </Field>
                 <Field label="Interest Asset" required span={3}>
@@ -3185,12 +3353,10 @@ export default function TradeBookingForm() {
                   />
                 </Field>
                 <Field label="Interest Rate P.A (%)" span={3}>
-                  <Input
-                    type="number"
-                    step="any"
+                  <NumberInput
                     placeholder="e.g. 8.5"
                     value={form.interest_rate}
-                    onChange={(e) => set("interest_rate", e.target.value)}
+                    onChange={(v) => set("interest_rate", v)}
                   />
                 </Field>
                 <Field label="Interest Type" span={4}>
@@ -3253,11 +3419,9 @@ export default function TradeBookingForm() {
                   />
                 </Field>
                 <Field label="Collateral Amount" span={6}>
-                  <Input
-                    type="number"
-                    step="any"
+                  <NumberInput
                     value={form.collateral_amount}
-                    onChange={(e) => set("collateral_amount", e.target.value)}
+                    onChange={(v) => set("collateral_amount", v)}
                   />
                 </Field>
               </Section>
@@ -3293,19 +3457,15 @@ export default function TradeBookingForm() {
                       />
                     </Field>
                     <Field label="Hedged Qty" required span={4}>
-                      <Input
-                        type="number"
-                        step="any"
+                      <NumberInput
                         value={form.hedged_qty}
-                        onChange={(e) => setHedgeField("hedged_qty", e.target.value)}
+                        onChange={(v) => setHedgeField("hedged_qty", v)}
                       />
                     </Field>
                     <Field label="Hedged Price" required span={4}>
-                      <Input
-                        type="number"
-                        step="any"
+                      <NumberInput
                         value={form.hedged_price}
-                        onChange={(e) => setHedgeField("hedged_price", e.target.value)}
+                        onChange={(v) => setHedgeField("hedged_price", v)}
                       />
                     </Field>
                     <Field label="Hedge Proceeds Asset" required span={4}>
@@ -3315,13 +3475,9 @@ export default function TradeBookingForm() {
                       />
                     </Field>
                     <Field label="Hedge Proceeds Amount" required span={8}>
-                      <Input
-                        type="number"
-                        step="any"
+                      <NumberInput
                         value={form.hedge_proceeds_amount}
-                        onChange={(e) =>
-                          setHedgeField("hedge_proceeds_amount", e.target.value)
-                        }
+                        onChange={(v) => setHedgeField("hedge_proceeds_amount", v)}
                       />
                     </Field>
                   </>

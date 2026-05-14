@@ -39,19 +39,17 @@ CREATE SEQUENCE IF NOT EXISTS trade_seq_cashflow
 
 -- ════════════════════════════════════════════════════════════════
 -- trades_cashflow — bitemporal cashflow trades.
+-- Column order matches the form JSON payload key sequence
+-- (see trade-booking/docs/cashflow-schema-mapping.md) so backend
+-- INSERTs and SELECT * round-trip in the same shape as the form.
 -- ════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS trades_cashflow (
   deal_ref            TEXT           NOT NULL,
-  effective_start     TIMESTAMPTZ    NOT NULL,
-  effective_end       TIMESTAMPTZ,
   external_trade_id   TEXT,
   txn_type            TEXT           NOT NULL DEFAULT 'CASHFLOW',
   cashflow_type       TEXT           NOT NULL,
   direction           TEXT           NOT NULL
                         CHECK (direction IN ('RECEIVE','PAY')),
-  status              TEXT           NOT NULL
-                        CHECK (status IN
-                          ('PENDING','CONFIRMED','PROCESSED','SETTLED','CANCELLED')),
   entity              TEXT           NOT NULL,
   portfolio_id        INTEGER        NOT NULL,
   portfolio_name      TEXT           NOT NULL,
@@ -66,7 +64,12 @@ CREATE TABLE IF NOT EXISTS trades_cashflow (
   value_date          TIMESTAMPTZ    NOT NULL,
   network             TEXT,
   txid_reference      TEXT,
+  effective_start     TIMESTAMPTZ    NOT NULL,
+  effective_end       TIMESTAMPTZ,
   user_id             TEXT           NOT NULL,
+  status              TEXT           NOT NULL
+                        CHECK (status IN
+                          ('PENDING','CONFIRMED','PROCESSED','SETTLED','CANCELLED')),
   comment             TEXT,
   PRIMARY KEY (deal_ref, effective_start)
 );
