@@ -23,6 +23,12 @@ if [ ! -d "node_modules" ]; then
     echo
 fi
 
+echo "Starting token-refresh API server on http://localhost:5181 (background)"
+# Snapshot reference_data.instrument_token_grouped on startup + hourly HH:15 UTC.
+node server.js > server.log 2>&1 &
+SERVER_PID=$!
+trap "kill $SERVER_PID 2>/dev/null" EXIT
+
 echo "Starting Vite dev server on http://localhost:5180"
 echo "Press Ctrl+C to stop the server."
 echo "---"

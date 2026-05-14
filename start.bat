@@ -13,7 +13,7 @@ echo.
 
 REM Auto-install if node_modules is missing
 if not exist "node_modules" (
-    echo Installing dependencies (first run only)...
+    echo Installing dependencies ^(first run only^)...
     call npm install
     if errorlevel 1 (
         echo.
@@ -24,6 +24,11 @@ if not exist "node_modules" (
     )
     echo.
 )
+
+REM Start the token-refresh API server in a new window (port 5181).
+REM Runs snapshot_tokens.py on startup + every hour at HH:15 UTC.
+start "Tokka MO - Token API" cmd /k "node server.js"
+echo Token API server started in new window - http://localhost:5181
 
 echo Starting Vite dev server on http://localhost:5180
 echo Open this URL in your browser, or it will open automatically in 3 seconds.

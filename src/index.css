@@ -24,3 +24,17 @@ input[type="time"],
 input[type="date"] {
   color-scheme: light;
 }
+
+/* Hide the spinner arrows on numeric inputs across all forms.
+   Chrome / Safari / Edge use the inner-spin-button pseudo-element;
+   Firefox uses -moz-appearance: textfield. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

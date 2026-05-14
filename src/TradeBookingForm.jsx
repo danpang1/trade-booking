@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useContext, createContext } from "react";
 import {
   Copy,
   Check,
@@ -21,6 +21,12 @@ import {
   ACCOUNT_VENUE_TYPES,
 } from "./data/accounts.js";
 import { NETWORKS } from "./data/networks.js";
+import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
+
+// Live token list — initialized from the bundled snapshot, replaced after
+// fetch('/tokens.json') resolves (refreshed hourly by server.js). AssetPicker
+// reads this context so the 12 call sites don't need any prop changes.
+const TokensContext = createContext(TOKENS);
 
 // ═════════════════════════════════════════════════════════════
 // Altas editorial palette — mirrors the nxgen-mo dashboard's
@@ -326,6 +332,24 @@ const CASHFLOW_TYPES = [
   "WITHDRAW",
   "OTHERS",
 ];
+// Trade lifecycle status — SPOT / FUTURE / CASHFLOW share this enum.
+// Matches the trades_cashflow.status CHECK constraint in UAT Postgres.
+// Default is PENDING on a fresh booking.
+const TRADE_STATUSES = [
+  "PENDING",
+  "CONFIRMED",
+  "PROCESSED",
+  "SETTLED",
+  "CANCELLED",
+];
+// LOAN lifecycle: LIVE (outstanding) → MATURED (settled), with CANCELLED
+// as a terminal state when a loan is reversed pre-maturity. Default LIVE on
+// a fresh booking.
+const LOAN_STATUSES = ["LIVE", "MATURED", "CANCELLED"];
+const statusOptionsFor = (category) =>
+  category === "LOAN" ? LOAN_STATUSES : TRADE_STATUSES;
+const defaultStatusFor = (category) =>
+  category === "LOAN" ? "LIVE" : "PENDING";
 const VENUES = {
   CEX: ["Binance", "Binance Sub", "Kraken", "Bitget", "OKX", "Coinbase"],
   DEX: ["Hyperliquid", "dYdX", "GMX", "Jupiter", "Uniswap"],
@@ -334,8 +358,20 @@ const VENUES = {
   Internal: ["Treasury"],
   RWA: ["Ondo", "Backed.fi", "BlackRock BUIDL", "Paxos"],
 };
-const ASSETS = ["USDT", "USDC", "PYUSD", "BTC", "ETH", "SOL", "BNB", "ARB", "OP", "USDE"];
-const LOAN_TERM_UNITS = ["DAYS", "WEEKS", "MONTHS", "YEARS", "OPEN"];
+// Asset symbols snapshot — sourced from reference_data.instrument_token_grouped
+// via src/data/tokens.js (947 active tokens, deduped by commonIdentifier).
+const ASSETS = ASSET_SYMBOLS;
+// Placeholder loan types — backend will swap to a DB-backed list later.
+// Adjust freely; first value is the default on a fresh booking.
+const LOAN_TYPES = [
+  "TERM",
+  "REVOLVING",
+  "MARGIN",
+  "REPO",
+  "DEFI LENDING",
+  "VIP LOAN",
+  "BRIDGE",
+];
 
 // Source: reference_data.user — WHERE isActive=1 AND roleName='superadmin'
 // (5 active superadmins on sg-ro-mysql, snapshot 2026-05-13)
@@ -358,12 +394,6 @@ const USER_PROFILES = {
   "yaqing.bie":   { name: "Yaqing Bie",   role: "Admin" },
 };
 
-const MOCK_SPOT_TRADES = [
-  { trade_id: "MB-DEMO-BTC01", summary: "BUY 5 BTC @ 95,000 USDT · Binance · 2026-05-12" },
-  { trade_id: "MB-DEMO-ETH02", summary: "BUY 200 ETH @ 3,200 USDT · Kraken · 2026-05-11" },
-  { trade_id: "MB-DEMO-SOL03", summary: "SELL 1000 SOL @ 180 USDT · Hyperliquid · 2026-05-10" },
-];
-
 // Internal-trade-id prefix per category. The 8-digit suffix is a placeholder
 // queue number — backend will allocate the real sequence on submit.
 const TRADE_ID_PREFIX = {
@@ -374,10 +404,11 @@ const TRADE_ID_PREFIX = {
 };
 
 const genTradeId = (category = "SPOT") => {
+  // New trades show only the prefix (e.g. "MCF-"). The numeric portion is
+  // allocated server-side from trade_seq_<product> when the trade is saved,
+  // so the deal_ref is only meaningful after submit.
   const prefix = TRADE_ID_PREFIX[category] || "MFX";
-  // 8-digit placeholder. Replaced server-side by the real queue number.
-  const suffix = String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
-  return `${prefix}${suffix}`;
+  return `${prefix}-`;
 };
 const isoNow = () => new Date().toISOString();
 // Current time formatted for <input type="datetime-local"> ("YYYY-MM-DDTHH:mm")
@@ -1261,6 +1292,164 @@ const CounterpartyPicker = ({ value, onChange, options }) => {
   );
 };
 
+// Searchable asset combobox — value is the token SYMBOL (string).
+// Options come from TOKENS (snapshot of reference_data.instrument_token_grouped).
+// Filter matches symbol or long name (e.g. typing "apple" finds AAPLON/AAPLX).
+const AssetPicker = ({ value, onChange, options, placeholder = "— select asset —" }) => {
+  const ctxTokens = useContext(TokensContext);
+  const list = options || ctxTokens;
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  const selected = list.find((o) => o.symbol === value);
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? list.filter(
+        (o) =>
+          o.symbol.toLowerCase().includes(q) ||
+          (o.name && o.name.toLowerCase().includes(q))
+      )
+    : list;
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((o) => !o);
+          setSearch("");
+        }}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono text-left transition-colors"
+        style={{
+          background: "#f8f6f1",
+          border: `1px solid ${open ? "#1f63ea" : "#d9d4c7"}`,
+        }}
+        onMouseEnter={(ev) => {
+          if (open) return;
+          ev.currentTarget.style.background = "#ffffff";
+          ev.currentTarget.style.borderColor = "#6a665c";
+        }}
+        onMouseLeave={(ev) => {
+          if (open) return;
+          ev.currentTarget.style.background = "#f8f6f1";
+          ev.currentTarget.style.borderColor = "#d9d4c7";
+        }}
+      >
+        <span className="flex-1 truncate">
+          {selected ? (
+            <>
+              <span style={{ fontWeight: 600 }}>{selected.symbol}</span>
+              {selected.name && (
+                <span style={{ color: "#9a9488" }}> · {selected.name}</span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "#9a9488" }}>{placeholder}</span>
+          )}
+        </span>
+        <span className="text-[10px]" style={{ color: "#9a9488" }}>
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 mt-1 left-0"
+          style={{
+            background: "#ffffff",
+            border: "1px solid #1f63ea",
+            boxShadow: "0 12px 32px rgba(13,13,13,0.12)",
+            minWidth: "100%",
+            width: 380,
+          }}
+        >
+          <div className="p-1.5" style={{ borderBottom: "1px solid #d9d4c7" }}>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Type to filter — symbol or token name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setOpen(false);
+                }
+                if (e.key === "Enter" && filtered.length === 1) {
+                  e.preventDefault();
+                  onChange(filtered[0].symbol);
+                  setOpen(false);
+                  setSearch("");
+                }
+              }}
+              className="w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] placeholder:text-[#9a9488] rounded-none caret-[#1f63ea]"
+            />
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+            {filtered.length === 0 && (
+              <div className="text-[11px] text-center py-3 font-mono" style={{ color: "#9a9488" }}>
+                No matching assets
+              </div>
+            )}
+            {filtered.slice(0, 200).map((o) => {
+              const isSel = value === o.symbol;
+              return (
+                <button
+                  key={o.symbol}
+                  type="button"
+                  onClick={() => {
+                    onChange(o.symbol);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] font-mono transition-colors"
+                  style={{
+                    background: isSel ? "#ece7dd" : "transparent",
+                    borderLeft: `2px solid ${isSel ? "#1f63ea" : "transparent"}`,
+                  }}
+                  onMouseEnter={(ev) => {
+                    if (!isSel) ev.currentTarget.style.background = "#ece7dd";
+                  }}
+                  onMouseLeave={(ev) => {
+                    if (!isSel) ev.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <span style={{ color: "#0d0d0d", fontWeight: 600 }}>{o.symbol}</span>
+                  {o.name && (
+                    <div className="text-[9px] mt-0.5 tracking-[0.16em] uppercase" style={{ color: "#6a665c" }}>
+                      {o.name}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+            {filtered.length > 200 && (
+              <div className="text-[10px] text-center py-2 font-mono" style={{ color: "#9a9488" }}>
+                Showing first 200 of {filtered.length} — refine your search
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Searchable account-name combobox. Caller picks the list to pass based on
 // the currently-chosen Account Venue (Exchange / Wallet / Broker — each one
 // is a separate MySQL table).
@@ -1364,7 +1553,7 @@ const AccountPicker = ({ value, onChange, options, placeholder = "— select acc
           <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
             {options.length === 0 && (
               <div className="text-[11px] text-center py-3 font-mono" style={{ color: "#9a9488" }}>
-                Pick an Account Venue first
+                Pick an Account Type first
               </div>
             )}
             {options.length > 0 && filtered.length === 0 && (
@@ -1510,6 +1699,30 @@ export default function TradeBookingForm() {
   const fileInputRef = useRef(null);
   const clock = useClock();
 
+  // Fetch the live token list from server.js (refreshed hourly). On failure
+  // we silently keep the bundled TOKENS seed so the form still works offline.
+  // server.js is on a separate port (5181) — we try same-origin first (in
+  // case it's proxied), then fall back to the explicit API URL.
+  const [liveTokens, setLiveTokens] = useState(TOKENS);
+  useEffect(() => {
+    const urls = ["/tokens.json", "http://localhost:5181/tokens.json"];
+    (async () => {
+      for (const u of urls) {
+        try {
+          const r = await fetch(u, { cache: "no-cache" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          if (Array.isArray(j?.tokens) && j.tokens.length > 0) {
+            setLiveTokens(j.tokens);
+            return;
+          }
+        } catch {
+          /* try next url */
+        }
+      }
+    })();
+  }, []);
+
   const initial = () => ({
     trade_id: genTradeId("SPOT"),
     external_trade_id: "",
@@ -1525,7 +1738,7 @@ export default function TradeBookingForm() {
     venue_type: "CEX",
     venue: "Binance",
     category: "SPOT",
-    status: "DRAFT",
+    status: "PENDING",
     tx_id: "",
     notes: "",
     // SPOT
@@ -1567,23 +1780,22 @@ export default function TradeBookingForm() {
     gas_asset: "ETH",
     tx_hash: "",
     loan_direction: "BORROW",
+    loan_type: "TERM",
+    loan_term_days: "",
     principal_asset: "USDT",
+    interest_asset: "USDT",
     principal_amount: "",
     interest_rate: "",
     interest_type: "FIXED",
     floating_benchmark: "",
-    loan_start_date: nowUtc().slice(0, 10),
-    loan_term_value: "",
-    loan_term_unit: "DAYS",
-    loan_maturity_date: "",
     collateral_asset: "",
     collateral_amount: "",
-    agreement_ref: "",
     is_hedged: false,
-    linked_spot_trade_id: "",
     hedged_asset: "BTC",
     hedged_qty: "",
     hedged_price: "",
+    hedge_proceeds_asset: "USDT",
+    hedge_proceeds_amount: "",
     attachments: [],
   });
 
@@ -1614,28 +1826,78 @@ export default function TradeBookingForm() {
     });
   };
 
+  // HEDGE auto-compute. Same shape as setSpotField:
+  //   hedged_qty × hedged_price = hedge_proceeds_amount.
+  // Editing qty or price recomputes amount. Editing amount recomputes price.
+  const setHedgeField = (field, value) => {
+    setForm((f) => {
+      const next = { ...f, [field]: value, last_modified_at: isoNow() };
+      const q = parseFloat(next.hedged_qty);
+      const p = parseFloat(next.hedged_price);
+      const a = parseFloat(next.hedge_proceeds_amount);
+      const fmt = (n) => (isFinite(n) ? parseFloat(n.toPrecision(12)).toString() : "");
+      if (field === "hedged_qty" || field === "hedged_price") {
+        if (isFinite(q) && isFinite(p)) next.hedge_proceeds_amount = fmt(q * p);
+      } else if (field === "hedge_proceeds_amount") {
+        if (isFinite(a) && isFinite(q) && q !== 0) next.hedged_price = fmt(a / q);
+      }
+      return next;
+    });
+  };
+
+  // LOAN date/term auto-compute. Rule: maturity − start = term (days).
+  // Editing start or term recomputes maturity. Editing maturity recomputes term.
+  // Field values are "YYYY-MM-DD" strings for dates and integer days for term;
+  // trade_date/value_date are stored as "YYYY-MM-DDT00:00" to stay compatible
+  // with the rest of the form's datetime format.
+  const setLoanField = (field, value) => {
+    setForm((f) => {
+      const next = { ...f, [field]: value, last_modified_at: isoNow() };
+      const startStr =
+        field === "trade_date" ? value : (next.trade_date || "").slice(0, 10);
+      const matStr =
+        field === "value_date" ? value : (next.value_date || "").slice(0, 10);
+      const termStr =
+        field === "loan_term_days" ? value : next.loan_term_days;
+      const parseDay = (s) => (s ? new Date(`${s}T00:00:00Z`) : null);
+      const start = parseDay(startStr);
+      const mat = parseDay(matStr);
+      const term = parseInt(termStr, 10);
+      const dayMs = 86400000;
+      const fmtDate = (d) => d.toISOString().slice(0, 10);
+
+      if (field === "trade_date" || field === "loan_term_days") {
+        // Recompute maturity from (start + term)
+        if (start && isFinite(term) && term >= 0) {
+          const newMat = new Date(start.getTime() + term * dayMs);
+          next.value_date = `${fmtDate(newMat)}T00:00`;
+        }
+        // Normalize trade_date into the YYYY-MM-DDT00:00 storage form
+        if (field === "trade_date" && value) {
+          next.trade_date = `${value}T00:00`;
+        }
+      } else if (field === "value_date") {
+        // Recompute term from (maturity − start); clearing maturity = open term
+        if (!value) {
+          next.value_date = "";
+          next.loan_term_days = "";
+        } else {
+          next.value_date = `${value}T00:00`;
+          if (start && mat) {
+            const diff = Math.round((mat - start) / dayMs);
+            next.loan_term_days = diff >= 0 ? String(diff) : "";
+          }
+        }
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
     const list = VENUES[form.venue_type] || [];
     if (list.length && !list.includes(form.venue)) set("venue", list[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.venue_type]);
-
-  useEffect(() => {
-    if (form.category !== "LOAN") return;
-    if (!form.loan_start_date || !form.loan_term_value || form.loan_term_unit === "OPEN") return;
-    const d = new Date(form.loan_start_date);
-    const n = parseInt(form.loan_term_value, 10);
-    if (isNaN(n)) return;
-    if (form.loan_term_unit === "DAYS") d.setDate(d.getDate() + n);
-    else if (form.loan_term_unit === "WEEKS") d.setDate(d.getDate() + n * 7);
-    else if (form.loan_term_unit === "MONTHS") d.setMonth(d.getMonth() + n);
-    else if (form.loan_term_unit === "YEARS") d.setFullYear(d.getFullYear() + n);
-    const maturity = d.toISOString().slice(0, 10);
-    if (maturity !== form.loan_maturity_date) {
-      setForm((f) => ({ ...f, loan_maturity_date: maturity, last_modified_at: isoNow() }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.loan_start_date, form.loan_term_value, form.loan_term_unit]);
 
   const handleFiles = (fileList) => {
     const files = Array.from(fileList);
@@ -1774,29 +2036,24 @@ export default function TradeBookingForm() {
       const hedgedPx = parseFloat(form.hedged_price) || 0;
       payload = {
         direction: form.loan_direction,
+        loan_type: form.loan_type,
         counterparty: form.counterparty || null,
         principal_asset: form.principal_asset,
         principal_amount: parseFloat(form.principal_amount) || 0,
-        interest_rate_pct: parseFloat(form.interest_rate) || 0,
+        interest_asset: form.interest_asset,
+        interest_rate_pa_pct: parseFloat(form.interest_rate) || 0,
         interest_type: form.interest_type,
         floating_benchmark:
           form.interest_type === "FLOATING" ? form.floating_benchmark || null : null,
-        loan_start_date: form.loan_start_date,
-        loan_term:
-          form.loan_term_unit === "OPEN"
-            ? { unit: "OPEN", value: null }
-            : { unit: form.loan_term_unit, value: parseInt(form.loan_term_value, 10) || null },
-        loan_maturity_date: form.loan_maturity_date || null,
         collateral_asset: form.collateral_asset || null,
         collateral_amount: parseFloat(form.collateral_amount) || 0,
-        agreement_ref: form.agreement_ref || null,
         hedge: form.is_hedged
           ? {
-              linked_spot_trade_id: form.linked_spot_trade_id || null,
               hedged_asset: form.hedged_asset,
               hedged_qty: hedgedQty,
               hedged_price: hedgedPx,
-              hedged_notional: +(hedgedQty * hedgedPx).toFixed(8),
+              hedge_proceeds_asset: form.hedge_proceeds_asset,
+              hedge_proceeds_amount: parseFloat(form.hedge_proceeds_amount) || 0,
             }
           : null,
       };
@@ -1836,8 +2093,6 @@ export default function TradeBookingForm() {
       if (!form.counterparty) e.push("Counterparty required");
       if (!form.principal_amount || parseFloat(form.principal_amount) <= 0)
         e.push("Principal must be > 0");
-      if (form.loan_term_unit !== "OPEN" && !form.loan_term_value)
-        e.push("Loan term value required (or set unit to OPEN)");
       if (form.is_hedged) {
         if (!form.hedged_qty || parseFloat(form.hedged_qty) <= 0)
           e.push("Hedged qty must be > 0");
@@ -1852,11 +2107,92 @@ export default function TradeBookingForm() {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    setSubmittedRecord({ ...outputRecord, status: "BOOKED" });
+    setSubmittedRecord(outputRecord);
+  };
+
+  // Reset is scoped to the currently-active product form. Clicking Reset on
+  // the LOAN form only clears loan-specific fields (+ the per-trade economics
+  // helpers that loan uses); SPOT/FUTURE/CASHFLOW state stays put, as do the
+  // shared summary fields (trade_id, dates, portfolio, counterparty, status,
+  // notes, attachments).
+  const RESET_SLICES = {
+    SPOT: {
+      spot_direction: "LONG",
+      base_asset: "BTC",
+      base_amount: "",
+      quote_asset: "USDT",
+      quote_amount: "",
+      price: "",
+      fee_asset: "USDT",
+      fee_amount: "",
+      account_venue_type: "EXCHANGE",
+      account_name: "",
+      account_id: "",
+      tx_id: "",
+      tx_hash: "",
+      network: "",
+      gas_fee: "",
+      gas_asset: "ETH",
+      venue_type: "CEX",
+      venue: "Binance",
+    },
+    FUTURE: {
+      fut_side: "BUY",
+      fut_contract_type: "PERP",
+      fut_symbol: "",
+      fut_base_asset: "BTC",
+      fut_quote_asset: "USDT",
+      fut_contract_size: "1",
+      fut_quantity: "",
+      fut_price: "",
+      fut_leverage: "",
+      fut_margin_mode: "CROSS",
+      fut_expiry: "",
+      fut_funding_rate: "",
+      fut_fee: "",
+      fut_fee_asset: "USDT",
+      fut_pnl_realized: "",
+      fut_is_closing: false,
+    },
+    CASHFLOW: {
+      cf_direction: "PAY",
+      cf_type: "",
+      cf_asset: "USDT",
+      cf_amount: "",
+      fee_asset: "USDT",
+      fee_amount: "",
+      account_venue_type: "EXCHANGE",
+      account_name: "",
+      network: "",
+      tx_hash: "",
+    },
+    LOAN: {
+      loan_direction: "BORROW",
+      loan_type: "TERM",
+      loan_term_days: "",
+      principal_asset: "USDT",
+      interest_asset: "USDT",
+      principal_amount: "",
+      interest_rate: "",
+      interest_type: "FIXED",
+      floating_benchmark: "",
+      collateral_asset: "",
+      collateral_amount: "",
+      is_hedged: false,
+      hedged_asset: "BTC",
+      hedged_qty: "",
+      hedged_price: "",
+      hedge_proceeds_asset: "USDT",
+      hedge_proceeds_amount: "",
+      account_venue_type: "EXCHANGE",
+      account_name: "",
+    },
   };
 
   const handleReset = () => {
-    setForm(initial());
+    const slice = RESET_SLICES[form.category];
+    if (!slice) return;
+    setForm((prev) => ({ ...prev, ...slice, last_modified_at: isoNow() }));
     setSubmittedRecord(null);
   };
 
@@ -1935,11 +2271,7 @@ export default function TradeBookingForm() {
             />
           </Field>
           <Field label="Gas Asset" span={4}>
-            <Select value={form.gas_asset} onChange={(e) => set("gas_asset", e.target.value)}>
-              {ASSETS.map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </Select>
+            <AssetPicker value={form.gas_asset} onChange={(v) => set("gas_asset", v)} />
           </Field>
         </>
       )}
@@ -1974,6 +2306,7 @@ export default function TradeBookingForm() {
   };
 
   return (
+    <TokensContext.Provider value={liveTokens}>
     <div
       className="h-screen flex flex-col overflow-hidden"
       style={{
@@ -1987,7 +2320,6 @@ export default function TradeBookingForm() {
         className="flex items-center justify-between px-6 py-3 mb-4"
         style={{
           background: "#0d0d0d",
-          borderBottom: `2px solid ${BB.orange}`,
         }}
       >
         {/* LEFT — logo + system name as one vertical lockup */}
@@ -2103,7 +2435,11 @@ export default function TradeBookingForm() {
                     active={view === "TRADE_INPUT" && form.category === c.key}
                     onClick={() => {
                       setView("TRADE_INPUT");
-                      setMany({ category: c.key, trade_id: genTradeId(c.key) });
+                      setMany({
+                        category: c.key,
+                        trade_id: genTradeId(c.key),
+                        status: defaultStatusFor(c.key),
+                      });
                     }}
                   />
                 ))}
@@ -2237,22 +2573,96 @@ export default function TradeBookingForm() {
                 onChange={(e) => set("external_trade_id", e.target.value)}
               />
             </Field>
-            <Field label="Trade Date · UTC" required span={4}>
-              <DateTimePicker24
-                value={form.trade_date}
-                onChange={(v) => set("trade_date", v)}
-                syncLabel="Sync → Value Date"
-                onSync={(v) => set("value_date", v)}
-              />
-            </Field>
-            <Field label="Value Date · UTC" required span={4}>
-              <DateTimePicker24
-                value={form.value_date}
-                onChange={(v) => set("value_date", v)}
-                syncLabel="Sync → Trade Date"
-                onSync={(v) => set("trade_date", v)}
-              />
-            </Field>
+            {form.category === "LOAN" ? (
+              <>
+                <Field label="Start Date" required span={3}>
+                  <Input
+                    type="date"
+                    value={(form.trade_date || "").slice(0, 10)}
+                    onChange={(e) => setLoanField("trade_date", e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Maturity Date"
+                  span={3}
+                  hint={
+                    form.value_date ? (
+                      <button
+                        type="button"
+                        onClick={() => setLoanField("value_date", "")}
+                        className="hover:underline cursor-pointer"
+                        style={{
+                          color: BB.orange,
+                          background: "transparent",
+                          border: "none",
+                          padding: 0,
+                          font: "inherit",
+                        }}
+                        title="Clear maturity → open-term loan"
+                      >
+                        × clear
+                      </button>
+                    ) : null
+                  }
+                >
+                  <Input
+                    type="date"
+                    value={(form.value_date || "").slice(0, 10)}
+                    onChange={(e) => setLoanField("value_date", e.target.value)}
+                  />
+                </Field>
+                <Field label="Terms (Days)" span={2}>
+                  {/* When both Maturity and Terms are blank the loan is open-term;
+                      we surface "OPEN" as a strong visual indicator (text type so
+                      the styled string renders) but typing a number flips back to
+                      a numeric input and re-engages the auto-compute. */}
+                  {!form.value_date && !form.loan_term_days ? (
+                    <Input
+                      type="text"
+                      value="OPEN"
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^\d]/g, "");
+                        setLoanField("loan_term_days", v);
+                      }}
+                      style={{
+                        color: BB.orange,
+                        fontWeight: 600,
+                        background: "#ece7dd",
+                      }}
+                      title="Open-term loan — type a number to set a fixed term"
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="days"
+                      value={form.loan_term_days}
+                      onChange={(e) => setLoanField("loan_term_days", e.target.value)}
+                    />
+                  )}
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="Trade Date · UTC" required span={4}>
+                  <DateTimePicker24
+                    value={form.trade_date}
+                    onChange={(v) => set("trade_date", v)}
+                    syncLabel="Sync → Value Date"
+                    onSync={(v) => set("value_date", v)}
+                  />
+                </Field>
+                <Field label="Value Date · UTC" required span={4}>
+                  <DateTimePicker24
+                    value={form.value_date}
+                    onChange={(v) => set("value_date", v)}
+                    syncLabel="Sync → Trade Date"
+                    onSync={(v) => set("trade_date", v)}
+                  />
+                </Field>
+              </>
+            )}
             <Field label="Created by" required span={4}>
               <Select
                 value={form.created_by}
@@ -2287,30 +2697,30 @@ export default function TradeBookingForm() {
                 }}
               />
             </Field>
-          </Section>
-
-          {/* ═════ 2. COUNTERPARTY ═════ */}
-          <Section title="Counterparty">
             <Field
-              label={
-                form.category === "LOAN"
-                  ? "Counterparty"
-                  : form.category === "SPOT"
-                  ? "Counterparty (if OTC)"
-                  : form.category === "CASHFLOW" && form.cf_direction === "RECEIVE"
-                  ? "Counterparty / Source"
-                  : form.category === "CASHFLOW" && form.cf_direction === "PAY"
-                  ? "Counterparty / Payee"
-                  : "Counterparty"
-              }
+              label="Counterparty"
               required={form.category === "LOAN"}
               span={6}
             >
               <CounterpartyPicker
                 value={form.counterparty}
                 onChange={(v) => set("counterparty", v)}
-                options={COUNTERPARTIES}
+                options={
+                  form.category === "LOAN"
+                    ? COUNTERPARTIES.filter((c) => c.subType === "LENDER")
+                    : COUNTERPARTIES
+                }
               />
+            </Field>
+            <Field label="Status" required span={6}>
+              <Select
+                value={form.status}
+                onChange={(e) => set("status", e.target.value)}
+              >
+                {statusOptionsFor(form.category).map((x) => (
+                  <option key={x}>{x}</option>
+                ))}
+              </Select>
             </Field>
           </Section>
 
@@ -2329,9 +2739,10 @@ export default function TradeBookingForm() {
                         onClick={() => set("spot_direction", d)}
                         className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
                         style={{
-                          background: active ? tone : BB.surface2,
-                          color: active ? "#ffffff" : BB.dim,
+                          background: BB.surface2,
+                          color: active ? tone : BB.dim,
                           border: `1px solid ${active ? tone : BB.border}`,
+                          boxShadow: active ? `inset 0 0 0 1px ${tone}` : "none",
                           fontWeight: active ? 600 : 500,
                         }}
                       >
@@ -2344,11 +2755,7 @@ export default function TradeBookingForm() {
 
               {/* Base / Quote */}
               <Field label="Base Asset" required span={3}>
-                <Select value={form.base_asset} onChange={(e) => set("base_asset", e.target.value)}>
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                <AssetPicker value={form.base_asset} onChange={(v) => set("base_asset", v)} />
               </Field>
               <Field label="Base Amount" required span={3}>
                 <NumberInput
@@ -2357,11 +2764,7 @@ export default function TradeBookingForm() {
                 />
               </Field>
               <Field label="Quote Asset" required span={3}>
-                <Select value={form.quote_asset} onChange={(e) => set("quote_asset", e.target.value)}>
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                <AssetPicker value={form.quote_asset} onChange={(v) => set("quote_asset", v)} />
               </Field>
               <Field label="Quote Amount" required span={3}>
                 <NumberInput
@@ -2380,11 +2783,7 @@ export default function TradeBookingForm() {
 
               {/* Fee */}
               <Field label="Fee Asset" span={4}>
-                <Select value={form.fee_asset} onChange={(e) => set("fee_asset", e.target.value)}>
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                <AssetPicker value={form.fee_asset} onChange={(v) => set("fee_asset", v)} />
               </Field>
               <Field label="Fee Amount" span={4}>
                 <NumberInput value={form.fee_amount} onChange={(v) => set("fee_amount", v)} />
@@ -2392,7 +2791,7 @@ export default function TradeBookingForm() {
 
               {/* Account venue + name — venue picks which table (exchange/wallet/broker),
                   name pulls from that table */}
-              <Field label="Account Venue" required span={4}>
+              <Field label="Account Type" required span={4}>
                 <Select
                   value={form.account_venue_type}
                   onChange={(e) =>
@@ -2467,24 +2866,16 @@ export default function TradeBookingForm() {
                 />
               </Field>
               <Field label="Base Asset" required span={3}>
-                <Select
+                <AssetPicker
                   value={form.fut_base_asset}
-                  onChange={(e) => set("fut_base_asset", e.target.value)}
-                >
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                  onChange={(v) => set("fut_base_asset", v)}
+                />
               </Field>
               <Field label="Quote / Settle" required span={3}>
-                <Select
+                <AssetPicker
                   value={form.fut_quote_asset}
-                  onChange={(e) => set("fut_quote_asset", e.target.value)}
-                >
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                  onChange={(v) => set("fut_quote_asset", v)}
+                />
               </Field>
               <Field label="Contract Size" span={3}>
                 <Input
@@ -2573,14 +2964,10 @@ export default function TradeBookingForm() {
                 />
               </Field>
               <Field label="Fee Asset" span={3}>
-                <Select
+                <AssetPicker
                   value={form.fut_fee_asset}
-                  onChange={(e) => set("fut_fee_asset", e.target.value)}
-                >
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                  onChange={(v) => set("fut_fee_asset", v)}
+                />
               </Field>
               <div className="col-span-12 flex items-center gap-2 mt-1">
                 <input
@@ -2631,9 +3018,10 @@ export default function TradeBookingForm() {
                         onClick={() => set("cf_direction", d)}
                         className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
                         style={{
-                          background: active ? tone : BB.surface2,
-                          color: active ? "#ffffff" : BB.dim,
+                          background: BB.surface2,
+                          color: active ? tone : BB.dim,
                           border: `1px solid ${active ? tone : BB.border}`,
+                          boxShadow: active ? `inset 0 0 0 1px ${tone}` : "none",
                           fontWeight: active ? 600 : 500,
                         }}
                       >
@@ -2656,27 +3044,19 @@ export default function TradeBookingForm() {
               <div className="col-span-8" />
 
               <Field label="Notional Asset" required span={3}>
-                <Select value={form.cf_asset} onChange={(e) => set("cf_asset", e.target.value)}>
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                <AssetPicker value={form.cf_asset} onChange={(v) => set("cf_asset", v)} />
               </Field>
               <Field label="Notional Amount" required span={3}>
                 <NumberInput value={form.cf_amount} onChange={(v) => set("cf_amount", v)} />
               </Field>
               <Field label="Fee Asset" span={3}>
-                <Select value={form.fee_asset} onChange={(e) => set("fee_asset", e.target.value)}>
-                  {ASSETS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
+                <AssetPicker value={form.fee_asset} onChange={(v) => set("fee_asset", v)} />
               </Field>
               <Field label="Fee Amount" span={3}>
                 <NumberInput value={form.fee_amount} onChange={(v) => set("fee_amount", v)} />
               </Field>
 
-              <Field label="Account Venue" required span={4}>
+              <Field label="Account Type" required span={4}>
                 <Select
                   value={form.account_venue_type}
                   onChange={(e) =>
@@ -2726,33 +3106,67 @@ export default function TradeBookingForm() {
           {form.category === "LOAN" && (
             <>
               <Section title="Loan Details" kicker="Loan · principal · rate · maturity" accent={BB.magenta}>
-                {tradeVenueFields}
-                <Field label="Direction" required span={4}>
-                  <Select
-                    value={form.loan_direction}
-                    onChange={(e) => set("loan_direction", e.target.value)}
-                    style={{ color: form.loan_direction === "BORROW" ? BB.red : BB.green }}
-                  >
-                    <option>BORROW</option>
-                    <option>LEND</option>
-                  </Select>
+                {/* Direction — full-row toggle (matches CASHFLOW / SPOT / FUTURE) */}
+                <Field label="Direction" required span={12}>
+                  <div className="flex gap-2">
+                    {["BORROW", "LEND"].map((d) => {
+                      const active = form.loan_direction === d;
+                      const tone = d === "BORROW" ? BB.red : BB.green;
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => set("loan_direction", d)}
+                          className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
+                          style={{
+                            background: BB.surface2,
+                            color: active ? tone : BB.dim,
+                            border: `1px solid ${active ? tone : BB.border}`,
+                            boxShadow: active ? `inset 0 0 0 1px ${tone}` : "none",
+                            fontWeight: active ? 600 : 500,
+                          }}
+                        >
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </Field>
-                <Field label="Agreement Ref" span={8}>
-                  <Input
-                    placeholder="contract ID"
-                    value={form.agreement_ref}
-                    onChange={(e) => set("agreement_ref", e.target.value)}
-                  />
-                </Field>
-                <Field label="Principal Asset" required span={3}>
+
+                {/* Loan Type + spacer (matches cashflow's "Cashflow Type" row) */}
+                <Field label="Loan Type" required span={4}>
                   <Select
-                    value={form.principal_asset}
-                    onChange={(e) => set("principal_asset", e.target.value)}
+                    value={form.loan_type}
+                    onChange={(e) => set("loan_type", e.target.value)}
                   >
-                    {ASSETS.map((x) => (
+                    {LOAN_TYPES.map((x) => (
                       <option key={x}>{x}</option>
                     ))}
                   </Select>
+                </Field>
+                <div className="col-span-8" />
+
+                {/* Economics — Principal + Interest (analog to cashflow's notional+fee row) */}
+                <Field label="Principal Asset" required span={3}>
+                  <AssetPicker
+                    value={form.principal_asset}
+                    onChange={(v) =>
+                      setForm((f) => {
+                        const next = {
+                          ...f,
+                          principal_asset: v,
+                          last_modified_at: isoNow(),
+                        };
+                        // Interest Asset (and Hedged Asset, which mirrors it)
+                        // auto-follow Principal until the user diverges them.
+                        if (f.interest_asset === f.principal_asset) {
+                          next.interest_asset = v;
+                          next.hedged_asset = v;
+                        }
+                        return next;
+                      })
+                    }
+                  />
                 </Field>
                 <Field label="Principal Amount" required span={3}>
                   <Input
@@ -2762,7 +3176,15 @@ export default function TradeBookingForm() {
                     onChange={(e) => set("principal_amount", e.target.value)}
                   />
                 </Field>
-                <Field label="Interest Rate %" span={3}>
+                <Field label="Interest Asset" required span={3}>
+                  <AssetPicker
+                    value={form.interest_asset}
+                    onChange={(v) =>
+                      setMany({ interest_asset: v, hedged_asset: v })
+                    }
+                  />
+                </Field>
+                <Field label="Interest Rate P.A (%)" span={3}>
                   <Input
                     type="number"
                     step="any"
@@ -2771,7 +3193,7 @@ export default function TradeBookingForm() {
                     onChange={(e) => set("interest_rate", e.target.value)}
                   />
                 </Field>
-                <Field label="Interest Type" span={3}>
+                <Field label="Interest Type" span={4}>
                   <Select
                     value={form.interest_type}
                     onChange={(e) => set("interest_type", e.target.value)}
@@ -2780,64 +3202,55 @@ export default function TradeBookingForm() {
                     <option>FLOATING</option>
                   </Select>
                 </Field>
-                {form.interest_type === "FLOATING" && (
-                  <Field label="Floating Benchmark" span={12}>
+                {form.interest_type === "FLOATING" ? (
+                  <Field label="Floating Benchmark" span={8}>
                     <Input
                       placeholder="e.g. SOFR + 200bps, Aave borrow rate"
                       value={form.floating_benchmark}
                       onChange={(e) => set("floating_benchmark", e.target.value)}
                     />
                   </Field>
+                ) : (
+                  <div className="col-span-8" />
                 )}
-                <Field label="Loan Start" required span={3}>
-                  <Input
-                    type="date"
-                    value={form.loan_start_date}
-                    onChange={(e) => set("loan_start_date", e.target.value)}
-                  />
-                </Field>
-                <Field label="Term Value" span={3}>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 30"
-                    value={form.loan_term_value}
-                    disabled={form.loan_term_unit === "OPEN"}
-                    onChange={(e) => set("loan_term_value", e.target.value)}
-                  />
-                </Field>
-                <Field label="Term Unit" span={3}>
+
+                {/* Account (matches cashflow) */}
+                <Field label="Account Type" required span={4}>
                   <Select
-                    value={form.loan_term_unit}
-                    onChange={(e) => set("loan_term_unit", e.target.value)}
+                    value={form.account_venue_type}
+                    onChange={(e) =>
+                      setMany({ account_venue_type: e.target.value, account_name: "" })
+                    }
                   >
-                    {LOAN_TERM_UNITS.map((x) => (
-                      <option key={x}>{x}</option>
+                    {ACCOUNT_VENUE_TYPES.map((v) => (
+                      <option key={v.key} value={v.key}>
+                        {v.label}
+                      </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Maturity (auto)" span={3}>
-                  <Input
-                    type="date"
-                    value={form.loan_maturity_date}
-                    readOnly={form.loan_term_unit !== "OPEN"}
-                    onChange={(e) => set("loan_maturity_date", e.target.value)}
-                    style={
-                      form.loan_term_unit !== "OPEN"
-                        ? { color: BB.cyan, background: "#ece7dd" }
-                        : undefined
+                <Field label="Account Name" required span={8}>
+                  <AccountPicker
+                    value={form.account_name}
+                    onChange={(v) => set("account_name", v)}
+                    options={accountOptions}
+                    placeholder={
+                      !form.portfolio
+                        ? "— select portfolio first —"
+                        : accountOptions.length === 0
+                        ? "— no accounts for this portfolio + account type —"
+                        : "— select account —"
                     }
                   />
                 </Field>
+
+                {/* Collateral — loan-specific extras at the bottom */}
                 <Field label="Collateral Asset" span={6}>
-                  <Select
+                  <AssetPicker
                     value={form.collateral_asset}
-                    onChange={(e) => set("collateral_asset", e.target.value)}
-                  >
-                    <option value="">— unsecured —</option>
-                    {ASSETS.map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </Select>
+                    onChange={(v) => set("collateral_asset", v)}
+                    placeholder="— unsecured —"
+                  />
                 </Field>
                 <Field label="Collateral Amount" span={6}>
                   <Input
@@ -2873,35 +3286,18 @@ export default function TradeBookingForm() {
                 </div>
                 {form.is_hedged && (
                   <>
-                    <Field label="Linked Spot Trade" span={12}>
-                      <Select
-                        value={form.linked_spot_trade_id}
-                        onChange={(e) => setMany({ linked_spot_trade_id: e.target.value })}
-                      >
-                        <option value="">— select existing booked spot trade —</option>
-                        {MOCK_SPOT_TRADES.map((t) => (
-                          <option key={t.trade_id} value={t.trade_id}>
-                            {t.trade_id} · {t.summary}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
                     <Field label="Hedged Asset" span={4}>
-                      <Select
+                      <AssetPicker
                         value={form.hedged_asset}
-                        onChange={(e) => set("hedged_asset", e.target.value)}
-                      >
-                        {ASSETS.map((x) => (
-                          <option key={x}>{x}</option>
-                        ))}
-                      </Select>
+                        onChange={(v) => set("hedged_asset", v)}
+                      />
                     </Field>
                     <Field label="Hedged Qty" required span={4}>
                       <Input
                         type="number"
                         step="any"
                         value={form.hedged_qty}
-                        onChange={(e) => set("hedged_qty", e.target.value)}
+                        onChange={(e) => setHedgeField("hedged_qty", e.target.value)}
                       />
                     </Field>
                     <Field label="Hedged Price" required span={4}>
@@ -2909,20 +3305,23 @@ export default function TradeBookingForm() {
                         type="number"
                         step="any"
                         value={form.hedged_price}
-                        onChange={(e) => set("hedged_price", e.target.value)}
+                        onChange={(e) => setHedgeField("hedged_price", e.target.value)}
                       />
                     </Field>
-                    <Field label="Hedged Notional (auto)" span={12}>
+                    <Field label="Hedge Proceeds Asset" required span={4}>
+                      <AssetPicker
+                        value={form.hedge_proceeds_asset}
+                        onChange={(v) => set("hedge_proceeds_asset", v)}
+                      />
+                    </Field>
+                    <Field label="Hedge Proceeds Amount" required span={8}>
                       <Input
-                        readOnly
-                        value={
-                          form.hedged_qty && form.hedged_price
-                            ? (
-                                parseFloat(form.hedged_qty) * parseFloat(form.hedged_price)
-                              ).toLocaleString(undefined, { maximumFractionDigits: 8 })
-                            : ""
+                        type="number"
+                        step="any"
+                        value={form.hedge_proceeds_amount}
+                        onChange={(e) =>
+                          setHedgeField("hedge_proceeds_amount", e.target.value)
                         }
-                        style={{ color: BB.cyan, background: "#ece7dd" }}
                       />
                     </Field>
                   </>
@@ -2931,7 +3330,7 @@ export default function TradeBookingForm() {
             </>
           )}
 
-          {/* ═════ 4. COMMENTS & ATTACHMENTS ═════ */}
+          {/* ═════ 3. COMMENTS & ATTACHMENTS ═════ */}
           <Section
             title="Comments & Attachments"
             kicker={
@@ -3213,5 +3612,6 @@ export default function TradeBookingForm() {
         </main>
       </div>
     </div>
+    </TokensContext.Provider>
   );
 }

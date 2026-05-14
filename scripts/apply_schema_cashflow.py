@@ -1,0 +1,133 @@
+"""Apply the trades_cashflow schema + trade_seq_cashflow sequence to UAT Postgres.
+
+Idempotent: uses CREATE ... IF NOT EXISTS so re-running is safe.
+Reads credentials from the `#MO DB UAT` block in /.env.
+"""
+from pathlib import Path
+import psycopg2
+
+REPO = Path(__file__).resolve().parents[2]
+ENV = REPO / ".env"
+
+
+def _load_creds() -> dict[str, str]:
+    creds: dict[str, str] = {}
+    in_block = False
+    for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = line.strip()
+        if "MO DB UAT" in s.upper():
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not s or s.startswith("#"):
+            if s.startswith("#") and "MO DB UAT" not in s.upper():
+                break
+            continue
+        if ":" in s:
+            k, _, v = s.partition(":")
+            creds[k.strip().lower()] = v.strip()
+    return creds
+
+
+DDL = """
+-- ════════════════════════════════════════════════════════════════
+-- trade_seq_cashflow — monotonic counter for MCF deal-refs.
+-- ════════════════════════════════════════════════════════════════
+CREATE SEQUENCE IF NOT EXISTS trade_seq_cashflow
+  START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
+
+-- ════════════════════════════════════════════════════════════════
+-- trades_cashflow — bitemporal cashflow trades.
+-- ════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS trades_cashflow (
+  deal_ref            TEXT           NOT NULL,
+  effective_start     TIMESTAMPTZ    NOT NULL,
+  effective_end       TIMESTAMPTZ,
+  external_trade_id   TEXT,
+  txn_type            TEXT           NOT NULL DEFAULT 'CASHFLOW',
+  cashflow_type       TEXT           NOT NULL,
+  direction           TEXT           NOT NULL
+                        CHECK (direction IN ('RECEIVE','PAY')),
+  status              TEXT           NOT NULL
+                        CHECK (status IN
+                          ('PENDING','CONFIRMED','PROCESSED','SETTLED','CANCELLED')),
+  entity              TEXT           NOT NULL,
+  portfolio_id        INTEGER        NOT NULL,
+  portfolio_name      TEXT           NOT NULL,
+  counterparty        TEXT,
+  account             TEXT,
+  account_type        TEXT,
+  asset               TEXT           NOT NULL,
+  amount              NUMERIC(36,18) NOT NULL,
+  fee_asset           TEXT,
+  fee_amount          NUMERIC(36,18) DEFAULT 0,
+  trade_date          TIMESTAMPTZ    NOT NULL,
+  value_date          TIMESTAMPTZ    NOT NULL,
+  network             TEXT,
+  txid_reference      TEXT,
+  user_id             TEXT           NOT NULL,
+  comment             TEXT,
+  PRIMARY KEY (deal_ref, effective_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tcf_live
+  ON trades_cashflow (deal_ref) WHERE effective_end IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tcf_deal_ref
+  ON trades_cashflow (deal_ref);
+CREATE INDEX IF NOT EXISTS idx_tcf_portfolio
+  ON trades_cashflow (portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_tcf_external_trade_id
+  ON trades_cashflow (external_trade_id) WHERE external_trade_id IS NOT NULL;
+"""
+
+
+def main():
+    c = _load_creds()
+    conn = psycopg2.connect(
+        host=c["host"],
+        port=int(c.get("port", "5432")),
+        dbname=c["database"],
+        user=c["username"],
+        password=c["password"],
+        connect_timeout=15,
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute(DDL)
+    print("applied DDL OK\n")
+
+    # Verify
+    cur.execute("""
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_name = 'trades_cashflow'
+        ORDER BY ordinal_position
+    """)
+    cols = cur.fetchall()
+    print(f"trades_cashflow columns: {len(cols)}")
+    for col in cols:
+        print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2]=='YES' else 'NOT NULL':10s} {col[3] or ''}")
+
+    cur.execute("SELECT sequence_name, start_value, last_value FROM information_schema.sequences WHERE sequence_name='trade_seq_cashflow'")
+    seq = cur.fetchone()
+    print(f"\nsequence: {seq}")
+
+    cur.execute("""
+        SELECT indexname FROM pg_indexes
+        WHERE tablename='trades_cashflow'
+        ORDER BY indexname
+    """)
+    idx = [r[0] for r in cur.fetchall()]
+    print(f"\nindexes: {idx}")
+
+    cur.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='trades_cashflow'::regclass ORDER BY contype")
+    print("\nconstraints:")
+    for row in cur.fetchall():
+        print(f"  {row[0]}")
+
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()

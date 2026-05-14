@@ -426,5 +426,5 @@ export const ACCOUNTS_BROKER = [
 export const ACCOUNT_VENUE_TYPES = [
   { key: "EXCHANGE", label: "Exchange" },
   { key: "WALLET", label: "Wallet" },
-  { key: "BROKER", label: "Broker" },
+  { key: "BROKER", label: "Brokerage" },
 ];
