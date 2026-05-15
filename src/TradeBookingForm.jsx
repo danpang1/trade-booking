@@ -2242,8 +2242,6 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       border: "none",
                       padding: 0,
                       color: "#1f63ea",
-                      textDecoration: "underline",
-                      textUnderlineOffset: "2px",
                       cursor: "pointer",
                       font: "inherit",
                     }}
