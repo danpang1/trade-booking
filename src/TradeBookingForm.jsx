@@ -2310,6 +2310,56 @@ export default function TradeBookingForm() {
   // null | "MCF-42"  — when set, form is in amend mode (PUT vs POST)
   const [amendingDealRef, setAmendingDealRef] = useState(null);
 
+  // Convert a backend cashflow row (mapping-doc shape) into the slice
+  // of form state the cashflow tab consumes. Inverse of outputRecord
+  // for category="CASHFLOW". Unknown fields are ignored.
+  function payloadToFormState(row) {
+    return {
+      category: "CASHFLOW",
+      trade_id: row.deal_ref,
+      external_trade_id: row.external_trade_id || "",
+      cf_type: row.cashflow_type,
+      cf_direction: row.direction,
+      portfolio: String(row.portfolio_id),
+      counterparty: row.counterparty || "",
+      account_name: row.account || "",
+      account_venue_type: row.account_type || "",
+      cf_asset: row.asset,
+      cf_amount: row.amount,
+      fee_asset: row.fee_asset || "",
+      fee_amount: row.fee_amount || "0",
+      trade_date: row.trade_date,
+      value_date: row.value_date,
+      network: row.network || "",
+      tx_hash: row.txid_reference || "",
+      created_by: row.user_id,
+      status: row.status,
+      notes: row.comment || "",
+    };
+  }
+
+  async function loadIntoForm(dealRef) {
+    setFeedback(null);
+    let res;
+    try {
+      res = await fetch(`http://localhost:5181/api/cashflow/${encodeURIComponent(dealRef)}`);
+    } catch (e) {
+      setFeedback({ kind: "error", message: "Server unreachable", detail: String(e) });
+      return;
+    }
+    const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+    if (!result.ok) {
+      setFeedback({ kind: "error", message: result.error || "Failed to load deal" });
+      return;
+    }
+    const row = result.rows[0];
+    // setMany is the existing bulk-patch helper (TradeBookingForm.jsx:1815);
+    // it merges the patch and refreshes last_modified_at.
+    setMany(payloadToFormState(row));
+    setAmendingDealRef(row.deal_ref);
+    setView("TRADE_INPUT");
+  }
+
   const handleSubmit = async () => {
     if (form.category !== "CASHFLOW") {
       // SPOT/FUTURE/LOAN: not wired to backend yet — keep the existing
@@ -3743,8 +3793,20 @@ export default function TradeBookingForm() {
                 if (canSubmit) ev.currentTarget.style.background = BB.orange;
               }}
             >
-              ▶ Book Trade &nbsp;·&nbsp; <span style={{ opacity: 0.6 }}>⏎</span>
+              {amendingDealRef ? `Update ${amendingDealRef}` : (
+                form.category === "CASHFLOW" ? "Book Cashflow" : "Generate Output"
+              )}
             </button>
+            {amendingDealRef && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAmendingDealRef(null);
+                  setFeedback(null);
+                }}
+                className="mt-2 text-[11px] opacity-70 hover:opacity-100 underline"
+              >× cancel amend</button>
+            )}
             <button
               onClick={handleReset}
               className="px-5 text-[11px] uppercase tracking-[0.24em] transition-colors flex items-center gap-2 font-mono"
