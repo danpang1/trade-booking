@@ -2395,6 +2395,7 @@ export default function TradeBookingForm() {
     }
     if (form.category === "CASHFLOW") {
       if (!form.cf_type) e.push("Cashflow type required");
+      if (!form.counterparty) e.push("Counterparty is required");
       if (!form.cf_amount || parseFloat(form.cf_amount) <= 0)
         e.push("Notional amount must be > 0");
       if (!form.account_name) e.push("Account name is required");
