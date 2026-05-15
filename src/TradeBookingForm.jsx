@@ -2170,26 +2170,36 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         style={{
           background: BB?.surface || "#f6f3ec",
           border: `1px solid ${BB?.border || "#d9d4c7"}`,
+          overflowX: "auto",
         }}
       >
-        <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
+        <table className="text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", borderCollapse: "collapse", minWidth: "100%" }}>
           <thead>
             <tr style={{ background: "rgba(0,0,0,0.04)", color: BB?.mute || "#666" }}>
-              <th className="px-3 py-2 text-left">Deal Ref</th>
-              <th className="px-3 py-2 text-left">Trade Date</th>
-              <th className="px-3 py-2 text-left">Portfolio</th>
-              <th className="px-3 py-2 text-left">Counterparty</th>
-              <th className="px-3 py-2 text-left">Cashflow Type</th>
-              <th className="px-3 py-2 text-left">Dir</th>
-              <th className="px-3 py-2 text-left">Asset</th>
-              <th className="px-3 py-2 text-right">Amount</th>
-              <th className="px-3 py-2 text-left">Status</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Month Year</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio Name</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Counterparty</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Txn Type</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Trade Type</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Asset</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Amount</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Fee Asset</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Fee Amount</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Trade Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Value Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Account</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Account Type</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">TXID/Reference</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Comment</th>
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={18} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -2208,59 +2218,70 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
+              <tr><td colSpan={18} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
             )}
-            {rows.map((r) => (
-              <tr
-                key={r.deal_ref}
-                style={{ borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-              >
-                <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    title="View audit trail"
-                    onClick={() => onHistory(r.deal_ref)}
-                    className="inline-flex items-center justify-center mr-2 align-middle"
-                    style={{
-                      width: 22, height: 22, borderRadius: 11,
-                      border: `1px solid ${BB?.border || "#d9d4c7"}`,
-                      background: "transparent", cursor: "pointer",
-                      fontSize: 11, lineHeight: 1,
-                    }}
-                    onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(0,0,0,0.06)"}
-                    onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
-                  >🕘</button>
-                  <button
-                    type="button"
-                    title="Open in form to amend"
-                    onClick={() => onSelect(r)}
-                    className="align-middle"
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      color: "#1f63ea",
-                      cursor: "pointer",
-                      font: "inherit",
-                    }}
-                  >{r.deal_ref}</button>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {r.trade_date
-                    ? String(r.trade_date).replace("T", " ").slice(0, 16)
-                    : "—"}
-                </td>
-                <td className="px-3 py-2">{r.portfolio_id}</td>
-                <td className="px-3 py-2">{r.counterparty || "—"}</td>
-                <td className="px-3 py-2">{r.cashflow_type}</td>
-                <td className="px-3 py-2">{r.direction}</td>
-                <td className="px-3 py-2">{r.asset}</td>
-                <td className="px-3 py-2 text-right">{r.amount}</td>
-                <td className="px-3 py-2">{r.status}</td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const fmtTs = (iso, len = 16) => iso ? String(iso).replace("T", " ").slice(0, len) : "—";
+              const monthYear = r.trade_date
+                ? new Date(r.trade_date).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
+                : "—";
+              return (
+                <tr
+                  key={r.deal_ref}
+                  style={{ borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.effective_start)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{monthYear}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      title="View audit trail"
+                      onClick={() => onHistory(r.deal_ref)}
+                      className="inline-flex items-center justify-center mr-2 align-middle"
+                      style={{
+                        width: 22, height: 22, borderRadius: 11,
+                        border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                        background: "transparent", cursor: "pointer",
+                        fontSize: 11, lineHeight: 1,
+                      }}
+                      onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(0,0,0,0.06)"}
+                      onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
+                    >🕘</button>
+                    <button
+                      type="button"
+                      title="Open in form to amend"
+                      onClick={() => onSelect(r)}
+                      className="align-middle"
+                      style={{
+                        background: "transparent", border: "none", padding: 0,
+                        color: "#1f63ea", cursor: "pointer", font: "inherit",
+                      }}
+                    >{r.deal_ref}</button>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_id}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_name || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.counterparty || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.asset}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{r.amount}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.fee_asset || "—"}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{r.fee_amount}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.trade_date)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.value_date)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.account_type || "—"}</td>
+                  <td className="px-3 py-2" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }} title={r.txid_reference || ""}>
+                    {r.txid_reference || "—"}
+                  </td>
+                  <td className="px-3 py-2" style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={r.comment || ""}>
+                    {r.comment || "—"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
