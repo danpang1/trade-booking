@@ -1685,6 +1685,78 @@ const PlaceholderView = ({ title, subtitle }) => (
   </div>
 );
 
+function SubmitFeedback({ feedback, onDismiss }) {
+  if (!feedback) return null;
+  const palette = {
+    error:   { bg: "#fff0eb", text: "#7a1f00", border: "#e08a6a" },
+    success: { bg: "#eef5e9", text: "#1f4a1f", border: "#7ea66a" },
+  }[feedback.kind] || { bg: "#fff7e0", text: "#5a4400", border: "#d6b656" };
+  return (
+    <div
+      className="px-3 py-2 mb-2 text-[12px]"
+      style={{
+        background: palette.bg,
+        color: palette.text,
+        border: `1px solid ${palette.border}`,
+        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span>{feedback.message}</span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="opacity-60 hover:opacity-100"
+        >×</button>
+      </div>
+      {feedback.detail && (
+        <details className="mt-1 opacity-80">
+          <summary className="cursor-pointer">detail</summary>
+          <pre className="whitespace-pre-wrap text-[11px] mt-1">{feedback.detail}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function ConflictModal({ open, dealRef, message, onReload, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.45)" }}
+    >
+      <div
+        className="px-6 py-5 max-w-md w-full"
+        style={{
+          background: "#f6f3ec",
+          border: "1px solid #d9d4c7",
+          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        }}
+      >
+        <div className="text-[13px] font-medium mb-2">Booking already amended</div>
+        <div className="text-[12px] mb-4">
+          {message || `${dealRef} was amended by another session while you were editing it.`}
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1 text-[12px]"
+            style={{ border: "1px solid #aaa" }}
+          >Cancel</button>
+          <button
+            type="button"
+            onClick={onReload}
+            className="px-3 py-1 text-[12px]"
+            style={{ background: "#1f1f1f", color: "#f2efe8" }}
+          >Reload latest</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Running clock for header strip
 function useClock() {
   const [now, setNow] = useState(new Date());
@@ -2229,6 +2301,14 @@ export default function TradeBookingForm() {
   }, [form]);
 
   const canSubmit = errors.length === 0;
+
+  // Booking submission feedback. Cleared when the form is edited again
+  // or after ~4s on success.
+  const [feedback, setFeedback] = useState(null);
+  // null | { dealRef: string, message: string }
+  const [conflictModal, setConflictModal] = useState(null);
+  // null | "MCF-42"  — when set, form is in amend mode (PUT vs POST)
+  const [amendingDealRef, setAmendingDealRef] = useState(null);
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -3607,6 +3687,7 @@ export default function TradeBookingForm() {
           )}
 
           {/* ════ COMMAND BAR ════ */}
+              <SubmitFeedback feedback={feedback} onDismiss={() => setFeedback(null)} />
           <div className="flex gap-2 pt-1">
             <button
               onClick={handleSubmit}
@@ -3766,6 +3847,17 @@ export default function TradeBookingForm() {
       </div>
           )}
         </main>
+            <ConflictModal
+              open={Boolean(conflictModal)}
+              dealRef={conflictModal?.dealRef}
+              message={conflictModal?.message}
+              onClose={() => setConflictModal(null)}
+              onReload={async () => {
+                if (!conflictModal?.dealRef) return setConflictModal(null);
+                await loadIntoForm(conflictModal.dealRef);
+                setConflictModal(null);
+              }}
+            />
       </div>
     </div>
     </TokensContext.Provider>
