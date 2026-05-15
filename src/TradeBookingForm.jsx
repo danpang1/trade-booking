@@ -2201,6 +2201,15 @@ export default function TradeBookingForm() {
     // can build INSERT VALUES (...) without renaming. UI-only metadata
     // sits in `_meta` so the backend can strip it cleanly.
     if (form.category === "CASHFLOW") {
+      // Directional sign convention: user types a positive magnitude
+      // in the Notional Amount input; the stored value is negative
+      // when direction=PAY and positive when direction=RECEIVE. Same
+      // for fees (fees are always a cost → negated, but always positive
+      // input; we leave fee_amount unsigned since fees are conventionally
+      // recorded as outflows). Mirror-leg 2 negates the leg-1 amount
+      // because leg 2's direction is flipped (see below).
+      const cfMagnitude = Math.abs(parseFloat(form.cf_amount) || 0);
+      const cfSignedAmount = form.cf_direction === "PAY" ? -cfMagnitude : cfMagnitude;
       // Key order mirrors trades_cashflow column order exactly. effective_*
       // are server-set on INSERT; emitted here as null placeholders so the
       // JSON shape lines up 1:1 with the table for backend mapping.
@@ -2217,7 +2226,7 @@ export default function TradeBookingForm() {
         account: form.account_name || null,
         account_type: form.account_venue_type,
         asset: form.cf_asset,
-        amount: parseFloat(form.cf_amount) || 0,
+        amount: cfSignedAmount,
         fee_asset: form.fee_asset,
         fee_amount: parseFloat(form.fee_amount) || 0,
         trade_date: form.trade_date,
@@ -2251,6 +2260,8 @@ export default function TradeBookingForm() {
           account: null,
           account_type: null,
           direction: cfRecord.direction === "PAY" ? "RECEIVE" : "PAY",
+          // Mirror leg flips sign with the direction: the two legs sum to zero.
+          amount: -cfRecord.amount,
           _meta: { ...cfRecord._meta, mirror_leg: 2 },
         };
         return [
@@ -2439,7 +2450,11 @@ export default function TradeBookingForm() {
       account_name: row.account || "",
       account_venue_type: row.account_type || "",
       cf_asset: row.asset,
-      cf_amount: row.amount,
+      // Form input is the positive magnitude; sign is derived from
+      // direction at submit time (see outputRecord CASHFLOW branch).
+      cf_amount: row.amount == null
+        ? ""
+        : String(Math.abs(parseFloat(row.amount))),
       fee_asset: row.fee_asset || "",
       fee_amount: row.fee_amount || "0",
       trade_date: row.trade_date,
