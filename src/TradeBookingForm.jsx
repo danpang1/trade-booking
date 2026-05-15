@@ -2178,7 +2178,6 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             <tr style={{ background: "rgba(0,0,0,0.04)", color: BB?.mute || "#666" }}>
               <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Month Year</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio Name</th>
@@ -2200,7 +2199,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={19} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={18} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -2219,13 +2218,13 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={19} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
+              <tr><td colSpan={18} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
             )}
             {rows.map((r) => {
               const fmtTs = (iso, len = 16) => iso ? String(iso).replace("T", " ").slice(0, len) : "—";
-              const monthYear = r.trade_date
-                ? new Date(r.trade_date).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
-                : "—";
+              // Month Year is intentionally NOT rendered in the GUI but is
+              // still part of the audit schema — when CSV export is added,
+              // include it derived from trade_date as Month YYYY (UTC).
               return (
                 <tr
                   key={r.deal_ref}
@@ -2250,7 +2249,6 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     >🕘</button>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.first_effective_start)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{monthYear}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <button
                       type="button"
