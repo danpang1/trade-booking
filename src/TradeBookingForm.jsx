@@ -4002,8 +4002,8 @@ export default function TradeBookingForm() {
                   ▮ Booked (preview)
                 </div>
                 <div className="text-[11px] font-mono break-all" style={{ color: "#065f46" }}>
-                  {submittedRecord.trade_id}
-                  {submittedRecord.attachments.length > 0 && (
+                  {submittedRecord.deal_ref || submittedRecord.trade_id}
+                  {submittedRecord.attachments?.length > 0 && (
                     <>
                       <br />
                       {submittedRecord.attachments.length} file(s) queued for Drive upload
