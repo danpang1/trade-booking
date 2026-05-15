@@ -2246,7 +2246,9 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
                     >🕘</button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.first_effective_start)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap" title={r.first_effective_start || ""}>
+                    {fmtTs(r.first_effective_start)}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <button
                       type="button"
@@ -2261,7 +2263,9 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_id}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_name || "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.counterparty || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap" title={r.counterparty_id || (r.counterparty ? "(no refdata id)" : "")}>
+                    {r.counterparty || "—"}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type}</td>
                   {/* On-screen the asset+amount pair is combined for
@@ -2276,8 +2280,12 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
                       : "—"}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.trade_date)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.value_date)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap" title={r.trade_date || ""}>
+                    {fmtTs(r.trade_date)}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap" title={r.value_date || ""}>
+                    {fmtTs(r.value_date)}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account_type || "—"}</td>
                   <td className="px-3 py-2" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }} title={r.txid_reference || ""}>
