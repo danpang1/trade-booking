@@ -1721,6 +1721,38 @@ function SubmitFeedback({ feedback, onDismiss }) {
   );
 }
 
+// Conditionally wraps `children` in a fixed-position overlay so the
+// existing TRADE_INPUT form JSX can render either inline (no-modal) or
+// as a popup over the Deal Enquiry table. Avoids duplicating ~1100
+// lines of form markup; this component just adds chrome.
+function ModalShell({ open, onClose, children }) {
+  if (!open) return children;
+  return (
+    <div
+      className="fixed inset-0 z-40 p-4 overflow-auto"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+    >
+      <div
+        className="relative max-w-7xl mx-auto"
+        style={{
+          background: "#f6f3ec",
+          border: "1px solid #d9d4c7",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-2 right-3 z-10 opacity-60 hover:opacity-100"
+          style={{ fontSize: 22, lineHeight: 1, background: "transparent" }}
+        >×</button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   if (!open) return null;
   return (
@@ -2488,7 +2520,9 @@ export default function TradeBookingForm() {
     // it merges the patch and refreshes last_modified_at.
     setMany(payloadToFormState(row));
     setAmendingDealRef(row.deal_ref);
-    setView("TRADE_INPUT");
+    // Don't change view — if the user is on Deal Enquiry, the form opens
+    // as a modal (see ModalShell wrapper); if they're already on
+    // Trade Input, the form is already visible inline.
   }
 
   const handleSubmit = async () => {
@@ -2963,7 +2997,11 @@ export default function TradeBookingForm() {
               subtitle="Manual futures booking (perpetual + dated) ships in the next milestone. The schema, validation, and Output Record payload for FUTURE are already wired — only the form rendering is paused. Pick Spot, Cashflow, or Loan to keep working."
             />
           )}
-          {view === "TRADE_INPUT" && form.category !== "FUTURE" && (
+          {(view === "TRADE_INPUT" || (view === "DEAL_ENQUIRY" && amendingDealRef)) && form.category !== "FUTURE" && (
+      <ModalShell
+        open={view === "DEAL_ENQUIRY" && Boolean(amendingDealRef)}
+        onClose={() => { setAmendingDealRef(null); setFeedback(null); }}
+      >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-5 pt-4">
         {/* ═══════════ LEFT — form ═══════════ */}
         <div
@@ -4074,6 +4112,7 @@ export default function TradeBookingForm() {
           </div>
         </div>
       </div>
+      </ModalShell>
           )}
         </main>
             <ConflictModal
