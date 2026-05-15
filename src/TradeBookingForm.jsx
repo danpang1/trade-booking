@@ -404,11 +404,13 @@ const TRADE_ID_PREFIX = {
 };
 
 const genTradeId = (category = "SPOT") => {
-  // New trades show only the prefix (e.g. "MCF-"). The numeric portion is
-  // allocated server-side from trade_seq_<product> when the trade is saved,
-  // so the deal_ref is only meaningful after submit.
+  // New trades show only the prefix as a placeholder. The numeric portion
+  // is allocated server-side from trade_seq_<product> when the trade is
+  // saved, so the deal_ref is only meaningful after submit.
+  // CASHFLOW uses no separator (MCF + 8-digit pad); other products keep
+  // the legacy dash-then-number convention.
   const prefix = TRADE_ID_PREFIX[category] || "MFX";
-  return `${prefix}-`;
+  return category === "CASHFLOW" ? prefix : `${prefix}-`;
 };
 const isoNow = () => new Date().toISOString();
 // Current time formatted for <input type="datetime-local"> ("YYYY-MM-DDTHH:mm")

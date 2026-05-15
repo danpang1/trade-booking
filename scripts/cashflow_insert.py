@@ -45,7 +45,8 @@ import cashflow_db
 def _insert_one(cur, payload: dict) -> dict:
     cur.execute("SELECT nextval('trade_seq_cashflow')")
     n = cur.fetchone()[0]
-    deal_ref = f"MCF-{n}"
+    # Format: MCF + 8-digit zero-padded sequence (MCF00000001 → MCF99999999).
+    deal_ref = f"MCF{n:08d}"
     cols, vals = cashflow_db.payload_to_columns(payload, deal_ref=deal_ref)
     # Build INSERT: data columns + effective_start (NOW()) + effective_end (NULL)
     col_list = ", ".join(cols + ("effective_start", "effective_end"))
