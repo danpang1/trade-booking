@@ -135,3 +135,63 @@ def validate_payload(payload, *, mode: str) -> None:
     if not isinstance(payload, dict):
         raise ValidationError(f"payload must be dict or 2-element list, got {type(payload).__name__}")
     _validate_one(payload, mode)
+
+
+# Column order matches apply_schema_cashflow.py DDL declaration.
+# effective_start / effective_end are populated by SQL expressions in the
+# INSERT statement (NOW() and NULL respectively), not by these tuples.
+DATA_COLUMNS = (
+    "deal_ref",
+    "external_trade_id",
+    "txn_type",
+    "cashflow_type",
+    "direction",
+    "entity",
+    "portfolio_id",
+    "portfolio_name",
+    "counterparty",
+    "account",
+    "account_type",
+    "asset",
+    "amount",
+    "fee_asset",
+    "fee_amount",
+    "trade_date",
+    "value_date",
+    "network",
+    "txid_reference",
+    "user_id",
+    "status",
+    "comment",
+)
+
+
+def _coerce_str_or_none(v):
+    if v is None:
+        return None
+    if isinstance(v, str) and not v.strip():
+        return None
+    return v
+
+
+def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...], tuple]:
+    """Convert form JSON to (column_names, values) tuples for INSERT.
+
+    `deal_ref` is passed in (allocated from trade_seq_cashflow on insert,
+    preserved from the payload on amend) — it isn't trusted from the
+    frontend on insert.
+    """
+    vals = []
+    for col in DATA_COLUMNS:
+        if col == "deal_ref":
+            vals.append(deal_ref)
+        elif col == "txn_type":
+            vals.append("CASHFLOW")
+        elif col == "portfolio_id":
+            vals.append(int(payload["portfolio_id"]))
+        elif col == "fee_amount":
+            v = payload.get("fee_amount")
+            vals.append("0" if v in (None, "") else v)
+        else:
+            vals.append(_coerce_str_or_none(payload.get(col)))
+    return DATA_COLUMNS, tuple(vals)
