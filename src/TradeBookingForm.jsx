@@ -1951,7 +1951,27 @@ function DealEnquiry({ onSelect, BB, refreshSignal }) {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && !loading && (
+            {loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-3 py-8 text-center opacity-70">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="inline-block animate-spin"
+                      style={{
+                        width: 14,
+                        height: 14,
+                        border: "2px solid rgba(0,0,0,0.12)",
+                        borderTopColor: "rgba(0,0,0,0.6)",
+                        borderRadius: "50%",
+                      }}
+                    />
+                    <span>Loading recent bookings…</span>
+                  </span>
+                </td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
               <tr><td colSpan={9} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
             )}
             {rows.map((r) => (
