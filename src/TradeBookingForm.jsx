@@ -10,8 +10,8 @@ import {
   Link2,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Calendar,
+  History,
 } from "lucide-react";
 import tokkaLogo from "./assets/tokka-labs-logo.png";
 import {
@@ -383,7 +383,7 @@ const FUTURE_MARGIN_MODES = ["CROSS", "ISOLATED"];
 
 // CASHFLOW constants — direction-aware subtype menus.
 // Captures the original brainstorm's 34 trade-types collapsed into one flow.
-const CASHFLOW_DIRECTIONS = ["PAY", "RECEIVE"];
+const CASHFLOW_DIRECTIONS = ["OUTGOING", "INCOMING"];
 // Placeholder cashflow types — backend will swap to MySQL select_category=CASHFLOW TYPE (28 values).
 const CASHFLOW_TYPES = [
   "INTER PTF FUNDING",
@@ -414,7 +414,7 @@ const LOAN_STATUSES = ["LIVE", "MATURED", "CANCELLED"];
 const statusOptionsFor = (category) =>
   category === "LOAN" ? LOAN_STATUSES : TRADE_STATUSES;
 const defaultStatusFor = (category) =>
-  category === "LOAN" ? "LIVE" : "PENDING";
+  category === "LOAN" ? "LIVE" : "CONFIRMED";
 const VENUES = {
   CEX: ["Binance", "Binance Sub", "Kraken", "Bitget", "OKX", "Coinbase"],
   DEX: ["Hyperliquid", "dYdX", "GMX", "Jupiter", "Uniswap"],
@@ -1679,6 +1679,67 @@ const SIDEBAR_CATEGORIES = [
   { key: "LOAN", label: "Loan" },
 ];
 
+// Horizontal product tab strip rendered at the top of the Create Deal modal.
+// Active tab: ink text + 2px ink underline. Inactive: muted. Coming-soon
+// products render as disabled tabs with the same "soon" chip used in the
+// sidebar today.
+const ProductTabs = ({ active, onChange }) => (
+  <div
+    className="flex items-end gap-6 px-5 pt-5 pb-0"
+    style={{ borderBottom: `1px solid #d9d4c7` }}
+  >
+    {SIDEBAR_CATEGORIES.map((c) => {
+      const isActive = c.key === active;
+      const disabled = c.comingSoon;
+      return (
+        <button
+          key={c.key}
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && onChange(c.key)}
+          className="pb-2 text-[13px] transition-colors"
+          style={{
+            color: disabled
+              ? "#a5a097"
+              : isActive
+              ? "#0d0d0d"
+              : "#6a665c",
+            fontWeight: isActive ? 500 : 400,
+            borderBottom: isActive
+              ? "2px solid #0d0d0d"
+              : "2px solid transparent",
+            marginBottom: -1,
+            cursor: disabled ? "not-allowed" : "pointer",
+            background: "transparent",
+          }}
+          onMouseEnter={(e) => {
+            if (!disabled && !isActive) e.currentTarget.style.color = "#0d0d0d";
+          }}
+          onMouseLeave={(e) => {
+            if (!disabled && !isActive) e.currentTarget.style.color = "#6a665c";
+          }}
+        >
+          <span className="inline-flex items-center gap-2">
+            {c.label}
+            {disabled && (
+              <span
+                className="text-[8px] tracking-[0.2em] uppercase font-mono px-1.5 py-0.5"
+                style={{
+                  color: "#a5a097",
+                  border: `1px solid #d9d4c7`,
+                  background: "#efeae0",
+                }}
+              >
+                soon
+              </span>
+            )}
+          </span>
+        </button>
+      );
+    })}
+  </div>
+);
+
 const NavTabRow = ({ label, active, onClick, align = "left", indent = false }) => (
   <button
     type="button"
@@ -1705,29 +1766,6 @@ const NavGroupLabel = ({ children, className = "" }) => (
   >
     {children}
   </div>
-);
-
-// Renders identically to NavTabRow (text-[13px], normal case) but with a
-// trailing chevron to indicate expand/collapse. Use for parent items that
-// have child rows underneath.
-const NavGroupToggle = ({ label, open, onClick, hasActive }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`w-full flex items-center pl-5 pr-5 py-2 text-[13px] transition-colors border-l-2 border-l-transparent ${
-      hasActive
-        ? "text-[#0d0d0d] font-medium"
-        : "text-[#3a3834] hover:bg-[#f8f6f1] hover:text-[#0d0d0d]"
-    }`}
-    title={open ? "Collapse" : "Expand"}
-  >
-    <span className="truncate flex-1 text-left">{label}</span>
-    {open ? (
-      <ChevronDown size={12} style={{ color: hasActive ? "#0d0d0d" : "#6a665c" }} />
-    ) : (
-      <ChevronRight size={12} style={{ color: hasActive ? "#0d0d0d" : "#6a665c" }} />
-    )}
-  </button>
 );
 
 const PlaceholderView = ({ title, subtitle }) => (
@@ -1786,10 +1824,7 @@ function SubmitFeedback({ feedback, onDismiss }) {
   );
 }
 
-// Conditionally wraps `children` in a fixed-position overlay so the
-// existing TRADE_INPUT form JSX can render either inline (no-modal) or
-// as a popup over the Deal Enquiry table. Avoids duplicating ~1100
-// lines of form markup; this component just adds chrome.
+// Fixed-position overlay wrapper for the Create Deal / amend form.
 function ModalShell({ open, onClose, children }) {
   // Two-frame mount → triggers the CSS transition (opacity + slight
   // scale on the inner panel). Without this, the element renders at
@@ -1804,7 +1839,7 @@ function ModalShell({ open, onClose, children }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  if (!open) return children;
+  if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-40 p-4 overflow-auto"
@@ -2148,11 +2183,114 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   );
 }
 
+// One-line human summary of a cashflow row for the Deal Enquiry "Details"
+// column. All caps; thousands-separators on the amount. Examples:
+//   IPF:     "PTF 8888 TREASURY FUNDS PTF 8041 CENTRAL RISK BOOK 1,000 USDC"
+//   non-IPF: "PTF 8888 RECEIVED 10 1INCH INTEREST INCOME"
+// The counterparty portfolio name isn't stored on the row (only `counterparty`
+// = the CP portfolio number under IPF), so we look it up in PORTFOLIOS.
+function summarizeDeal(r) {
+  if (!r || r.txn_type !== "CASHFLOW") return r?.deal_ref || "";
+  const shortPtfName = (n) => (n ? String(n).split(" - ").pop().trim().toUpperCase() : "");
+  const lookupPtfName = (num) =>
+    PORTFOLIOS.find((p) => String(p.number) === String(num))?.name || "";
+  const amount = Math.abs(parseFloat(r.amount) || 0);
+  // Up to 18 decimals (table is NUMERIC(36,18)); trailing zeros collapsed by
+  // maximumFractionDigits. Locale "en-US" pins the thousands separator to ",".
+  const fmtAmt = amount.toLocaleString("en-US", { maximumFractionDigits: 18 });
+  const asset = (r.asset || "").toUpperCase();
+  const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
+
+  if (r.cashflow_type === "INTER PTF FUNDING") {
+    let senderId, senderShort, receiverId, receiverShort;
+    if (r.direction === "OUTGOING") {
+      senderId = r.portfolio_id;
+      senderShort = shortPtfName(r.portfolio_name);
+      receiverId = r.counterparty;
+      receiverShort = shortPtfName(lookupPtfName(r.counterparty));
+    } else {
+      senderId = r.counterparty;
+      senderShort = shortPtfName(lookupPtfName(r.counterparty));
+      receiverId = r.portfolio_id;
+      receiverShort = shortPtfName(r.portfolio_name);
+    }
+    return join([
+      "PTF", senderId, senderShort,
+      "FUNDS",
+      "PTF", receiverId, receiverShort,
+      fmtAmt, asset,
+    ]);
+  }
+
+  const verb = r.direction === "INCOMING" ? "RECEIVED" : "PAID";
+  return join([
+    "PTF", r.portfolio_id,
+    verb,
+    fmtAmt, asset,
+    (r.cashflow_type || "").toUpperCase(),
+  ]);
+}
+
+const DEAL_ENQUIRY_INITIAL_FILTERS = {
+  trade_date_from: "",
+  trade_date_to: "",
+  value_date_from: "",
+  value_date_to: "",
+  portfolios: [],
+  base_asset: "",
+  quote_asset: "",
+  deal_ref: "",
+};
+
 function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastFetchedAt, setLastFetchedAt] = useState(null);
+  const [filters, setFilters] = useState(DEAL_ENQUIRY_INITIAL_FILTERS);
+  const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+  const clearFilters = () => setFilters(DEAL_ENQUIRY_INITIAL_FILTERS);
+  const filtersActive = Object.values(filters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== ""
+  );
+
+  // Cashflow rows expose `asset` / `fee_asset`; once SPOT rows ship they'll
+  // expose `base_asset` / `quote_asset`. Filter on whichever the row has.
+  // Text filters accept comma-separated tokens — any token match passes (OR).
+  const filteredRows = useMemo(() => {
+    const tokens = (s) =>
+      String(s || "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+    const baseTokens = tokens(filters.base_asset).map((t) => t.toUpperCase());
+    const quoteTokens = tokens(filters.quote_asset).map((t) => t.toUpperCase());
+    const refTokens = tokens(filters.deal_ref).map((t) => t.toLowerCase());
+    return rows.filter((r) => {
+      if (refTokens.length > 0) {
+        const cand = String(r.deal_ref || "").toLowerCase();
+        if (!refTokens.some((t) => cand.includes(t))) return false;
+      }
+      if (filters.portfolios.length > 0 && !filters.portfolios.includes(String(r.portfolio_id || ""))) {
+        return false;
+      }
+      if (baseTokens.length > 0) {
+        const cand = String(r.asset || r.base_asset || "").toUpperCase();
+        if (!baseTokens.includes(cand)) return false;
+      }
+      if (quoteTokens.length > 0) {
+        const cand = String(r.quote_asset || r.fee_asset || "").toUpperCase();
+        if (!quoteTokens.includes(cand)) return false;
+      }
+      const td = String(r.trade_date || "").slice(0, 10);
+      if (filters.trade_date_from && td && td < filters.trade_date_from) return false;
+      if (filters.trade_date_to && td && td > filters.trade_date_to) return false;
+      const vd = String(r.value_date || "").slice(0, 10);
+      if (filters.value_date_from && vd && vd < filters.value_date_from) return false;
+      if (filters.value_date_to && vd && vd > filters.value_date_to) return false;
+      return true;
+    });
+  }, [rows, filters]);
 
   const fetchRecent = useCallback(async () => {
     setLoading(true);
@@ -2177,16 +2315,10 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   return (
     <div className="px-5 pt-4 pb-8">
       <div className="flex items-baseline justify-between mb-3">
-        <div>
-          <div
-            className="text-[11px] tracking-[0.25em] uppercase opacity-60"
-            style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}
-          >Deal Enquiry</div>
-          <div
-            className="text-[22px] mt-1"
-            style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
-          >Recent Cashflow Bookings</div>
-        </div>
+        <div
+          className="text-[22px]"
+          style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+        >Deal Enquiry</div>
         <button
           type="button"
           onClick={fetchRecent}
@@ -2208,6 +2340,129 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Error: {error}</div>
       )}
 
+      {/* ─── Filters ─── */}
+      <div
+        className="mb-3 px-3 py-2 flex flex-wrap gap-3 items-end"
+        style={{
+          background: BB?.surface || "#f6f3ec",
+          border: `1px solid ${BB?.border || "#d9d4c7"}`,
+          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        }}
+      >
+        {[
+          { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+          { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
+        ].map((f) => (
+          <div key={f.fromKey} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 320 }}>
+            <span>{f.label}</span>
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                value={filters[f.fromKey]}
+                onChange={(e) => setFilter(f.fromKey, e.target.value)}
+              />
+              <span style={{ color: BB?.mute || "#666" }}>→</span>
+              <Input
+                type="date"
+                value={filters[f.toKey]}
+                onChange={(e) => setFilter(f.toKey, e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 260 }}>
+          <span>Portfolio</span>
+          <Select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (filters.portfolios.includes(v)) return;
+              setFilter("portfolios", [...filters.portfolios, v]);
+            }}
+          >
+            <option value="">
+              {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
+            </option>
+            {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
+              <option key={p.number} value={String(p.number)}>
+                {p.number} — {p.name}
+              </option>
+            ))}
+          </Select>
+          {filters.portfolios.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {filters.portfolios.map((num) => {
+                const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                return (
+                  <span
+                    key={num}
+                    className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
+                    style={{
+                      background: "#ece7dd",
+                      color: BB?.text || "#0d0d0d",
+                      border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                      textTransform: "none",
+                    }}
+                    title={label}
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${num}`}
+                      onClick={() =>
+                        setFilter("portfolios", filters.portfolios.filter((x) => x !== num))
+                      }
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: BB?.mute || "#6a665c",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                    >×</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {[
+          { key: "base_asset", label: "Base Asset" },
+          { key: "quote_asset", label: "Quote Asset" },
+          { key: "deal_ref", label: "Deal Reference" },
+        ].map((f) => (
+          <label key={f.key} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 160 }}>
+            <span>{f.label}</span>
+            <Input
+              type="text"
+              placeholder="—"
+              value={filters[f.key]}
+              onChange={(e) => setFilter(f.key, e.target.value)}
+            />
+          </label>
+        ))}
+        <button
+          type="button"
+          onClick={clearFilters}
+          disabled={!filtersActive}
+          className="text-[10px] tracking-[0.22em] uppercase px-3 py-1.5 transition-colors"
+          style={{
+            background: "transparent",
+            color: filtersActive ? (BB?.text || "#1f1f1f") : (BB?.faint || "#a5a097"),
+            border: `1px solid ${filtersActive ? (BB?.border || "#d9d4c7") : "#ece7dd"}`,
+            cursor: filtersActive ? "pointer" : "not-allowed",
+            height: 32,
+            alignSelf: "end",
+          }}
+        >
+          × Clear
+        </button>
+      </div>
+
       <div
         style={{
           background: BB?.surface || "#f6f3ec",
@@ -2221,25 +2476,22 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Deal Type</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio Name</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Counterparty</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Txn Type</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Details</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Trade Type</th>
-              <th className="px-3 py-2 text-right whitespace-nowrap">Amount</th>
-              <th className="px-3 py-2 text-right whitespace-nowrap">Fee</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Fees</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Trade Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Value Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Account</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Account Type</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">TXID/Reference</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Comment</th>
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={16} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={13} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -2257,10 +2509,18 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 </td>
               </tr>
             )}
-            {!loading && rows.length === 0 && (
-              <tr><td colSpan={16} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
+            {!loading && filteredRows.length === 0 && (
+              <tr>
+                <td colSpan={13} className="px-3 py-6 text-center opacity-60">
+                  {rows.length === 0
+                    ? "No live cashflow bookings yet."
+                    : filtersActive
+                    ? "No rows match the current filters."
+                    : "No rows."}
+                </td>
+              </tr>
             )}
-            {rows.map((r) => {
+            {filteredRows.map((r) => {
               const fmtTs = (iso, len = 16) => iso ? String(iso).replace("T", " ").slice(0, len) : "—";
               // Month Year is intentionally NOT rendered in the GUI but is
               // still part of the audit schema — when CSV export is added,
@@ -2277,16 +2537,25 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       type="button"
                       title="View audit trail"
                       onClick={() => onHistory(r.deal_ref)}
-                      className="inline-flex items-center justify-center align-middle"
+                      className="inline-flex items-center justify-center align-middle transition-colors"
                       style={{
-                        width: 22, height: 22, borderRadius: 11,
+                        width: 22, height: 22, borderRadius: 0,
                         border: `1px solid ${BB?.border || "#d9d4c7"}`,
-                        background: "transparent", cursor: "pointer",
-                        fontSize: 11, lineHeight: 1,
+                        background: "transparent",
+                        color: BB?.dim || "#6a665c",
+                        cursor: "pointer", lineHeight: 1,
                       }}
-                      onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(0,0,0,0.06)"}
-                      onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
-                    >🕘</button>
+                      onMouseEnter={(ev) => {
+                        ev.currentTarget.style.background = "#ece7dd";
+                        ev.currentTarget.style.color = BB?.text || "#0d0d0d";
+                        ev.currentTarget.style.borderColor = BB?.text || "#0d0d0d";
+                      }}
+                      onMouseLeave={(ev) => {
+                        ev.currentTarget.style.background = "transparent";
+                        ev.currentTarget.style.color = BB?.dim || "#6a665c";
+                        ev.currentTarget.style.borderColor = BB?.border || "#d9d4c7";
+                      }}
+                    ><History size={12} strokeWidth={1.75} /></button>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <HoverTip text={r.first_effective_start}>{fmtTs(r.first_effective_start)}</HoverTip>
@@ -2303,6 +2572,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       }}
                     >{r.deal_ref}</button>
                   </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_id}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_name || "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
@@ -2310,15 +2580,11 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       {r.counterparty || "—"}
                     </HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{summarizeDeal(r)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type}</td>
-                  {/* On-screen the asset+amount pair is combined for
-                      readability. CSV export should keep `asset` /
-                      `amount` / `fee_asset` / `fee_amount` as four
-                      separate columns per the audit schema. */}
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    {r.amount} <span style={{ opacity: 0.7 }}>{r.asset}</span>
-                  </td>
+                  {/* CSV export should still emit asset/amount/fee_asset/fee_amount
+                      as four separate columns per the audit schema, even though
+                      the table only renders the fee pair. */}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {r.fee_amount && parseFloat(r.fee_amount) !== 0
                       ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
@@ -2331,13 +2597,6 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     <HoverTip text={r.value_date}>{fmtTs(r.value_date)}</HoverTip>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.account_type || "—"}</td>
-                  <td className="px-3 py-2" style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }} title={r.txid_reference || ""}>
-                    {r.txid_reference || "—"}
-                  </td>
-                  <td className="px-3 py-2" style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={r.comment || ""}>
-                    {r.comment || "—"}
-                  </td>
                 </tr>
               );
             })}
@@ -2405,7 +2664,7 @@ export default function TradeBookingForm() {
     venue_type: "CEX",
     venue: "Binance",
     category: "SPOT",
-    status: "PENDING",
+    status: "CONFIRMED",
     tx_id: "",
     notes: "",
     // SPOT
@@ -2438,9 +2697,11 @@ export default function TradeBookingForm() {
     fut_pnl_realized: "",
     fut_is_closing: false,
     // CASHFLOW (absorbs old TRANSFER + EXPENSE + INCOME + OTHER)
-    cf_direction: "PAY",
+    cf_direction: "OUTGOING",
     cf_type: "",
     cf_mirror: false,
+    cf_mirror_account_venue_type: "EXCHANGE",
+    cf_mirror_account_name: "",
     cf_asset: "USDT",
     cf_amount: "",
     network: "",
@@ -2472,7 +2733,7 @@ export default function TradeBookingForm() {
   const [copied, setCopied] = useState(false);
   const [env, setEnv] = useState("PROD");
   const [view, setView] = useState("DEAL_ENQUIRY");
-  const [tradeInputOpen, setTradeInputOpen] = useState(true);
+  const [createDealOpen, setCreateDealOpen] = useState(false);
   // Per-category snapshot of shared fields. When you switch from SPOT to
   // LOAN, the current SPOT values for dates/portfolio/counterparty/status/etc.
   // are stashed here under "SPOT"; when you switch back to SPOT, they're
@@ -2670,6 +2931,72 @@ export default function TradeBookingForm() {
     return pool.filter((a) => a.portfolio === portfolioName);
   }, [form.portfolio, form.account_venue_type]);
 
+  // INTER PTF FUNDING mirror-leg accounts. For mirror trades, the counterparty
+  // field holds the counterparty portfolio's number — the leg-2 account belongs
+  // to THAT portfolio, not the booking portfolio.
+  const mirrorAccountOptions = useMemo(() => {
+    const portfolioName = PORTFOLIOS.find(
+      (p) => String(p.number) === String(form.counterparty)
+    )?.name;
+    if (!portfolioName) return [];
+    const pool =
+      form.cf_mirror_account_venue_type === "EXCHANGE"
+        ? ACCOUNTS_EXCHANGE
+        : form.cf_mirror_account_venue_type === "WALLET"
+        ? ACCOUNTS_WALLET
+        : form.cf_mirror_account_venue_type === "BROKER"
+        ? ACCOUNTS_BROKER
+        : [];
+    return pool.filter((a) => a.portfolio === portfolioName);
+  }, [form.counterparty, form.cf_mirror_account_venue_type]);
+
+  // INTER PTF FUNDING auto-comment. Produces strings like:
+  //   OUTGOING: "PTF 8888 TREASURY FUNDS PTF 8041 CENTRAL RISK BOOK 1000 USDT"
+  //   INCOMING: "PTF 8041 CENTRAL RISK BOOK RETURNED PTF 8888 TREASURY 1000 USDT"
+  // The short portfolio name is the last " - "-separated segment of the full
+  // portfolio name (e.g. "TOKKA LABS - MM - CENTRAL RISK BOOK" → "CENTRAL RISK BOOK").
+  // Returns null when we don't have enough context to render a template.
+  const ipfNotesTemplate = useMemo(() => {
+    if (form.cf_type !== "INTER PTF FUNDING") return null;
+    if (!form.portfolio || !form.counterparty || !form.cf_amount || !form.cf_asset) return null;
+    const booker = PORTFOLIOS.find((p) => String(p.number) === String(form.portfolio));
+    const cp = PORTFOLIOS.find((p) => String(p.number) === String(form.counterparty));
+    if (!booker || !cp) return null;
+    const shortName = (n) => n.split(" - ").pop().trim();
+    const bookerShort = shortName(booker.name);
+    const cpShort = shortName(cp.name);
+    if (form.cf_direction === "OUTGOING") {
+      return `PTF ${booker.number} ${bookerShort} FUNDS PTF ${cp.number} ${cpShort} ${form.cf_amount} ${form.cf_asset}`;
+    }
+    return `PTF ${cp.number} ${cpShort} RETURNED PTF ${booker.number} ${bookerShort} ${form.cf_amount} ${form.cf_asset}`;
+  }, [
+    form.cf_type, form.cf_direction, form.portfolio, form.counterparty,
+    form.cf_amount, form.cf_asset,
+  ]);
+
+  // Keep track of the last auto-generated notes string so we can detect manual
+  // edits: if notes still equals what we last wrote, we own it and may refresh;
+  // once the user changes it, we leave it alone.
+  const lastAutoNotesRef = useRef("");
+  useEffect(() => {
+    if (ipfNotesTemplate == null) {
+      // Either left IPF mode or a required input went blank. If notes is still
+      // the auto string, clear it; otherwise leave the user's content.
+      if (lastAutoNotesRef.current && form.notes === lastAutoNotesRef.current) {
+        set("notes", "");
+      }
+      if (form.cf_type !== "INTER PTF FUNDING") {
+        lastAutoNotesRef.current = "";
+      }
+      return;
+    }
+    if (form.notes === "" || form.notes === lastAutoNotesRef.current) {
+      set("notes", ipfNotesTemplate);
+      lastAutoNotesRef.current = ipfNotesTemplate;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ipfNotesTemplate, form.cf_type]);
+
   const outputRecord = useMemo(() => {
     // Resolve the portfolio entry (number → {name, entity}) so we can emit
     // both the portfolio number AND the derived entity into the record.
@@ -2691,7 +3018,7 @@ export default function TradeBookingForm() {
       // recorded as outflows). Mirror-leg 2 negates the leg-1 amount
       // because leg 2's direction is flipped (see below).
       const cfMagnitude = Math.abs(parseFloat(form.cf_amount) || 0);
-      const cfSignedAmount = form.cf_direction === "PAY" ? -cfMagnitude : cfMagnitude;
+      const cfSignedAmount = form.cf_direction === "OUTGOING" ? -cfMagnitude : cfMagnitude;
       // Key order mirrors trades_cashflow column order exactly. effective_*
       // are server-set on INSERT; emitted here as null placeholders so the
       // JSON shape lines up 1:1 with the table for backend mapping.
@@ -2745,9 +3072,9 @@ export default function TradeBookingForm() {
           portfolio_id: cpEntry ? cpEntry.number : null,
           portfolio_name: cpEntry ? cpEntry.name : null,
           counterparty: portfolioEntry ? String(portfolioEntry.number) : null,
-          account: null,
-          account_type: null,
-          direction: cfRecord.direction === "PAY" ? "RECEIVE" : "PAY",
+          account: form.cf_mirror_account_name || null,
+          account_type: form.cf_mirror_account_name ? form.cf_mirror_account_venue_type : null,
+          direction: cfRecord.direction === "OUTGOING" ? "INCOMING" : "OUTGOING",
           // Mirror leg flips sign with the direction: the two legs sum to zero.
           amount: -cfRecord.amount,
           _meta: { ...cfRecord._meta, mirror_leg: 2 },
@@ -3038,10 +3365,14 @@ export default function TradeBookingForm() {
     if (result.ok && result.rows && result.rows.length > 0) {
       setSubmittedRecord(result.rows.length === 1 ? result.rows[0] : result.rows);
       const verb = amendingDealRef ? "updated" : "booked";
-      const ref = result.rows[0].deal_ref;
+      const refs = result.rows.map((r) => r.deal_ref);
+      const label = refs.length > 1 ? `Deals ${refs.join(" + ")}` : `Deal ${refs[0]}`;
       setAmendingDealRef(null);          // closes the amend modal (if open)
+      setCreateDealOpen(false);           // closes the create modal (if open)
       setFeedback(null);                  // clear any prior inline error
-      setToast({ message: `Deal ${ref} ${verb}` });
+      setForm(initial());                 // fresh form, default category SPOT
+      setCategoryCache({});               // drop any other-product drafts too
+      setToast({ message: `${label} ${verb}` });
       setDealEnquiryRefreshSignal((s) => s + 1);   // table refetches
       setTimeout(() => setToast(null), 4000);
     } else if (res.status === 409) {
@@ -3096,9 +3427,11 @@ export default function TradeBookingForm() {
       fut_is_closing: false,
     },
     CASHFLOW: {
-      cf_direction: "PAY",
+      cf_direction: "OUTGOING",
       cf_type: "",
       cf_mirror: false,
+      cf_mirror_account_venue_type: "EXCHANGE",
+      cf_mirror_account_name: "",
       cf_asset: "USDT",
       cf_amount: "",
       fee_asset: "USDT",
@@ -3357,51 +3690,34 @@ export default function TradeBookingForm() {
           }}
         >
           <div className="flex-1 overflow-y-auto py-4">
-            {/* Trade Input — collapsible group */}
-            <NavGroupToggle
-              label="Trade Input"
-              open={tradeInputOpen}
-              onClick={() => setTradeInputOpen((o) => !o)}
-              hasActive={view === "TRADE_INPUT"}
-            />
-            {tradeInputOpen && (
-              <div>
-                {SIDEBAR_CATEGORIES.map((c) => (
-                  <NavTabRow
-                    key={c.key}
-                    label={
-                      c.comingSoon ? (
-                        <span className="inline-flex items-center gap-2">
-                          {c.label}
-                          <span
-                            className="text-[8px] tracking-[0.2em] uppercase font-mono px-1.5 py-0.5"
-                            style={{
-                              color: BB.faint,
-                              border: `1px solid ${BB.border}`,
-                              background: BB.surface2,
-                            }}
-                          >
-                            soon
-                          </span>
-                        </span>
-                      ) : (
-                        c.label
-                      )
-                    }
-                    indent
-                    active={view === "TRADE_INPUT" && form.category === c.key}
-                    onClick={() => {
-                      setView("TRADE_INPUT");
-                      switchCategory(c.key);
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Primary action — opens the Create Deal modal */}
+            <div className="px-5 pb-3">
+              <button
+                type="button"
+                onClick={() => setCreateDealOpen(true)}
+                className="w-full py-2.5 text-[12px] font-medium uppercase tracking-[0.22em] transition-colors font-mono flex items-center justify-center gap-2"
+                style={{
+                  background: BB.text,
+                  color: "#f2efe8",
+                  border: `1px solid ${BB.text}`,
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = BB.orange;
+                  e.currentTarget.style.borderColor = BB.orange;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = BB.text;
+                  e.currentTarget.style.borderColor = BB.text;
+                }}
+              >
+                + Create Deal
+              </button>
+            </div>
 
-            {/* Separator between Trade Input group and standalone items */}
+            {/* Separator between primary action and standalone items */}
             <div
-              className="mx-5 my-3"
+              className="mx-5 mb-2"
               style={{ borderTop: `1px dashed #d9d4c7` }}
             />
 
@@ -3478,17 +3794,12 @@ export default function TradeBookingForm() {
               subtitle="Bookings awaiting approval, attached documentation, or settlement confirmation. Approve, reject, or amend from here. Coming soon."
             />
           )}
-          {view === "TRADE_INPUT" && form.category === "FUTURE" && (
-            <PlaceholderView
-              title="Futures Booking"
-              subtitle="Manual futures booking (perpetual + dated) ships in the next milestone. The schema, validation, and Output Record payload for FUTURE are already wired — only the form rendering is paused. Pick Spot, Cashflow, or Loan to keep working."
-            />
-          )}
-          {(view === "TRADE_INPUT" || (view === "DEAL_ENQUIRY" && amendingDealRef)) && form.category !== "FUTURE" && (
+          {form.category !== "FUTURE" && (
       <ModalShell
-        open={view === "DEAL_ENQUIRY" && Boolean(amendingDealRef)}
-        onClose={() => { setAmendingDealRef(null); setFeedback(null); }}
+        open={createDealOpen || Boolean(amendingDealRef)}
+        onClose={() => { setCreateDealOpen(false); setAmendingDealRef(null); setFeedback(null); }}
       >
+      <ProductTabs active={form.category} onChange={(k) => switchCategory(k)} />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-5 pt-4">
         {/* ═══════════ LEFT — form ═══════════ */}
         <div
@@ -3629,6 +3940,57 @@ export default function TradeBookingForm() {
                 ))}
               </Select>
             </Field>
+            {form.category === "CASHFLOW" && (
+              <>
+                <Field label="Cashflow Type" required span={4}>
+                  <Select
+                    value={form.cf_type}
+                    onChange={(e) => {
+                      // Counterparty semantics change between INTER PTF FUNDING
+                      // (portfolio number) and other types (counterparty name).
+                      // Also reset the mirror flag when leaving INTER PTF FUNDING.
+                      const nextType = e.target.value;
+                      const wasIPF = form.cf_type === "INTER PTF FUNDING";
+                      const nowIPF = nextType === "INTER PTF FUNDING";
+                      if (wasIPF !== nowIPF) {
+                        setMany({
+                          cf_type: nextType,
+                          counterparty: "",
+                          cf_mirror: false,
+                          cf_mirror_account_name: "",
+                          cf_mirror_account_venue_type: "EXCHANGE",
+                        });
+                      } else {
+                        set("cf_type", nextType);
+                      }
+                    }}
+                  >
+                    <option value="">— select —</option>
+                    {CASHFLOW_TYPES.map((x) => (
+                      <option key={x}>{x}</option>
+                    ))}
+                  </Select>
+                </Field>
+                {form.cf_type === "INTER PTF FUNDING" ? (
+                  <div
+                    className="col-span-8 flex items-end pb-1.5 pl-3"
+                    style={{ minHeight: 0 }}
+                  >
+                    <label className="text-[11px] cursor-pointer flex items-center gap-2 font-mono" style={{ color: BB.text }}>
+                      <input
+                        type="checkbox"
+                        checked={form.cf_mirror}
+                        onChange={(e) => set("cf_mirror", e.target.checked)}
+                        style={{ accentColor: BB.orange }}
+                      />
+                      Mirror Trade
+                    </label>
+                  </div>
+                ) : (
+                  <div className="col-span-8" />
+                )}
+              </>
+            )}
             <Field label="Portfolio" required span={6}>
               <PortfolioPicker
                 value={form.portfolio}
@@ -3661,7 +4023,7 @@ export default function TradeBookingForm() {
               {form.category === "CASHFLOW" && form.cf_type === "INTER PTF FUNDING" ? (
                 <PortfolioPicker
                   value={form.counterparty}
-                  onChange={(v) => set("counterparty", String(v))}
+                  onChange={(v) => setMany({ counterparty: String(v), cf_mirror_account_name: "" })}
                   options={PORTFOLIOS.filter(
                     (p) => String(p.number) !== String(form.portfolio)
                   )}
@@ -3955,14 +4317,14 @@ export default function TradeBookingForm() {
             <Section
               title="Cashflow Details"
               kicker="Cashflow · transfer / expense / income / funding / fee"
-              accent={form.cf_direction === "RECEIVE" ? BB.green : BB.red}
+              accent={form.cf_direction === "INCOMING" ? BB.green : BB.red}
             >
-              {/* Direction — RECEIVE / PAY toggle */}
+              {/* Direction — INCOMING / OUTGOING toggle */}
               <Field label="Direction" required span={12}>
                 <div className="flex gap-2">
                   {CASHFLOW_DIRECTIONS.map((d) => {
                     const active = form.cf_direction === d;
-                    const tone = d === "RECEIVE" ? BB.green : BB.red;
+                    const tone = d === "INCOMING" ? BB.green : BB.red;
                     return (
                       <button
                         key={d}
@@ -3984,59 +4346,21 @@ export default function TradeBookingForm() {
                 </div>
               </Field>
 
-              <Field label="Cashflow Type" required span={4}>
-                <Select
-                  value={form.cf_type}
-                  onChange={(e) => {
-                    // Counterparty semantics change between INTER PTF FUNDING
-                    // (portfolio number) and other types (counterparty name).
-                    // Also reset the mirror flag when leaving INTER PTF FUNDING.
-                    const nextType = e.target.value;
-                    const wasIPF = form.cf_type === "INTER PTF FUNDING";
-                    const nowIPF = nextType === "INTER PTF FUNDING";
-                    if (wasIPF !== nowIPF) {
-                      setMany({
-                        cf_type: nextType,
-                        counterparty: "",
-                        cf_mirror: false,
-                      });
-                    } else {
-                      set("cf_type", nextType);
-                    }
-                  }}
-                >
-                  <option value="">— select —</option>
-                  {CASHFLOW_TYPES.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
-              </Field>
-              {/* Mirror checkbox sits in the same row as Cashflow Type when
-                  INTER PTF FUNDING is selected; otherwise the row spacer just
-                  fills the remaining 8 cols. Checking Mirror flags that an
-                  offsetting leg should be auto-booked on the counterparty
-                  portfolio — no extra portfolio picker needed. */}
-              {form.cf_type === "INTER PTF FUNDING" ? (
-                <div
-                  className="col-span-8 flex items-end pb-1.5 pl-3"
-                  style={{ minHeight: 0 }}
-                >
-                  <label className="text-[11px] cursor-pointer flex items-center gap-2 font-mono" style={{ color: BB.text }}>
-                    <input
-                      type="checkbox"
-                      checked={form.cf_mirror}
-                      onChange={(e) => set("cf_mirror", e.target.checked)}
-                      style={{ accentColor: BB.orange }}
-                    />
-                    Mirror Trade
-                  </label>
-                </div>
-              ) : (
-                <div className="col-span-8" />
-              )}
-
               <Field label="Notional Asset" required span={3}>
-                <AssetPicker value={form.cf_asset} onChange={(v) => set("cf_asset", v)} />
+                <AssetPicker
+                  value={form.cf_asset}
+                  onChange={(v) => {
+                    // Fee Asset trails Notional Asset until the user customizes it.
+                    // We detect "uncustomized" by checking whether fee_asset still
+                    // matches the prior cf_asset; if so, sync to the new value.
+                    setForm((f) => ({
+                      ...f,
+                      cf_asset: v,
+                      fee_asset: f.fee_asset === f.cf_asset ? v : f.fee_asset,
+                      last_modified_at: isoNow(),
+                    }));
+                  }}
+                />
               </Field>
               <Field label="Notional Amount" required span={3}>
                 <NumberInput value={form.cf_amount} onChange={(v) => set("cf_amount", v)} />
@@ -4076,6 +4400,42 @@ export default function TradeBookingForm() {
                   }
                 />
               </Field>
+
+              {form.cf_type === "INTER PTF FUNDING" && form.cf_mirror && (
+                <>
+                  <Field label="Mirror Account Type" required span={4}>
+                    <Select
+                      value={form.cf_mirror_account_venue_type}
+                      onChange={(e) =>
+                        setMany({
+                          cf_mirror_account_venue_type: e.target.value,
+                          cf_mirror_account_name: "",
+                        })
+                      }
+                    >
+                      {ACCOUNT_VENUE_TYPES.map((v) => (
+                        <option key={v.key} value={v.key}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Mirror Account Name" required span={8}>
+                    <AccountPicker
+                      value={form.cf_mirror_account_name}
+                      onChange={(v) => set("cf_mirror_account_name", v)}
+                      options={mirrorAccountOptions}
+                      placeholder={
+                        !form.counterparty
+                          ? "— select counterparty portfolio first —"
+                          : mirrorAccountOptions.length === 0
+                          ? "— no accounts for this portfolio + venue —"
+                          : "— select account —"
+                      }
+                    />
+                  </Field>
+                </>
+              )}
 
               <Field label="Network" span={4}>
                 <Select value={form.network} onChange={(e) => set("network", e.target.value)}>
@@ -4319,8 +4679,8 @@ export default function TradeBookingForm() {
             accent={BB.dim}
           >
             <Field label="Free-form notes / comments" span={12}>
-              <Textarea
-                rows={3}
+              <Input
+                type="text"
                 placeholder="context, caveats, follow-ups, related ticket numbers…"
                 value={form.notes}
                 onChange={(e) => set("notes", e.target.value)}

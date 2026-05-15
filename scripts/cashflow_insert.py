@@ -11,7 +11,7 @@ Manual smoke (run against UAT):
     {
       "external_trade_id": "TEST-SMOKE-INS-001",
       "cashflow_type": "FUNDING IN",
-      "direction": "RECEIVE",
+      "direction": "INCOMING",
       "entity": "TK006",
       "portfolio_id": 8006,
       "portfolio_name": "CDA",

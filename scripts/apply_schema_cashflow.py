@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS trades_cashflow (
   txn_type            TEXT           NOT NULL DEFAULT 'CASHFLOW',
   cashflow_type       TEXT           NOT NULL,
   direction           TEXT           NOT NULL
-                        CHECK (direction IN ('RECEIVE','PAY')),
+                        CHECK (direction IN ('INCOMING','OUTGOING')),
   entity              TEXT           NOT NULL,
   portfolio_id        TEXT           NOT NULL,
   portfolio_name      TEXT           NOT NULL,
