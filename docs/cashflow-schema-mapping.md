@@ -86,3 +86,29 @@ table follows the bitemporal SCD Type 2 convention documented in
   row's `effective_end` is stamped to the amendment time
 - "Live" = `effective_end IS NULL`
 - `status` CHECK enforces `PENDING / CONFIRMED / PROCESSED / SETTLED / CANCELLED`
+
+## API contract
+
+The frontend posts the JSON payload built by `outputRecord` (this
+mapping) to one of four endpoints on the trade-booking Node server
+(port 5181). All endpoints return `{ok: true, rows: [...]}` on success
+or `{ok: false, error: "..."}` on failure.
+
+| Method | Route | Body | Success body |
+| ------ | ----- | ---- | ------------ |
+| POST | `/api/cashflow/insert` | `outputRecord` (object, or 2-element array for mirror-leg) | `rows` has 1 or 2 elements, each is the inserted row with server-allocated `deal_ref` and `effective_start` |
+| POST | `/api/cashflow/amend` | `outputRecord` with `deal_ref` populated (object only) | `rows[0]` is the newly inserted live row |
+| GET | `/api/cashflow/recent?limit=N` | n/a | `rows` is the N most recent live rows ordered by `trade_date DESC` |
+| GET | `/api/cashflow/:deal_ref` | n/a | `rows[0]` is the live row for that deal_ref |
+
+Error HTTP statuses:
+
+- 400 — payload validation failure
+- 404 — `deal_ref` not found / no live row
+- 409 — concurrent amend (`{ok: false, error: "...", code: "conflict"}`)
+- 500 — server/DB error
+
+Implementation lives in `trade-booking/scripts/cashflow_*.py` (one
+script per endpoint, all sharing `cashflow_db.py`). See the
+[design spec](../../docs/superpowers/specs/2026-05-15-cashflow-booking-backend-design.md)
+for SCD2 transaction logic and concurrency reasoning.
