@@ -4,6 +4,7 @@ Pure logic (validation, (de)serialization) lives here for unit testing.
 DB-touching scripts call into here for creds + connection.
 """
 from __future__ import annotations
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -195,3 +196,20 @@ def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...]
         else:
             vals.append(_coerce_str_or_none(payload.get(col)))
     return DATA_COLUMNS, tuple(vals)
+
+
+def _json_safe(v):
+    if isinstance(v, Decimal):
+        return format(v.normalize(), "f") if v == v.to_integral_value() else str(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    return v
+
+
+def row_to_payload(columns, row) -> dict:
+    """Convert a psycopg2 row tuple to a JSON-safe dict keyed by column name.
+
+    Decimal → string (preserves precision for amounts), datetime → ISO 8601.
+    Caller passes the column list (e.g., from cursor.description or known SELECT order).
+    """
+    return {col: _json_safe(val) for col, val in zip(columns, row)}
