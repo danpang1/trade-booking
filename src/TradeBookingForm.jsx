@@ -1726,11 +1726,28 @@ function SubmitFeedback({ feedback, onDismiss }) {
 // as a popup over the Deal Enquiry table. Avoids duplicating ~1100
 // lines of form markup; this component just adds chrome.
 function ModalShell({ open, onClose, children }) {
+  // Two-frame mount → triggers the CSS transition (opacity + slight
+  // scale on the inner panel). Without this, the element renders at
+  // its final state and the transition has nothing to animate from.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setMounted(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
   if (!open) return children;
   return (
     <div
       className="fixed inset-0 z-40 p-4 overflow-auto"
-      style={{ background: "rgba(0,0,0,0.5)" }}
+      style={{
+        background: mounted ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)",
+        transition: "background 160ms ease-out",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         className="relative max-w-7xl mx-auto"
@@ -1738,14 +1755,32 @@ function ModalShell({ open, onClose, children }) {
           background: "#f6f3ec",
           border: "1px solid #d9d4c7",
           boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? "translateY(0)" : "translateY(-8px)",
+          transition: "opacity 160ms ease-out, transform 160ms ease-out",
         }}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute top-2 right-3 z-10 opacity-60 hover:opacity-100"
-          style={{ fontSize: 22, lineHeight: 1, background: "transparent" }}
+          className="absolute z-10"
+          style={{
+            top: 10,
+            right: 10,
+            width: 32,
+            height: 32,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#1f1f1f",
+            color: "#f2efe8",
+            fontSize: 20,
+            lineHeight: 1,
+            borderRadius: 16,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            cursor: "pointer",
+          }}
         >×</button>
         {children}
       </div>
@@ -1876,7 +1911,7 @@ function DealEnquiry({ onSelect, BB }) {
             {rows.map((r) => (
               <tr
                 key={r.deal_ref}
-                onClick={() => onSelect(r.deal_ref)}
+                onClick={() => onSelect(r)}
                 className="cursor-pointer"
                 style={{ borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
                 onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
@@ -2501,6 +2536,19 @@ export default function TradeBookingForm() {
     };
   }
 
+  // Synchronous: row data is already in hand (Deal Enquiry already
+  // fetched the recent list). No network round-trip on row click.
+  function loadRowIntoForm(row) {
+    setFeedback(null);
+    setMany(payloadToFormState(row));
+    setAmendingDealRef(row.deal_ref);
+    // Don't change view — if the user is on Deal Enquiry, the form opens
+    // as a modal (see ModalShell wrapper); if they're already on
+    // Trade Input, the form is already visible inline.
+  }
+
+  // Async: re-fetches the live row by deal_ref. Used by the conflict
+  // modal's Reload button, where the cached copy is known to be stale.
   async function loadIntoForm(dealRef) {
     setFeedback(null);
     let res;
@@ -2515,14 +2563,7 @@ export default function TradeBookingForm() {
       setFeedback({ kind: "error", message: result.error || "Failed to load deal" });
       return;
     }
-    const row = result.rows[0];
-    // setMany is the existing bulk-patch helper (TradeBookingForm.jsx:1815);
-    // it merges the patch and refreshes last_modified_at.
-    setMany(payloadToFormState(row));
-    setAmendingDealRef(row.deal_ref);
-    // Don't change view — if the user is on Deal Enquiry, the form opens
-    // as a modal (see ModalShell wrapper); if they're already on
-    // Trade Input, the form is already visible inline.
+    loadRowIntoForm(result.rows[0]);
   }
 
   const handleSubmit = async () => {
@@ -2982,7 +3023,7 @@ export default function TradeBookingForm() {
           {view === "DEAL_ENQUIRY" && (
             <DealEnquiry
               BB={BB}
-              onSelect={(dealRef) => loadIntoForm(dealRef)}
+              onSelect={(row) => loadRowIntoForm(row)}
             />
           )}
           {view === "PENDING_BOOKINGS" && (
