@@ -2232,7 +2232,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                 >
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.effective_start)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.first_effective_start)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{monthYear}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <button

@@ -30,11 +30,17 @@ def main() -> int:
     conn = cashflow_db.connect()
     try:
         with conn.cursor() as cur:
+            # Pull the live row plus the *earliest* effective_start for
+            # the same deal_ref so the UI can show "Input Date" as the
+            # original booking moment (immutable across amendments).
             cur.execute(
-                "SELECT * FROM trades_cashflow "
-                "WHERE effective_end IS NULL "
-                "ORDER BY trade_date DESC, deal_ref DESC "
-                "LIMIT %s",
+                "SELECT t.*, "
+                "       (SELECT MIN(effective_start) FROM trades_cashflow "
+                "         WHERE deal_ref = t.deal_ref) AS first_effective_start "
+                "  FROM trades_cashflow t "
+                " WHERE t.effective_end IS NULL "
+                " ORDER BY t.trade_date DESC, t.deal_ref DESC "
+                " LIMIT %s",
                 (limit,),
             )
             cols = [d.name for d in cur.description]
