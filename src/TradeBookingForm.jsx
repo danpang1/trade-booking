@@ -2184,10 +2184,8 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-3 py-2 text-left whitespace-nowrap">Counterparty</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Txn Type</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Trade Type</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Asset</th>
               <th className="px-3 py-2 text-right whitespace-nowrap">Amount</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Fee Asset</th>
-              <th className="px-3 py-2 text-right whitespace-nowrap">Fee Amount</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Fee</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Trade Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Value Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Account</th>
@@ -2199,7 +2197,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={18} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={16} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -2218,7 +2216,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={18} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
+              <tr><td colSpan={16} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
             )}
             {rows.map((r) => {
               const fmtTs = (iso, len = 16) => iso ? String(iso).replace("T", " ").slice(0, len) : "—";
@@ -2266,10 +2264,18 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   <td className="px-3 py-2 whitespace-nowrap">{r.counterparty || "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.asset}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{r.amount}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.fee_asset || "—"}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">{r.fee_amount}</td>
+                  {/* On-screen the asset+amount pair is combined for
+                      readability. CSV export should keep `asset` /
+                      `amount` / `fee_asset` / `fee_amount` as four
+                      separate columns per the audit schema. */}
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {r.amount} <span style={{ opacity: 0.7 }}>{r.asset}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {r.fee_amount && parseFloat(r.fee_amount) !== 0
+                      ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
+                      : "—"}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.trade_date)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.value_date)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
