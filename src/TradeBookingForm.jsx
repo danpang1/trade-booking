@@ -1815,8 +1815,9 @@ function ModalShell({ open, onClose, children }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="relative max-w-7xl mx-auto"
+        className="relative mx-auto"
         style={{
+          width: "min(95vw, 1600px)",
           background: "#f6f3ec",
           border: "1px solid #d9d4c7",
           boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
@@ -2212,8 +2213,6 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             {rows.map((r) => (
               <tr
                 key={r.deal_ref}
-                onClick={() => onSelect(r)}
-                className="cursor-pointer"
                 style={{ borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
                 onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
@@ -2222,7 +2221,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   <button
                     type="button"
                     title="View audit trail"
-                    onClick={(e) => { e.stopPropagation(); onHistory(r.deal_ref); }}
+                    onClick={() => onHistory(r.deal_ref)}
                     className="inline-flex items-center justify-center mr-2 align-middle"
                     style={{
                       width: 22, height: 22, borderRadius: 11,
@@ -2233,7 +2232,22 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(0,0,0,0.06)"}
                     onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
                   >🕘</button>
-                  {r.deal_ref}
+                  <button
+                    type="button"
+                    title="Open in form to amend"
+                    onClick={() => onSelect(r)}
+                    className="align-middle"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      color: "#1f63ea",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "2px",
+                      cursor: "pointer",
+                      font: "inherit",
+                    }}
+                  >{r.deal_ref}</button>
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   {r.trade_date
