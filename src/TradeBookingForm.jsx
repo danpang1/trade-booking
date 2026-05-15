@@ -2028,6 +2028,48 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 // root so it survives the amend modal closing (which would unmount any
 // in-form feedback). Manual dismiss via × or auto-clears after 4s
 // from the caller.
+// Instant hover tooltip — opens on mouseenter (no native title= delay),
+// uses a portal-free fixed-position bubble that follows the trigger.
+// Used in the Deal Enquiry table to surface the full ISO timestamp on
+// the truncated date columns and the CID on counterparty.
+function HoverTip({ text, children }) {
+  const [pos, setPos] = useState(null); // { x, y } in viewport coords, null = hidden
+  if (!text) return children;
+  return (
+    <span
+      style={{ display: "inline-block" }}
+      onMouseEnter={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        setPos({ x: r.left, y: r.top });
+      }}
+      onMouseLeave={() => setPos(null)}
+    >
+      {children}
+      {pos && (
+        <span
+          style={{
+            position: "fixed",
+            left: pos.x,
+            top: pos.y - 4,
+            transform: "translateY(-100%)",
+            background: "#1f1f1f",
+            color: "#f2efe8",
+            fontSize: 11,
+            lineHeight: 1.35,
+            padding: "4px 8px",
+            whiteSpace: "nowrap",
+            borderRadius: 3,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+            pointerEvents: "none",
+            zIndex: 1000,
+            fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          }}
+        >{text}</span>
+      )}
+    </span>
+  );
+}
+
 function FloatingToast({ toast, onDismiss }) {
   // Fade-in on mount via two-frame mount flag.
   const [mounted, setMounted] = useState(false);
@@ -2246,8 +2288,8 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
                     >🕘</button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap" title={r.first_effective_start || ""}>
-                    {fmtTs(r.first_effective_start)}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.first_effective_start}>{fmtTs(r.first_effective_start)}</HoverTip>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <button
@@ -2263,8 +2305,10 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_id}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_name || "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap" title={r.counterparty_id || (r.counterparty ? "(no refdata id)" : "")}>
-                    {r.counterparty || "—"}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.counterparty_id || (r.counterparty ? "(no refdata id)" : "")}>
+                      {r.counterparty || "—"}
+                    </HoverTip>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type}</td>
@@ -2280,11 +2324,11 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
                       : "—"}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap" title={r.trade_date || ""}>
-                    {fmtTs(r.trade_date)}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.trade_date}>{fmtTs(r.trade_date)}</HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap" title={r.value_date || ""}>
-                    {fmtTs(r.value_date)}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.value_date}>{fmtTs(r.value_date)}</HoverTip>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account_type || "—"}</td>
