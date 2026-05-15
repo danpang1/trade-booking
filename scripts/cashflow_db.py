@@ -4,6 +4,7 @@ Pure logic (validation, (de)serialization) lives here for unit testing.
 DB-touching scripts call into here for creds + connection.
 """
 from __future__ import annotations
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -63,3 +64,74 @@ def connect():
         password=c["password"],
         connect_timeout=15,
     )
+
+
+REQUIRED_FIELDS_INSERT = (
+    "cashflow_type", "direction", "entity", "portfolio_id",
+    "portfolio_name", "asset", "amount", "trade_date", "value_date",
+    "user_id", "status",
+)
+REQUIRED_FIELDS_AMEND = REQUIRED_FIELDS_INSERT + ("deal_ref",)
+
+VALID_DIRECTIONS = {"RECEIVE", "PAY"}
+VALID_STATUSES = {"PENDING", "CONFIRMED", "PROCESSED", "SETTLED", "CANCELLED"}
+
+
+class ValidationError(ValueError):
+    """Payload failed pre-DB validation. Raised before opening a txn."""
+
+
+def _validate_one(p: dict, mode: str) -> None:
+    required = REQUIRED_FIELDS_AMEND if mode == "amend" else REQUIRED_FIELDS_INSERT
+    for f in required:
+        v = p.get(f)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValidationError(f"required field missing or empty: {f}")
+    if p["direction"] not in VALID_DIRECTIONS:
+        raise ValidationError(
+            f"direction must be one of {sorted(VALID_DIRECTIONS)}, got {p['direction']!r}"
+        )
+    if p["status"] not in VALID_STATUSES:
+        raise ValidationError(
+            f"status must be one of {sorted(VALID_STATUSES)}, got {p['status']!r}"
+        )
+    try:
+        Decimal(str(p["amount"]))
+    except (InvalidOperation, TypeError, ValueError) as e:
+        raise ValidationError(f"amount must be numeric, got {p['amount']!r}") from e
+    if p.get("fee_amount") not in (None, "", 0):
+        try:
+            Decimal(str(p["fee_amount"]))
+        except (InvalidOperation, TypeError, ValueError) as e:
+            raise ValidationError(
+                f"fee_amount must be numeric if set, got {p['fee_amount']!r}"
+            ) from e
+    try:
+        int(p["portfolio_id"])
+    except (TypeError, ValueError) as e:
+        raise ValidationError(
+            f"portfolio_id must be integer, got {p['portfolio_id']!r}"
+        ) from e
+
+
+def validate_payload(payload, *, mode: str) -> None:
+    """Raise ValidationError if payload is bad. mode in {'insert', 'amend'}.
+
+    On insert the payload may be a 2-element list (mirror-leg). On amend
+    only a single dict is supported (mirror legs are independent deal_refs).
+    """
+    if mode not in ("insert", "amend"):
+        raise ValidationError(f"unknown mode: {mode}")
+    if isinstance(payload, list):
+        if mode != "insert":
+            raise ValidationError("mirror-leg list only supported on insert mode")
+        if len(payload) != 2:
+            raise ValidationError(
+                f"mirror-leg payload must have exactly 2 elements, got {len(payload)}"
+            )
+        for leg in payload:
+            _validate_one(leg, mode)
+        return
+    if not isinstance(payload, dict):
+        raise ValidationError(f"payload must be dict or 2-element list, got {type(payload).__name__}")
+    _validate_one(payload, mode)
