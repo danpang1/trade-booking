@@ -1788,6 +1788,176 @@ function ModalShell({ open, onClose, children }) {
   );
 }
 
+// Audit-trail modal: fetches every SCD2 version of a deal_ref and
+// renders a timeline (oldest at the bottom, newest on top). For each
+// version after the first, highlights the fields that changed compared
+// to the prior version.
+const AUDIT_DIFF_FIELDS = [
+  "cashflow_type", "direction", "counterparty", "account",
+  "account_type", "asset", "amount", "fee_asset", "fee_amount",
+  "trade_date", "value_date", "network", "txid_reference",
+  "status", "user_id", "comment", "external_trade_id",
+];
+const AUDIT_FIELD_LABELS = {
+  cashflow_type: "Cashflow Type", direction: "Direction",
+  counterparty: "Counterparty", account: "Account",
+  account_type: "Account Type", asset: "Asset", amount: "Amount",
+  fee_asset: "Fee Asset", fee_amount: "Fee Amount",
+  trade_date: "Trade Date", value_date: "Value Date",
+  network: "Network", txid_reference: "Tx Hash",
+  status: "Status", user_id: "User", comment: "Comment",
+  external_trade_id: "External ID",
+};
+
+function HistoryModal({ open, dealRef, state, onClose }) {
+  // Two-frame mount → fade in
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (!open) { setMounted(false); return; }
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  if (!open) return null;
+
+  const rows = state?.rows || [];
+  // Build per-version diff: for each row (except the first), compute which
+  // AUDIT_DIFF_FIELDS changed vs the prior row.
+  const diffs = rows.map((row, i) => {
+    if (i === 0) return { initial: true, changed: [] };
+    const prev = rows[i - 1];
+    const changed = AUDIT_DIFF_FIELDS.filter((f) => {
+      const a = row[f] ?? null, b = prev[f] ?? null;
+      return String(a) !== String(b);
+    }).map((f) => ({ field: f, from: prev[f], to: row[f] }));
+    return { initial: false, changed };
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 p-4 overflow-auto"
+      style={{
+        background: mounted ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)",
+        transition: "background 160ms ease-out",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="relative max-w-3xl mx-auto"
+        style={{
+          background: "#f6f3ec",
+          border: "1px solid #d9d4c7",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? "translateY(0)" : "translateY(-8px)",
+          transition: "opacity 160ms ease-out, transform 160ms ease-out",
+          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute z-10"
+          style={{
+            top: 10, right: 10, width: 32, height: 32,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "#1f1f1f", color: "#f2efe8",
+            fontSize: 20, lineHeight: 1, borderRadius: 16,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)", cursor: "pointer",
+          }}
+        >×</button>
+
+        <div className="px-6 py-5" style={{ borderBottom: "1px solid #d9d4c7" }}>
+          <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Audit Trail</div>
+          <div className="text-[20px] mt-1" style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}>
+            {dealRef}
+          </div>
+          <div className="text-[11px] opacity-60 mt-1">
+            {state?.loading ? "Loading…" : `${rows.length} version${rows.length === 1 ? "" : "s"} on record`}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+          {state?.loading && <div className="text-[12px] opacity-70">Loading audit trail…</div>}
+          {state?.error && (
+            <div className="text-[12px]" style={{ color: "#7a1f00" }}>
+              Error: {state.error}
+            </div>
+          )}
+          {!state?.loading && !state?.error && rows.length === 0 && (
+            <div className="text-[12px] opacity-70">No history found for this deal_ref.</div>
+          )}
+          {!state?.loading && !state?.error && rows.length > 0 && (
+            <ol className="space-y-3">
+              {rows.map((row, i) => {
+                const d = diffs[i];
+                const version = i + 1;
+                const isLive = row.effective_end == null;
+                return (
+                  <li
+                    key={i}
+                    className="px-3 py-3"
+                    style={{
+                      background: isLive ? "#eef5e9" : "#ffffff",
+                      border: `1px solid ${isLive ? "#7ea66a" : "#d9d4c7"}`,
+                    }}
+                  >
+                    <div className="flex items-baseline justify-between text-[11px]">
+                      <span>
+                        <strong>v{version}</strong>
+                        {isLive && <span className="ml-2 px-1.5 py-0.5 text-[10px]" style={{background: "#1f4a1f", color: "#e8f5e2"}}>LIVE</span>}
+                        {!isLive && d.initial && <span className="ml-2 opacity-60">initial</span>}
+                      </span>
+                      <span className="opacity-70">by {row.user_id || "—"}</span>
+                    </div>
+                    <div className="text-[10px] opacity-60 mt-1">
+                      effective {String(row.effective_start).replace("T", " ").slice(0, 19)} UTC
+                      {row.effective_end && (
+                        <> → {String(row.effective_end).replace("T", " ").slice(0, 19)} UTC</>
+                      )}
+                    </div>
+
+                    {d.initial ? (
+                      <div className="mt-2 text-[11px]">
+                        Initial booking:{" "}
+                        <code>{row.cashflow_type}</code>{" · "}
+                        <code>{row.direction}</code>{" · "}
+                        <code>{row.amount} {row.asset}</code>{" · status "}
+                        <code>{row.status}</code>
+                        {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                      </div>
+                    ) : d.changed.length === 0 ? (
+                      <div className="mt-2 text-[11px] opacity-70">
+                        (no changes to audited fields)
+                      </div>
+                    ) : (
+                      <ul className="mt-2 space-y-1 text-[11px]">
+                        {d.changed.map((c) => (
+                          <li key={c.field}>
+                            <strong>{AUDIT_FIELD_LABELS[c.field] || c.field}:</strong>{" "}
+                            <span style={{ color: "#7a1f00", textDecoration: "line-through" }}>
+                              {c.from === null || c.from === "" ? "∅" : String(c.from)}
+                            </span>
+                            {"  →  "}
+                            <span style={{ color: "#1f4a1f" }}>
+                              {c.to === null || c.to === "" ? "∅" : String(c.to)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              }).reverse()}
+            </ol>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Floating bottom-right toast for success messages. Lives at the page
 // root so it survives the amend modal closing (which would unmount any
 // in-form feedback). Manual dismiss via × or auto-clears after 4s
@@ -1870,7 +2040,7 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   );
 }
 
-function DealEnquiry({ onSelect, BB, refreshSignal }) {
+function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -1983,7 +2153,23 @@ function DealEnquiry({ onSelect, BB, refreshSignal }) {
                 onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
               >
-                <td className="px-3 py-2">{r.deal_ref}</td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    title="View audit trail"
+                    onClick={(e) => { e.stopPropagation(); onHistory(r.deal_ref); }}
+                    className="inline-flex items-center justify-center mr-2 align-middle"
+                    style={{
+                      width: 22, height: 22, borderRadius: 11,
+                      border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                      background: "transparent", cursor: "pointer",
+                      fontSize: 11, lineHeight: 1,
+                    }}
+                    onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(0,0,0,0.06)"}
+                    onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
+                  >🕘</button>
+                  {r.deal_ref}
+                </td>
                 <td className="px-3 py-2">{(r.trade_date || "").slice(0, 10)}</td>
                 <td className="px-3 py-2">{r.portfolio_id}</td>
                 <td className="px-3 py-2">{r.counterparty || "—"}</td>
@@ -2575,6 +2761,25 @@ export default function TradeBookingForm() {
   // Bumped after a successful insert/amend so the Deal Enquiry table
   // re-fetches its rows on the next render.
   const [dealEnquiryRefreshSignal, setDealEnquiryRefreshSignal] = useState(0);
+  // null | { dealRef, rows, loading, error } — drives HistoryModal
+  const [historyModal, setHistoryModal] = useState(null);
+
+  async function openHistory(dealRef) {
+    setHistoryModal({ dealRef, rows: [], loading: true, error: null });
+    let res;
+    try {
+      res = await fetch(`http://localhost:5181/api/cashflow/${encodeURIComponent(dealRef)}/history`);
+    } catch (e) {
+      setHistoryModal({ dealRef, rows: [], loading: false, error: String(e) });
+      return;
+    }
+    const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+    if (!result.ok) {
+      setHistoryModal({ dealRef, rows: [], loading: false, error: result.error || "Failed to load history" });
+      return;
+    }
+    setHistoryModal({ dealRef, rows: result.rows, loading: false, error: null });
+  }
 
   // Convert a backend cashflow row (mapping-doc shape) into the slice
   // of form state the cashflow tab consumes. Inverse of outputRecord
@@ -3096,6 +3301,7 @@ export default function TradeBookingForm() {
             <DealEnquiry
               BB={BB}
               onSelect={(row) => loadRowIntoForm(row)}
+              onHistory={(dealRef) => openHistory(dealRef)}
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
@@ -4241,6 +4447,12 @@ export default function TradeBookingForm() {
               }}
             />
             <FloatingToast toast={toast} onDismiss={() => setToast(null)} />
+            <HistoryModal
+              open={Boolean(historyModal)}
+              dealRef={historyModal?.dealRef}
+              state={historyModal}
+              onClose={() => setHistoryModal(null)}
+            />
       </div>
     </div>
     </TokensContext.Provider>

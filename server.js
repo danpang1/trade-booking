@@ -20,6 +20,7 @@ const CASHFLOW_INSERT_SCRIPT = resolve(__dirname, "scripts", "cashflow_insert.py
 const CASHFLOW_AMEND_SCRIPT  = resolve(__dirname, "scripts", "cashflow_amend.py");
 const CASHFLOW_RECENT_SCRIPT = resolve(__dirname, "scripts", "cashflow_recent.py");
 const CASHFLOW_GET_SCRIPT    = resolve(__dirname, "scripts", "cashflow_get.py");
+const CASHFLOW_HISTORY_SCRIPT = resolve(__dirname, "scripts", "cashflow_history.py");
 const TOKENS_JSON = resolve(__dirname, "public", "tokens.json");
 
 let snapshotRunning = false;
@@ -214,6 +215,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/cashflow/:deal_ref/history  (full SCD2 audit trail)
+  // Must come BEFORE the bare :deal_ref route so the trailing /history
+  // segment isn't swallowed by the [^/]+ catch-all.
+  if (req.method === "GET" && /^\/api\/cashflow\/[^/]+\/history$/.test(req.url)) {
+    const segments = req.url.split("/");
+    const dealRef = decodeURIComponent(segments[segments.length - 2]);
+    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const { code, json } = await spawnPython(CASHFLOW_HISTORY_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // GET /api/cashflow/:deal_ref  (must come AFTER /api/cashflow/recent so the more-specific route matches first)
   if (req.method === "GET" && /^\/api\/cashflow\/[^/]+$/.test(req.url)) {
     const dealRef = decodeURIComponent(req.url.split("/").pop());
@@ -238,5 +253,6 @@ server.listen(PORT, () => {
   console.log(`[server]   POST /api/cashflow/amend     — amend an existing cashflow`);
   console.log(`[server]   GET  /api/cashflow/recent    — list N recent live rows`);
   console.log(`[server]   GET  /api/cashflow/:deal_ref — fetch one live row`);
+  console.log(`[server]   GET  /api/cashflow/:deal_ref/history — all SCD2 versions`);
   scheduleHourlySnapshot();
 });
