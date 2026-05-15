@@ -112,7 +112,10 @@ def main():
     for col in cols:
         print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2]=='YES' else 'NOT NULL':10s} {col[3] or ''}")
 
-    cur.execute("SELECT sequence_name, start_value, last_value FROM information_schema.sequences WHERE sequence_name='trade_seq_cashflow'")
+    cur.execute(
+        "SELECT sequencename, start_value, last_value, increment_by "
+        "FROM pg_sequences WHERE sequencename='trade_seq_cashflow'"
+    )
     seq = cur.fetchone()
     print(f"\nsequence: {seq}")
 
