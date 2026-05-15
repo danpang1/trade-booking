@@ -309,6 +309,71 @@ const COUNTERPARTIES = [
   { name: "ZETA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
   { name: "ZKSYNC", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
 ];
+
+// Snapshot of reference_data.counterparty {name → id} for ACTIVE rows.
+// 173 entries · id range 1-180 (gaps from deletions). Used to derive
+// the immutable counterparty_id stored on trades_cashflow as a
+// CID-prefixed 6-digit string (e.g. id=1 → "CID000001").
+// TODO: swap to live API fetch when a refdata service ships.
+const COUNTERPARTY_IDS = {
+  'BINANCE': 1, 'OKX': 2, 'DBS DIGITAL EXCHANGE (DDEX)': 3, 'KUCOIN': 4,
+  '1INCH LIMITED': 5, 'HASHFLOW FOUNDATION': 6, 'PANCAKESWAP (PCS)': 7,
+  'ZEROEX INC (0X LABS)': 8, 'HUOBI': 9, 'GATE': 11, 'ETHEREUM': 12,
+  'BINANCE SMART CHAIN': 13, 'ARBITRUM': 14, 'OPTIMISM': 15, 'BASE': 16,
+  'AVALANCHE': 17, 'POLYGON': 18, 'MEXC': 19, 'VERTEX PROTOCOL': 20,
+  'BYBIT': 21, 'HYPERLIQUID': 22, 'BLITZ': 23, 'PARADEX': 24, 'BLUEFIN': 25,
+  'CHAINFLIP': 26, 'DEXALOT': 27, 'DYDX': 28, 'INJECTIVE': 29, 'LINEA': 30,
+  'ZETA': 31, 'COWSWAP DAO': 32, 'AQUA PROTOCOL': 33,
+  'GRVT MARKETS LIMITED (GML)': 34, 'PYTH DATA ASSOCIATION (PYTH)': 35,
+  'NATIVE TECHNOLOGY LIMITED': 36, '21SHARES US LLC': 37, 'BITCOIN': 38,
+  'CARDANO': 39, 'POLKADOT': 40, 'RIPPLE': 41, 'BITCOIN CASH': 42,
+  'SCROLL': 43, 'ZKSYNC': 44, 'BLAST': 45, 'SHADOW_SIMULATION': 46,
+  'CIRCLE INTERNET FINANCIAL': 47, 'TESTING ACCOUNTS': 48, 'SOLANA': 49,
+  'ALKIMIYA': 50, 'DIGITAL FORCE LTD.': 51, 'PRM LBS LIMITED (ARKIS)': 52,
+  'META PROTOCOL INTERNATIONAL, INC (ZETA)': 53, 'SPRING MUD LIMITED': 54,
+  'SPRING MUD PTE LTD': 55, '0XRICK LIMITED': 56, 'TON': 57,
+  'AGORA FINANCE': 58, 'UNISWAP': 59, 'AIRSWAP': 60, 'PARASWAP': 61,
+  'MODE': 62, 'BLOCKPI NETWORK': 63, 'LBANK EXCHANGE': 64,
+  'T1 LABS INC. (T1 PROTOCOL)': 65, 'MANTLE': 66, 'VERTEX_ARBITRUM': 67,
+  'VERTEX_BLITZ': 68, 'VERTEX_MANTLE': 70, 'VERTEX_SEI': 71,
+  'CONNEXT FOUNDATION - EVERCLEAR': 72, 'ETHENA LABS GMBH': 74,
+  'JUPITER': 75, 'RAYDIUM': 76, 'STON.FI': 77, 'DEDUST': 78,
+  'TOKKA TREASURY': 79, 'BITGO TRUST COMPANY INC': 80, 'ACROSS': 81,
+  'SQUID': 82, 'WORMHOLE': 83, 'MAYAN FOUNDATION': 84,
+  'ZEROEX INC_V3 (0X LABS)': 85, 'MERCHANT MOE': 86, 'COINBASE': 87,
+  'THRUSTER': 88, 'PANCAKESWAP-X': 89, 'CETUS PROTOCOL': 90, 'SUI': 91,
+  'REYA': 92, 'SHINAMI': 93, 'DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)': 94,
+  'TRON': 95, 'DOGE': 96, 'TURBOS': 97, 'PROPELLERHEADS AG': 98,
+  'JITO NETWORK': 99, 'IZUMI': 100, 'OKX DEX AGGREGATOR': 101,
+  'SYNFUTURES DEX': 102, 'BEBOP LTD': 103, 'ALTERNITY FUND LTD': 104,
+  'SOSOVALUE': 105, 'JUPITER Z': 106, 'CELO': 107, 'BERACHAIN': 108,
+  'UNICHAIN': 109, 'DRIFT': 110, 'SONIC': 111, 'SEARCHER.WTF': 112,
+  'SYNCSWAP': 113, 'STARGATE': 114, 'IZISWAP': 115, 'AMBIENT FINANCE': 116,
+  'KODIAK': 117, 'BERASWAP': 118, '1INCH FUSION+': 119, 'UNISWAPX': 120,
+  'AERODROME': 121, 'OPTIMEX': 123, 'ALGEBRA FINANCE': 124, 'KYBERSWAP': 125,
+  'ROUTER PROTOCOL': 126, 'LIGHTER': 127, 'BINANCE_ALPHA': 129,
+  'KANA LABS LIMITED': 130, 'HYPEREVM': 132, 'PEAQ': 133, 'SONEIUM': 134,
+  'XRPLEVM': 135, 'GNOSIS': 136, 'APTOS': 137, 'OKX (SG)': 139, 'SHADOW': 140,
+  'ETHGAS': 141, 'TPLUS LABS INC': 142, 'HYPERCORE': 143, 'OKX DEX': 144,
+  'INTERACTIVE BROKERS': 145, 'GMR LIMITED': 146, 'BACKED.FI': 147,
+  'SODEX': 148, 'ONDO USDY LLC': 149, 'ONDO GLOBAL MARKETS (BVI) LIMITED': 150,
+  'MIDAS SOFTWARDS GMBH': 151, 'CENTRIFUGE': 152, 'SUPERSTATE INC': 153,
+  'BITGLOBAL': 154, 'DOURO LABS': 155, 'BITMEX': 156, 'CHEN GUO': 157,
+  'MANTRA': 158, 'SAGAEVM': 159, 'PLASMA': 160, 'BACKPACK': 161, 'FRAX': 162,
+  'NATIVE MARKETS': 163, 'WISDOMTREE': 164, 'TOKKA LABS PTE LTD': 165,
+  'KRAKEN': 166, 'COINROUTES INC': 167, 'LI.FI': 168, 'CITREA': 169,
+  'HEDERA': 170, 'ADEVAR LABS INC': 171, 'STELLAR': 172, 'BITGET': 173,
+  'TEMPO': 174, 'HELIUS BLOCKCHAIN TECHNOLOGIES, INC.': 175,
+  'ECHOCREEK LTD': 176, 'BINANCE INVESTMENTS CO. LTD': 177,
+  'CHEN GUO (GORDON)': 178, 'AXELAR': 179, 'PAYWARD, INC.': 180,
+};
+
+// Format a numeric counterparty id (e.g. 1) as the wire/storage form
+// "CID000001". Returns null for unknown / missing ids so the backend
+// stores NULL (e.g. INTER PTF FUNDING where the counterparty field
+// holds a portfolio number, not a refdata counterparty).
+const formatCID = (id) => (id == null ? null : "CID" + String(id).padStart(6, "0"));
+
 const CATEGORIES = ["SPOT", "FUTURE", "CASHFLOW", "LOAN"];
 const VENUE_TYPES = ["CEX", "DEX", "OnChain", "OTC", "Internal", "RWA"];
 
@@ -2544,6 +2609,12 @@ export default function TradeBookingForm() {
         portfolio_id: portfolioEntry ? portfolioEntry.number : null,
         portfolio_name: portfolioEntry ? portfolioEntry.name : null,
         counterparty: form.counterparty || null,
+        // Immutable refdata id (CID000001 …) so we keep a stable link to
+        // reference_data.counterparty even if the name is later renamed.
+        // For INTER PTF FUNDING the counterparty field holds a portfolio
+        // number (not a refdata name) → COUNTERPARTY_IDS lookup misses
+        // and formatCID(undefined) returns null. That's the right shape.
+        counterparty_id: formatCID(COUNTERPARTY_IDS[form.counterparty]),
         account: form.account_name || null,
         account_type: form.account_venue_type,
         asset: form.cf_asset,

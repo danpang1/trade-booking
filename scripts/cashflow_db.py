@@ -162,6 +162,7 @@ DATA_COLUMNS = (
     "portfolio_id",
     "portfolio_name",
     "counterparty",
+    "counterparty_id",
     "account",
     "account_type",
     "asset",

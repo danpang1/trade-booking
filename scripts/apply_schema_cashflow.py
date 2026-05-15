@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS trades_cashflow (
   portfolio_id        TEXT           NOT NULL,
   portfolio_name      TEXT           NOT NULL,
   counterparty        TEXT,
+  counterparty_id     TEXT,
   account             TEXT,
   account_type        TEXT,
   asset               TEXT           NOT NULL,
