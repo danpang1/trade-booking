@@ -1788,6 +1788,50 @@ function ModalShell({ open, onClose, children }) {
   );
 }
 
+// Floating bottom-right toast for success messages. Lives at the page
+// root so it survives the amend modal closing (which would unmount any
+// in-form feedback). Manual dismiss via × or auto-clears after 4s
+// from the caller.
+function FloatingToast({ toast, onDismiss }) {
+  // Fade-in on mount via two-frame mount flag.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (!toast) {
+      setMounted(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, [toast]);
+
+  if (!toast) return null;
+  return (
+    <div
+      className="fixed bottom-6 right-6 z-50 px-4 py-3 flex items-center gap-3 text-[12px]"
+      style={{
+        background: "#1f3a1f",
+        color: "#e8f5e2",
+        border: "1px solid #2e5a2e",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateY(0)" : "translateY(8px)",
+        transition: "opacity 160ms ease-out, transform 160ms ease-out",
+        maxWidth: 360,
+      }}
+    >
+      <span>✓ {toast.message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="opacity-70 hover:opacity-100"
+        style={{ fontSize: 16, lineHeight: 1, background: "transparent", color: "inherit" }}
+      >×</button>
+    </div>
+  );
+}
+
 function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   if (!open) return null;
   return (
@@ -1826,7 +1870,7 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   );
 }
 
-function DealEnquiry({ onSelect, BB }) {
+function DealEnquiry({ onSelect, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -1848,7 +1892,9 @@ function DealEnquiry({ onSelect, BB }) {
     }
   }, []);
 
-  useEffect(() => { fetchRecent(); }, [fetchRecent]);
+  // Refetch on mount and any time the parent bumps refreshSignal (e.g.
+  // after a successful insert/amend) so the table reflects the latest data.
+  useEffect(() => { fetchRecent(); }, [fetchRecent, refreshSignal]);
 
   return (
     <div className="px-5 pt-4 pb-8">
@@ -2503,6 +2549,12 @@ export default function TradeBookingForm() {
   const [conflictModal, setConflictModal] = useState(null);
   // null | "MCF-42"  — when set, form is in amend mode (PUT vs POST)
   const [amendingDealRef, setAmendingDealRef] = useState(null);
+  // Top-level success notice that survives modal close. Auto-clears
+  // after 4s. null | { message: string }
+  const [toast, setToast] = useState(null);
+  // Bumped after a successful insert/amend so the Deal Enquiry table
+  // re-fetches its rows on the next render.
+  const [dealEnquiryRefreshSignal, setDealEnquiryRefreshSignal] = useState(0);
 
   // Convert a backend cashflow row (mapping-doc shape) into the slice
   // of form state the cashflow tab consumes. Inverse of outputRecord
@@ -2593,13 +2645,13 @@ export default function TradeBookingForm() {
     const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
     if (result.ok && result.rows && result.rows.length > 0) {
       setSubmittedRecord(result.rows.length === 1 ? result.rows[0] : result.rows);
-      const verb = amendingDealRef ? "Updated" : "Booked";
+      const verb = amendingDealRef ? "updated" : "booked";
       const ref = result.rows[0].deal_ref;
-      setAmendingDealRef(null);
-      setFeedback({ kind: "success", message: `${verb} ${ref}` });
-      setTimeout(() => {
-        setFeedback((f) => (f && f.kind === "success" ? null : f));
-      }, 4000);
+      setAmendingDealRef(null);          // closes the amend modal (if open)
+      setFeedback(null);                  // clear any prior inline error
+      setToast({ message: `Deal ${ref} ${verb}` });
+      setDealEnquiryRefreshSignal((s) => s + 1);   // table refetches
+      setTimeout(() => setToast(null), 4000);
     } else if (res.status === 409) {
       setConflictModal({ dealRef: amendingDealRef, message: result.error });
     } else {
@@ -3024,6 +3076,7 @@ export default function TradeBookingForm() {
             <DealEnquiry
               BB={BB}
               onSelect={(row) => loadRowIntoForm(row)}
+              refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
           {view === "PENDING_BOOKINGS" && (
@@ -4167,6 +4220,7 @@ export default function TradeBookingForm() {
                 setConflictModal(null);
               }}
             />
+            <FloatingToast toast={toast} onDismiss={() => setToast(null)} />
       </div>
     </div>
     </TokensContext.Provider>
