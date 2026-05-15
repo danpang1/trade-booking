@@ -54,10 +54,17 @@ def load_creds() -> dict[str, str]:
 
 
 def connect():
-    """Open a psycopg2 connection. Caller manages txns (autocommit=False)."""
+    """Open a psycopg2 connection. Caller manages txns (autocommit=False).
+
+    Pins the session timezone to UTC so all TIMESTAMPTZ values
+    (effective_start, effective_end, trade_date, value_date) render
+    with a +00 offset regardless of any future role/database default
+    change. Redundant with the ALTER ROLE mo_admin SET timezone='UTC'
+    we set on the server, but cheap and explicit.
+    """
     import psycopg2  # imported here so pure-logic functions are testable without psycopg2
     c = load_creds()
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=c["host"],
         port=int(c.get("port", "5432")),
         dbname=c["database"],
@@ -65,6 +72,10 @@ def connect():
         password=c["password"],
         connect_timeout=15,
     )
+    with conn.cursor() as cur:
+        cur.execute("SET TIMEZONE = 'UTC'")
+    conn.commit()  # SET TIMEZONE is a session command; commit closes the implicit txn
+    return conn
 
 
 REQUIRED_FIELDS_INSERT = (
