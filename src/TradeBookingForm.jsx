@@ -2310,9 +2310,45 @@ export default function TradeBookingForm() {
   // null | "MCF-42"  — when set, form is in amend mode (PUT vs POST)
   const [amendingDealRef, setAmendingDealRef] = useState(null);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (form.category !== "CASHFLOW") {
+      // SPOT/FUTURE/LOAN: not wired to backend yet — keep the existing
+      // JSON preview behavior so those forms still work.
+      if (!canSubmit) return;
+      setSubmittedRecord(outputRecord);
+      return;
+    }
     if (!canSubmit) return;
-    setSubmittedRecord(outputRecord);
+    setFeedback(null);
+    const endpoint = amendingDealRef
+      ? "http://localhost:5181/api/cashflow/amend"
+      : "http://localhost:5181/api/cashflow/insert";
+    let res;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(outputRecord),
+      });
+    } catch (e) {
+      setFeedback({ kind: "error", message: "Server unreachable", detail: String(e) });
+      return;
+    }
+    const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+    if (result.ok && result.rows && result.rows.length > 0) {
+      setSubmittedRecord(result.rows.length === 1 ? result.rows[0] : result.rows);
+      const verb = amendingDealRef ? "Updated" : "Booked";
+      const ref = result.rows[0].deal_ref;
+      setAmendingDealRef(null);
+      setFeedback({ kind: "success", message: `${verb} ${ref}` });
+      setTimeout(() => {
+        setFeedback((f) => (f && f.kind === "success" ? null : f));
+      }, 4000);
+    } else if (res.status === 409) {
+      setConflictModal({ dealRef: amendingDealRef, message: result.error });
+    } else {
+      setFeedback({ kind: "error", message: result.error || "Booking failed", detail: result.detail });
+    }
   };
 
   // Reset is scoped to the currently-active product form. Clicking Reset on
