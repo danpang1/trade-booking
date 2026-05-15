@@ -2235,7 +2235,11 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   >🕘</button>
                   {r.deal_ref}
                 </td>
-                <td className="px-3 py-2">{(r.trade_date || "").slice(0, 10)}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {r.trade_date
+                    ? String(r.trade_date).replace("T", " ").slice(0, 16)
+                    : "—"}
+                </td>
                 <td className="px-3 py-2">{r.portfolio_id}</td>
                 <td className="px-3 py-2">{r.counterparty || "—"}</td>
                 <td className="px-3 py-2">{r.cashflow_type}</td>
@@ -2375,7 +2379,7 @@ export default function TradeBookingForm() {
   const [submittedRecord, setSubmittedRecord] = useState(null);
   const [copied, setCopied] = useState(false);
   const [env, setEnv] = useState("PROD");
-  const [view, setView] = useState("TRADE_INPUT");
+  const [view, setView] = useState("DEAL_ENQUIRY");
   const [tradeInputOpen, setTradeInputOpen] = useState(true);
   // Per-category snapshot of shared fields. When you switch from SPOT to
   // LOAN, the current SPOT values for dates/portfolio/counterparty/status/etc.
