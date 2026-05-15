@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS trades_cashflow (
   direction           TEXT           NOT NULL
                         CHECK (direction IN ('RECEIVE','PAY')),
   entity              TEXT           NOT NULL,
-  portfolio_id        INTEGER        NOT NULL,
+  portfolio_id        TEXT           NOT NULL,
   portfolio_name      TEXT           NOT NULL,
   counterparty        TEXT,
   account             TEXT,

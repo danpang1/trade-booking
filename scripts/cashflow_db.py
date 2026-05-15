@@ -189,7 +189,10 @@ def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...]
         elif col == "txn_type":
             vals.append("CASHFLOW")
         elif col == "portfolio_id":
-            vals.append(int(payload["portfolio_id"]))
+            # Stored as TEXT so DB clients render it without thousands
+            # separators. Coerced from whatever the frontend sends (int
+            # or string); validate_payload still confirms it's numeric.
+            vals.append(str(payload["portfolio_id"]).strip())
         elif col == "fee_amount":
             v = payload.get("fee_amount")
             vals.append("0" if v in (None, "") else v)
