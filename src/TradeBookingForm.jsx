@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useContext, createContext } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef, useContext, createContext } from "react";
 import {
   Copy,
   Check,
@@ -1757,6 +1757,119 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   );
 }
 
+function DealEnquiry({ onSelect, BB }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState(null);
+
+  const fetchRecent = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("http://localhost:5181/api/cashflow/recent?limit=20");
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "fetch failed");
+      setRows(j.rows || []);
+      setLastFetchedAt(new Date());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchRecent(); }, [fetchRecent]);
+
+  return (
+    <div className="px-5 pt-4 pb-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <div>
+          <div
+            className="text-[11px] tracking-[0.25em] uppercase opacity-60"
+            style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}
+          >Deal Enquiry</div>
+          <div
+            className="text-[22px] mt-1"
+            style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+          >Recent Cashflow Bookings</div>
+        </div>
+        <button
+          type="button"
+          onClick={fetchRecent}
+          disabled={loading}
+          className="px-3 py-1 text-[12px]"
+          style={{
+            background: BB?.surface || "#f6f3ec",
+            border: `1px solid ${BB?.border || "#d9d4c7"}`,
+            color: BB?.text || "#1f1f1f",
+            opacity: loading ? 0.5 : 1,
+          }}
+        >{loading ? "Loading…" : "↻ Refresh"}{lastFetchedAt ? ` · ${lastFetchedAt.toLocaleTimeString()}` : ""}</button>
+      </div>
+
+      {error && (
+        <div
+          className="px-3 py-2 mb-3 text-[12px]"
+          style={{ background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00" }}
+        >Error: {error}</div>
+      )}
+
+      <div
+        style={{
+          background: BB?.surface || "#f6f3ec",
+          border: `1px solid ${BB?.border || "#d9d4c7"}`,
+        }}
+      >
+        <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
+          <thead>
+            <tr style={{ background: "rgba(0,0,0,0.04)", color: BB?.mute || "#666" }}>
+              <th className="px-3 py-2 text-left">Deal Ref</th>
+              <th className="px-3 py-2 text-left">Trade Date</th>
+              <th className="px-3 py-2 text-left">Portfolio</th>
+              <th className="px-3 py-2 text-left">Counterparty</th>
+              <th className="px-3 py-2 text-left">Cashflow Type</th>
+              <th className="px-3 py-2 text-left">Dir</th>
+              <th className="px-3 py-2 text-left">Asset</th>
+              <th className="px-3 py-2 text-right">Amount</th>
+              <th className="px-3 py-2 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && !loading && (
+              <tr><td colSpan={9} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
+            )}
+            {rows.map((r) => (
+              <tr
+                key={r.deal_ref}
+                onClick={() => onSelect(r.deal_ref)}
+                className="cursor-pointer"
+                style={{ borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                <td className="px-3 py-2">{r.deal_ref}</td>
+                <td className="px-3 py-2">{(r.trade_date || "").slice(0, 10)}</td>
+                <td className="px-3 py-2">{r.portfolio_id}</td>
+                <td className="px-3 py-2">{r.counterparty || "—"}</td>
+                <td className="px-3 py-2">{r.cashflow_type}</td>
+                <td className="px-3 py-2">{r.direction}</td>
+                <td className="px-3 py-2">{r.asset}</td>
+                <td className="px-3 py-2 text-right">{r.amount}</td>
+                <td className="px-3 py-2">{r.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-[11px] mt-3 opacity-60" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
+        Click a row to load it into the booking form for amendment.
+      </div>
+    </div>
+  );
+}
+
 // Running clock for header strip
 function useClock() {
   const [now, setNow] = useState(new Date());
@@ -2815,9 +2928,9 @@ export default function TradeBookingForm() {
         {/* ─── MAIN PANEL ─── */}
         <main className="flex-1 min-w-0 pb-8 overflow-y-auto">
           {view === "DEAL_ENQUIRY" && (
-            <PlaceholderView
-              title="Deal Enquiry"
-              subtitle="Search, filter and inspect existing trade records from the MO ledger. Lookup by trade ID, portfolio, counterparty, date range, or asset. Coming soon."
+            <DealEnquiry
+              BB={BB}
+              onSelect={(dealRef) => loadIntoForm(dealRef)}
             />
           )}
           {view === "PENDING_BOOKINGS" && (
