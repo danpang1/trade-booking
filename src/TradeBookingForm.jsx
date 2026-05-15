@@ -2176,6 +2176,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         <table className="text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", borderCollapse: "collapse", minWidth: "100%" }}>
           <thead>
             <tr style={{ background: "rgba(0,0,0,0.04)", color: BB?.mute || "#666" }}>
+              <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Month Year</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
@@ -2199,7 +2200,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={18} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={19} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -2218,7 +2219,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={18} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
+              <tr><td colSpan={19} className="px-3 py-6 text-center opacity-60">No live cashflow bookings yet.</td></tr>
             )}
             {rows.map((r) => {
               const fmtTs = (iso, len = 16) => iso ? String(iso).replace("T", " ").slice(0, len) : "—";
@@ -2232,14 +2233,12 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                 >
-                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.first_effective_start)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{monthYear}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-2 py-2 whitespace-nowrap">
                     <button
                       type="button"
                       title="View audit trail"
                       onClick={() => onHistory(r.deal_ref)}
-                      className="inline-flex items-center justify-center mr-2 align-middle"
+                      className="inline-flex items-center justify-center align-middle"
                       style={{
                         width: 22, height: 22, borderRadius: 11,
                         border: `1px solid ${BB?.border || "#d9d4c7"}`,
@@ -2249,6 +2248,10 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(0,0,0,0.06)"}
                       onMouseLeave={(ev) => ev.currentTarget.style.background = "transparent"}
                     >🕘</button>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{fmtTs(r.first_effective_start)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{monthYear}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
                     <button
                       type="button"
                       title="Open in form to amend"
