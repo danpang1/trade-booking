@@ -29,6 +29,68 @@ import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
 const TokensContext = createContext(TOKENS);
 
 // ═════════════════════════════════════════════════════════════
+// Module-scope refdata holders. Initialized empty, populated at
+// runtime by fetchRefdataOnce() (called on mount + on the refresh
+// button click). Mutable on purpose: many helper functions outside
+// the React component read these as plain JS lookups. The root
+// component bumps `refdataTick` after each load to force a re-render
+// so pickers see the new lists.
+//
+// Refresh in browser     : "↻ Refresh refdata" button in the header
+// Refresh on the server  : POST /api/refdata/refresh   (sg-ro-mysql → JSON)
+// Auto-refresh           : hourly HH:15 UTC tick in server.js
+// ═════════════════════════════════════════════════════════════
+let PORTFOLIOS = [];
+let COUNTERPARTIES = [];
+let COUNTERPARTY_IDS = {};
+let SUPERADMIN_USERS = [];
+let USER_PROFILES = {};
+
+async function fetchRefdataOnce() {
+  // Try same-origin first (Vite dev proxy or production same-origin),
+  // then the explicit API port. Same pattern as the tokens fetch.
+  const hosts = ["", "http://localhost:5181"];
+  const fetchJson = async (path) => {
+    for (const h of hosts) {
+      try {
+        const r = await fetch(h + path, { cache: "no-cache" });
+        if (!r.ok) continue;
+        return await r.json();
+      } catch { /* try next */ }
+    }
+    return null;
+  };
+
+  const [counterparties, portfolios, users] = await Promise.all([
+    fetchJson("/refdata/counterparties.json"),
+    fetchJson("/refdata/portfolios.json"),
+    fetchJson("/refdata/users.json"),
+  ]);
+
+  if (Array.isArray(counterparties)) {
+    COUNTERPARTIES = counterparties;
+    COUNTERPARTY_IDS = Object.fromEntries(counterparties.map((c) => [c.name, c.id]));
+  }
+  if (Array.isArray(portfolios)) {
+    // Form expects {number, name, entity}. The synced JSON carries
+    // those plus a few extras; we just pass it through (extra fields
+    // are harmless to downstream consumers).
+    PORTFOLIOS = portfolios;
+  }
+  if (Array.isArray(users)) {
+    SUPERADMIN_USERS = users.map((u) => u.username);
+    USER_PROFILES = Object.fromEntries(
+      users.map((u) => [u.username, { name: u.displayName, role: "Admin" }])
+    );
+  }
+  return {
+    counterparties: counterparties?.length ?? 0,
+    portfolios: portfolios?.length ?? 0,
+    users: users?.length ?? 0,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════
 // Altas editorial palette — mirrors the nxgen-mo dashboard's
 // bone/ink/hair tokens (see dashboard/src/index.css @theme block).
 // Same token names as before so downstream usage stays uniform.
@@ -92,282 +154,6 @@ const ENTITIES = [
   "SPRING MUD PTE LTD",
 ];
 
-// Portfolio reference — snapshot from MySQL reference_data.portfolio
-// WHERE deletedAt IS NULL AND status = 'ACTIVE' (33 rows). Each maps to its
-// legal entity via the portfolio.organisation column, so selecting a portfolio
-// auto-fills the Entity field. The 10 DORMANT portfolios (8002 / 8005 / 8008 /
-// 8010 / 8011 / 8013 / 8015 / 8016 / 8018 / 8019) are intentionally excluded.
-// TODO: swap to a live API fetch once the backend is up.
-const PORTFOLIOS = [
-  { number: 1000, name: "SOSOVALUE - SODEXMM", entity: "IMAGINE LABS PTE LTD" },
-  { number: 8000, name: "TOKKA LABS - MM PMM - RFQ", entity: "TOKKA LABS PTE LTD" },
-  { number: 8001, name: "TOKKA LABS - SSB - 1INCH FUSION", entity: "TOKKA LABS PTE LTD" },
-  { number: 8003, name: "TOKKA LABS - CLOB - DEX MM BLUEFIN", entity: "TOKKA LABS PTE LTD" },
-  { number: 8006, name: "TOKKA LABS - SSB - CDA ALTCHAINS", entity: "TOKKA LABS PTE LTD" },
-  { number: 8007, name: "TOKKA LABS - SSB - MEV ETH", entity: "TOKKA LABS PTE LTD" },
-  { number: 8009, name: "TOKKA LABS - INNOVATION LAB - TESTING", entity: "TOKKA LABS PTE LTD" },
-  { number: 8012, name: "TOKKA LABS - CLOB - DBS DDEX MM", entity: "TOKKA LABS PTE LTD" },
-  { number: 8017, name: "TOKKA LABS - SSB - BUILDER ETH", entity: "TOKKA LABS PTE LTD" },
-  { number: 8020, name: "TOKKA LABS - SSB - COWSWAP", entity: "TOKKA LABS PTE LTD" },
-  { number: 8021, name: "TOKKA LABS - SSB - PYTH EXPRESS RELAY", entity: "TOKKA LABS PTE LTD" },
-  { number: 8022, name: "TOKKA LABS - MM LP - ALKIMIYA", entity: "TOKKA LABS PTE LTD" },
-  { number: 8023, name: "TOKKA LABS - SSB - CDA SOL", entity: "TOKKA LABS PTE LTD" },
-  { number: 8025, name: "TOKKA LABS - SSB PYTH", entity: "TOKKA LABS PTE LTD" },
-  { number: 8026, name: "TOKKA LABS - CLOB - DEX REYA", entity: "TOKKA LABS PTE LTD" },
-  { number: 8027, name: "TOKKA LABS - MM LP - SOSOVALUE", entity: "TOKKA LABS PTE LTD" },
-  { number: 8028, name: "TOKKA LABS - MM PMM - CROSSCHAIN", entity: "TOKKA LABS PTE LTD" },
-  { number: 8029, name: "TOKKA LABS - SSB - SEARCHER SOLANA", entity: "TOKKA LABS PTE LTD" },
-  { number: 8030, name: "TOKKA LABS - CLOB - SYNFUTURES DEX", entity: "TOKKA LABS PTE LTD" },
-  { number: 8031, name: "TOKKA LABS - SSB - CDA TON HG", entity: "TOKKA LABS PTE LTD" },
-  { number: 8032, name: "TOKKA LABS - CLOB - HYPERLIQUID", entity: "TOKKA LABS PTE LTD" },
-  { number: 8033, name: "TOKKA LABS - CLOB - GRVT VERTEX", entity: "TOKKA LABS PTE LTD" },
-  { number: 8034, name: "TOKKA LABS - SSB - VEROLA", entity: "TOKKA LABS PTE LTD" },
-  { number: 8035, name: "TOKKA LABS - MM LP - ARMSTROM", entity: "TOKKA LABS PTE LTD" },
-  { number: 8036, name: "TOKKA LABS - MM LP - SOSOVAULT", entity: "TOKKA LABS PTE LTD" },
-  { number: 8037, name: "TOKKA LABS - SSB - LIQUIDATION", entity: "TOKKA LABS PTE LTD" },
-  { number: 8038, name: "TOKKA LABS - ARB - HYPERARBITRAGE", entity: "TOKKA LABS PTE LTD" },
-  { number: 8039, name: "TOKKA LABS - SPP - SODEX", entity: "TOKKA LABS PTE LTD" },
-  { number: 8040, name: "TOKKA LABS - RFQ - PROPAMM", entity: "TOKKA LABS PTE LTD" },
-  { number: 8041, name: "TOKKA LABS - MM - CENTRAL RISK BOOK", entity: "TOKKA LABS PTE LTD" },
-  { number: 8888, name: "TOKKA LABS - TREASURY", entity: "TOKKA LABS PTE LTD" },
-  { number: 8889, name: "TOKKA LABS - TREASURY - INVESTMENTS", entity: "TOKKA LABS PTE LTD" },
-  { number: 9999, name: "TOKKA LABS - DUMMY", entity: "TOKKA LABS PTE LTD" },
-];
-
-// Counterparty reference — snapshot from MySQL reference_data.counterparty
-// WHERE deletedAt IS NULL AND (status IS NULL OR status='ACTIVE') (168 rows).
-// Each entry carries type + subType so the picker can show useful context
-// (e.g. EXCHANGE (CEX) / SMART CONTRACTS / LENDER).
-// TODO: swap to a live API fetch once the backend is up.
-const COUNTERPARTIES = [
-  { name: "0XRICK LIMITED", type: "LENDER", subType: "LENDER" },
-  { name: "1INCH FUSION+", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "1INCH LIMITED", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "21SHARES US LLC", type: "TRADING VENUE", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "ACROSS", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "ADEVAR LABS INC", type: "SERVICE PROVIDER/VENDOR", subType: "VENDOR" },
-  { name: "AERODROME", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "AGORA FINANCE", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "AIRSWAP", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "ALGEBRA FINANCE", type: "TRADING VENUE", subType: "SMART CONTRACTS" },
-  { name: "ALKIMIYA", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "ALTERNITY FUND LTD", type: "LENDER", subType: "CORPORATION" },
-  { name: "AMBIENT FINANCE", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "APTOS", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "AQUA PROTOCOL", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "ARBITRUM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "AVALANCHE", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BACKED.FI", type: "ISSUER", subType: "CORPORATION" },
-  { name: "BACKPACK", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "BASE", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BEBOP LTD", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "BERACHAIN", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BERASWAP", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "BINANCE", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "BINANCE SMART CHAIN", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BINANCE_ALPHA", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "BITCOIN", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BITCOIN CASH", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BITGET", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "BITGLOBAL", type: "SERVICE PROVIDER/VENDOR", subType: "VENDOR" },
-  { name: "BITGO TRUST COMPANY INC", type: "TRADING VENUE", subType: "CORPORATION" },
-  { name: "BITMEX", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "BLAST", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "BLITZ", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "BLOCKPI NETWORK", type: "SERVICE PROVIDER/VENDOR", subType: "CORPORATION" },
-  { name: "BLUEFIN", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "BYBIT", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "CARDANO", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "CELO", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "CENTRIFUGE", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "CETUS PROTOCOL", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "CHAINFLIP", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "CHEN GUO", type: "NOT APPLICABLE", subType: "INDIVIDUAL" },
-  { name: "CIRCLE INTERNET FINANCIAL", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "CITREA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "COINBASE", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "COINROUTES INC", type: "SERVICE PROVIDER/VENDOR", subType: "SERVICE PROVIDER" },
-  { name: "CONNEXT FOUNDATION - EVERCLEAR", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "COWSWAP DAO", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "DBS DIGITAL EXCHANGE (DDEX)", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "DEDUST", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "DEXALOT", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "DIGITAL FORCE LTD.", type: "LENDER", subType: "LENDER" },
-  { name: "DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)", type: "INVESTMENT", subType: "CORPORATION" },
-  { name: "DOGE", type: "BLOCKCHAIN", subType: "NOT APPLICABLE" },
-  { name: "DOURO LABS", type: "PROTOCOL", subType: "CORPORATION" },
-  { name: "DRIFT", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "DYDX", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "ETHENA LABS GMBH", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "ETHEREUM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "ETHGAS", type: "TRADING VENUE", subType: "VENDOR" },
-  { name: "FRAX", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "GATE", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "GMR LIMITED", type: "LENDER", subType: "CORPORATION" },
-  { name: "GNOSIS", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "GRVT MARKETS LIMITED (GML)", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "HASHFLOW FOUNDATION", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "HEDERA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "HELIUS BLOCKCHAIN TECHNOLOGIES, INC.", type: "SERVICE PROVIDER/VENDOR", subType: "CORPORATION" },
-  { name: "HUOBI", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "HYPERCORE", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "HYPEREVM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "HYPERLIQUID", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "INJECTIVE", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "INTERACTIVE BROKERS", type: "TRADING VENUE", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "IZISWAP", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "IZUMI", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "JITO NETWORK", type: "PROTOCOL", subType: "BLOCKCHAIN" },
-  { name: "JUPITER", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "JUPITER Z", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "KANA LABS LIMITED", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "KODIAK", type: "TRADING VENUE", subType: "SMART CONTRACTS" },
-  { name: "KRAKEN", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "KUCOIN", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "KYBERSWAP", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "LBANK EXCHANGE", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "LI.FI", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "LIGHTER", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "LINEA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "MANTLE", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "MANTRA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "MAYAN FOUNDATION", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "MERCHANT MOE", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "META PROTOCOL INTERNATIONAL, INC (ZETA)", type: "LENDER", subType: "LENDER" },
-  { name: "MEXC", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "MIDAS SOFTWARDS GMBH", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "MODE", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "NATIVE MARKETS", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "NATIVE TECHNOLOGY LIMITED", type: "TRADING VENUE", subType: "CORPORATION" },
-  { name: "OKX", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "OKX (SG)", type: "TRADING VENUE", subType: "EXCHANGE (CEX)" },
-  { name: "OKX DEX", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "OKX DEX AGGREGATOR", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "ONDO GLOBAL MARKETS (BVI) LIMITED", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "ONDO USDY LLC", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "OPTIMEX", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "OPTIMISM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "PANCAKESWAP (PCS)", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "PANCAKESWAP-X", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "PARADEX", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "PARASWAP", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "PEAQ", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "PLASMA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "POLKADOT", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "POLYGON", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "PRM LBS LIMITED (ARKIS)", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "PROPELLERHEADS AG", type: "INVESTMENT", subType: "CORPORATION" },
-  { name: "PYTH DATA ASSOCIATION (PYTH)", type: "PROTOCOL", subType: "CORPORATION" },
-  { name: "RAYDIUM", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "REYA", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "RIPPLE", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "ROUTER PROTOCOL", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "SAGAEVM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SCROLL", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SEARCHER.WTF", type: "SERVICE PROVIDER/VENDOR", subType: "CORPORATION" },
-  { name: "SHADOW", type: "TRADING VENUE", subType: "SMART CONTRACTS" },
-  { name: "SHADOW_SIMULATION", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SHINAMI", type: "SERVICE PROVIDER/VENDOR", subType: "CORPORATION" },
-  { name: "SODEX", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "SOLANA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SONEIUM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SONIC", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SOSOVALUE", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "SPRING MUD LIMITED", type: "LENDER", subType: "LENDER" },
-  { name: "SPRING MUD PTE LTD", type: "LENDER", subType: "LENDER" },
-  { name: "SQUID", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "STARGATE", type: "TRADING VENUE", subType: "SMART CONTRACTS" },
-  { name: "STELLAR", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "STON.FI", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "SUI", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "SUPERSTATE INC", type: "ISSUER", subType: "BROKER/OVER-THE-COUNTER (OTC)" },
-  { name: "SYNCSWAP", type: "TRADING VENUE", subType: "SMART CONTRACTS" },
-  { name: "SYNFUTURES DEX", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "T1 LABS INC. (T1 PROTOCOL)", type: "INVESTMENT", subType: "CORPORATION" },
-  { name: "TEMPO", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "TESTING ACCOUNTS", type: "NOT APPLICABLE", subType: "INDIVIDUAL" },
-  { name: "THRUSTER", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "TOKKA LABS PTE LTD", type: "NOT APPLICABLE", subType: "NOT APPLICABLE" },
-  { name: "TOKKA TREASURY", type: "INTERNAL COUNTERPARTY", subType: "CORPORATION" },
-  { name: "TON", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "TPLUS LABS INC", type: "INVESTMENT", subType: "CORPORATION" },
-  { name: "TRON", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "TURBOS", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "UNICHAIN", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "UNISWAP", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "UNISWAPX", type: "TRADING VENUE", subType: "SMART CONTRACTS" },
-  { name: "VERTEX PROTOCOL", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "VERTEX_ARBITRUM", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "VERTEX_BLITZ", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "VERTEX_MANTLE", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "VERTEX_SEI", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "WISDOMTREE", type: "ISSUER", subType: "CORPORATION" },
-  { name: "WORMHOLE", type: "TRADING VENUE", subType: "EXCHANGE (DEX)" },
-  { name: "XRPLEVM", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "ZEROEX INC (0X LABS)", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "ZEROEX INC_V3 (0X LABS)", type: "PROTOCOL", subType: "SMART CONTRACTS" },
-  { name: "ZETA", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-  { name: "ZKSYNC", type: "BLOCKCHAIN", subType: "BLOCKCHAIN" },
-];
-
-// Snapshot of reference_data.counterparty {name → id} for ACTIVE rows.
-// 173 entries · id range 1-180 (gaps from deletions). Used to derive
-// the immutable counterparty_id stored on trades_cashflow as a
-// CID-prefixed 6-digit string (e.g. id=1 → "CID000001").
-// TODO: swap to live API fetch when a refdata service ships.
-const COUNTERPARTY_IDS = {
-  'BINANCE': 1, 'OKX': 2, 'DBS DIGITAL EXCHANGE (DDEX)': 3, 'KUCOIN': 4,
-  '1INCH LIMITED': 5, 'HASHFLOW FOUNDATION': 6, 'PANCAKESWAP (PCS)': 7,
-  'ZEROEX INC (0X LABS)': 8, 'HUOBI': 9, 'GATE': 11, 'ETHEREUM': 12,
-  'BINANCE SMART CHAIN': 13, 'ARBITRUM': 14, 'OPTIMISM': 15, 'BASE': 16,
-  'AVALANCHE': 17, 'POLYGON': 18, 'MEXC': 19, 'VERTEX PROTOCOL': 20,
-  'BYBIT': 21, 'HYPERLIQUID': 22, 'BLITZ': 23, 'PARADEX': 24, 'BLUEFIN': 25,
-  'CHAINFLIP': 26, 'DEXALOT': 27, 'DYDX': 28, 'INJECTIVE': 29, 'LINEA': 30,
-  'ZETA': 31, 'COWSWAP DAO': 32, 'AQUA PROTOCOL': 33,
-  'GRVT MARKETS LIMITED (GML)': 34, 'PYTH DATA ASSOCIATION (PYTH)': 35,
-  'NATIVE TECHNOLOGY LIMITED': 36, '21SHARES US LLC': 37, 'BITCOIN': 38,
-  'CARDANO': 39, 'POLKADOT': 40, 'RIPPLE': 41, 'BITCOIN CASH': 42,
-  'SCROLL': 43, 'ZKSYNC': 44, 'BLAST': 45, 'SHADOW_SIMULATION': 46,
-  'CIRCLE INTERNET FINANCIAL': 47, 'TESTING ACCOUNTS': 48, 'SOLANA': 49,
-  'ALKIMIYA': 50, 'DIGITAL FORCE LTD.': 51, 'PRM LBS LIMITED (ARKIS)': 52,
-  'META PROTOCOL INTERNATIONAL, INC (ZETA)': 53, 'SPRING MUD LIMITED': 54,
-  'SPRING MUD PTE LTD': 55, '0XRICK LIMITED': 56, 'TON': 57,
-  'AGORA FINANCE': 58, 'UNISWAP': 59, 'AIRSWAP': 60, 'PARASWAP': 61,
-  'MODE': 62, 'BLOCKPI NETWORK': 63, 'LBANK EXCHANGE': 64,
-  'T1 LABS INC. (T1 PROTOCOL)': 65, 'MANTLE': 66, 'VERTEX_ARBITRUM': 67,
-  'VERTEX_BLITZ': 68, 'VERTEX_MANTLE': 70, 'VERTEX_SEI': 71,
-  'CONNEXT FOUNDATION - EVERCLEAR': 72, 'ETHENA LABS GMBH': 74,
-  'JUPITER': 75, 'RAYDIUM': 76, 'STON.FI': 77, 'DEDUST': 78,
-  'TOKKA TREASURY': 79, 'BITGO TRUST COMPANY INC': 80, 'ACROSS': 81,
-  'SQUID': 82, 'WORMHOLE': 83, 'MAYAN FOUNDATION': 84,
-  'ZEROEX INC_V3 (0X LABS)': 85, 'MERCHANT MOE': 86, 'COINBASE': 87,
-  'THRUSTER': 88, 'PANCAKESWAP-X': 89, 'CETUS PROTOCOL': 90, 'SUI': 91,
-  'REYA': 92, 'SHINAMI': 93, 'DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)': 94,
-  'TRON': 95, 'DOGE': 96, 'TURBOS': 97, 'PROPELLERHEADS AG': 98,
-  'JITO NETWORK': 99, 'IZUMI': 100, 'OKX DEX AGGREGATOR': 101,
-  'SYNFUTURES DEX': 102, 'BEBOP LTD': 103, 'ALTERNITY FUND LTD': 104,
-  'SOSOVALUE': 105, 'JUPITER Z': 106, 'CELO': 107, 'BERACHAIN': 108,
-  'UNICHAIN': 109, 'DRIFT': 110, 'SONIC': 111, 'SEARCHER.WTF': 112,
-  'SYNCSWAP': 113, 'STARGATE': 114, 'IZISWAP': 115, 'AMBIENT FINANCE': 116,
-  'KODIAK': 117, 'BERASWAP': 118, '1INCH FUSION+': 119, 'UNISWAPX': 120,
-  'AERODROME': 121, 'OPTIMEX': 123, 'ALGEBRA FINANCE': 124, 'KYBERSWAP': 125,
-  'ROUTER PROTOCOL': 126, 'LIGHTER': 127, 'BINANCE_ALPHA': 129,
-  'KANA LABS LIMITED': 130, 'HYPEREVM': 132, 'PEAQ': 133, 'SONEIUM': 134,
-  'XRPLEVM': 135, 'GNOSIS': 136, 'APTOS': 137, 'OKX (SG)': 139, 'SHADOW': 140,
-  'ETHGAS': 141, 'TPLUS LABS INC': 142, 'HYPERCORE': 143, 'OKX DEX': 144,
-  'INTERACTIVE BROKERS': 145, 'GMR LIMITED': 146, 'BACKED.FI': 147,
-  'SODEX': 148, 'ONDO USDY LLC': 149, 'ONDO GLOBAL MARKETS (BVI) LIMITED': 150,
-  'MIDAS SOFTWARDS GMBH': 151, 'CENTRIFUGE': 152, 'SUPERSTATE INC': 153,
-  'BITGLOBAL': 154, 'DOURO LABS': 155, 'BITMEX': 156, 'CHEN GUO': 157,
-  'MANTRA': 158, 'SAGAEVM': 159, 'PLASMA': 160, 'BACKPACK': 161, 'FRAX': 162,
-  'NATIVE MARKETS': 163, 'WISDOMTREE': 164, 'TOKKA LABS PTE LTD': 165,
-  'KRAKEN': 166, 'COINROUTES INC': 167, 'LI.FI': 168, 'CITREA': 169,
-  'HEDERA': 170, 'ADEVAR LABS INC': 171, 'STELLAR': 172, 'BITGET': 173,
-  'TEMPO': 174, 'HELIUS BLOCKCHAIN TECHNOLOGIES, INC.': 175,
-  'ECHOCREEK LTD': 176, 'BINANCE INVESTMENTS CO. LTD': 177,
-  'CHEN GUO (GORDON)': 178, 'AXELAR': 179, 'PAYWARD, INC.': 180,
-};
-
 // Format a numeric counterparty id (e.g. 1) as the wire/storage form
 // "CID000001". Returns null for unknown / missing ids so the backend
 // stores NULL (e.g. INTER PTF FUNDING where the counterparty field
@@ -387,16 +173,25 @@ const CASHFLOW_DIRECTIONS = ["OUTGOING", "INCOMING"];
 // Placeholder cashflow types — backend will swap to MySQL select_category=CASHFLOW TYPE (28 values).
 const CASHFLOW_TYPES = [
   "INTER PTF FUNDING",
+  "RETAINER FEES",
+  "OPEX",
+  "OTHER INCOME",
+  "OTHER EXPENSE",
+  "TRANSFER FEES",
   "INTEREST EXPENSE",
   "INTEREST INCOME",
-  "TRADING FEES",
-  "FUNDING FEE",
-  "GAS FEE",
-  "FEE REBATE",
-  "DEPOSIT",
-  "WITHDRAW",
-  "OTHERS",
+  "WITHHOLDING TAX",
+  "LOAN",
+  "LOAN REPAYMENT",
 ];
+// Cashflow types that semantically belong to a loan contract — when
+// any of these is selected, the form surfaces the loan-link picker
+// and the backend's set_mappings_for_cashflow derives a mapping_type
+// from (cashflow_type, direction). Keep in sync with the
+// derive_mapping_type() table in scripts/loan_cashflow_map_db.py.
+const LOAN_RELATED_CF_TYPES = new Set([
+  "LOAN", "LOAN REPAYMENT", "INTEREST EXPENSE", "INTEREST INCOME",
+]);
 // Trade lifecycle status — SPOT / FUTURE / CASHFLOW share this enum.
 // Matches the trades_cashflow.status CHECK constraint in UAT Postgres.
 // Default is PENDING on a fresh booking.
@@ -426,38 +221,15 @@ const VENUES = {
 // Asset symbols snapshot — sourced from reference_data.instrument_token_grouped
 // via src/data/tokens.js (947 active tokens, deduped by commonIdentifier).
 const ASSETS = ASSET_SYMBOLS;
-// Placeholder loan types — backend will swap to a DB-backed list later.
-// Adjust freely; first value is the default on a fresh booking.
+// Loan types — mirrors the CHECK constraint on trades_loan.loan_type.
+// Keep this list and the DDL (`apply_schema_loan.py`) in sync.
+// First value is the default on a fresh booking.
 const LOAN_TYPES = [
-  "TERM",
-  "REVOLVING",
-  "MARGIN",
-  "REPO",
-  "DEFI LENDING",
   "VIP LOAN",
-  "BRIDGE",
+  "INTERNAL",
+  "EXTERNAL",
+  "DEFI LENDING",
 ];
-
-// Source: reference_data.user — WHERE isActive=1 AND roleName='superadmin'
-// (5 active superadmins on sg-ro-mysql, snapshot 2026-05-13)
-// TODO: replace with live fetch once the booking-API service is up.
-const SUPERADMIN_USERS = [
-  "danny.pang",
-  "irven.heng",
-  "mo",
-  "weehowe.ang",
-  "yaqing.bie",
-];
-
-// Display name + role for sidebar profile chip. All 5 are roleName=superadmin
-// in MySQL; presented as "Admin" to match the dashboard's labelling.
-const USER_PROFILES = {
-  "danny.pang":   { name: "Danny Pang",   role: "Admin" },
-  "irven.heng":   { name: "Irven Heng",   role: "Admin" },
-  "mo":           { name: "Mo",           role: "Admin" },
-  "weehowe.ang":  { name: "Wee Howe Ang", role: "Admin" },
-  "yaqing.bie":   { name: "Yaqing Bie",   role: "Admin" },
-};
 
 // Internal-trade-id prefix per category. The 8-digit suffix is a placeholder
 // queue number — backend will allocate the real sequence on submit.
@@ -1359,16 +1131,154 @@ const CounterpartyPicker = ({ value, onChange, options }) => {
   );
 };
 
+// One-line summary used inside the loan dropdown and in Deal Enquiry chips.
+// Example: "MLA00000001 · BORROW 100,000 USDT @ 5.25% FIXED · Binance · matures 2026-06-15"
+function formatLoanOptionLabel(loan) {
+  if (!loan) return "";
+  const principal = parseFloat(loan.principal_amount) || 0;
+  const fmt = principal.toLocaleString("en-US", { maximumFractionDigits: 18 });
+  const matures = loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "open-term";
+  const cp = loan.counterparty ? ` · ${loan.counterparty}` : "";
+  return `${loan.deal_ref} · ${loan.direction} ${fmt} ${loan.principal_asset || ""} @ ${loan.interest_rate_pa_pct || 0}% ${loan.interest_type || ""}${cp} · matures ${matures}`;
+}
+
+// Multi-select chip picker for linking a cashflow to one or more loans.
+// `selected` is a string[] of MLA deal_refs; `options` is the array of
+// live trades_loan rows already filtered to the relevant portfolio.
+const LoanPicker = ({ selected, onChange, options }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const byRef = new Map(options.map((o) => [o.deal_ref, o]));
+  const remaining = options.filter((o) => !selected.includes(o.deal_ref));
+
+  const addRef = (ref) => {
+    if (!ref || selected.includes(ref)) return;
+    onChange([...selected, ref]);
+    setOpen(false);
+  };
+  const removeRef = (ref) => onChange(selected.filter((r) => r !== ref));
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <div
+        className="w-full flex flex-wrap gap-1 px-1.5 py-1 text-[12px] font-mono"
+        style={{ background: "#f8f6f1", border: "1px solid #d9d4c7", minHeight: 32 }}
+      >
+        {selected.length === 0 && (
+          <span className="px-1 py-0.5" style={{ color: "#9a9488" }}>
+            — no loan tagged —
+          </span>
+        )}
+        {selected.map((ref) => {
+          const loan = byRef.get(ref);
+          return (
+            <span
+              key={ref}
+              className="inline-flex items-center gap-1 px-2 py-0.5"
+              title={loan ? formatLoanOptionLabel(loan) : ref}
+              style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
+            >
+              <span>{ref}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${ref}`}
+                onClick={() => removeRef(ref)}
+                style={{ background: "transparent", border: "none", color: "#1f63ea", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1 }}
+              >×</button>
+            </span>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="px-2 py-0.5 ml-auto"
+          style={{
+            background: open ? "#1f63ea" : "transparent",
+            color: open ? "#ffffff" : "#1f63ea",
+            border: `1px dashed ${open ? "#1f63ea" : "#1f63ea"}`,
+            cursor: remaining.length === 0 ? "not-allowed" : "pointer",
+            opacity: remaining.length === 0 ? 0.4 : 1,
+          }}
+          disabled={remaining.length === 0}
+        >
+          + Add loan
+        </button>
+      </div>
+      {open && remaining.length > 0 && (
+        <div
+          className="absolute z-50 mt-1 left-0"
+          style={{
+            background: "#ffffff",
+            border: "1px solid #1f63ea",
+            boxShadow: "0 12px 32px rgba(13,13,13,0.12)",
+            minWidth: "100%",
+            width: 540,
+            maxHeight: 360,
+            overflowY: "auto",
+          }}
+        >
+          {remaining.map((loan) => (
+            <button
+              key={loan.deal_ref}
+              type="button"
+              onClick={() => addRef(loan.deal_ref)}
+              className="block w-full text-left px-3 py-2 text-[12px] font-mono"
+              style={{
+                background: "transparent",
+                border: "none",
+                borderBottom: "1px solid #efece4",
+                cursor: "pointer",
+                color: "#0d0d0d",
+              }}
+              onMouseEnter={(ev) => { ev.currentTarget.style.background = "#f3f1ea"; }}
+              onMouseLeave={(ev) => { ev.currentTarget.style.background = "transparent"; }}
+            >
+              <span style={{ color: "#1f63ea" }}>{loan.deal_ref}</span>
+              <span style={{ color: "#9a9488" }}> · </span>
+              <span>{loan.direction} {parseFloat(loan.principal_amount || 0).toLocaleString("en-US", { maximumFractionDigits: 18 })} {loan.principal_asset}</span>
+              <span style={{ color: "#9a9488" }}> · </span>
+              <span>{loan.interest_rate_pa_pct || 0}% {loan.interest_type}</span>
+              {loan.counterparty && <>
+                <span style={{ color: "#9a9488" }}> · </span>
+                <span>{loan.counterparty}</span>
+              </>}
+              <div className="text-[10px] mt-0.5" style={{ color: "#6a665c" }}>
+                matures {loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "open-term"}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Searchable asset combobox — value is the token SYMBOL (string).
 // Options come from TOKENS (snapshot of reference_data.instrument_token_grouped).
 // Filter matches symbol or long name (e.g. typing "apple" finds AAPLON/AAPLX).
-const AssetPicker = ({ value, onChange, options, placeholder = "— select asset —" }) => {
+const AssetPicker = ({ value, onChange, options, placeholder = "— select asset —", disabled = false }) => {
   const ctxTokens = useContext(TokensContext);
   const list = options || ctxTokens;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
+
+  // If the parent locks us mid-open, slam shut so the dropdown doesn't
+  // linger after the disabled state kicks in.
+  useEffect(() => {
+    if (disabled && open) setOpen(false);
+  }, [disabled, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1397,22 +1307,26 @@ const AssetPicker = ({ value, onChange, options, placeholder = "— select asset
     <div ref={wrapRef} className="relative w-full">
       <button
         type="button"
+        disabled={disabled}
         onClick={() => {
+          if (disabled) return;
           setOpen((o) => !o);
           setSearch("");
         }}
         className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono text-left transition-colors"
         style={{
-          background: "#f8f6f1",
+          background: disabled ? "#efece4" : "#f8f6f1",
           border: `1px solid ${open ? "#1f63ea" : "#d9d4c7"}`,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.85 : 1,
         }}
         onMouseEnter={(ev) => {
-          if (open) return;
+          if (open || disabled) return;
           ev.currentTarget.style.background = "#ffffff";
           ev.currentTarget.style.borderColor = "#6a665c";
         }}
         onMouseLeave={(ev) => {
-          if (open) return;
+          if (open || disabled) return;
           ev.currentTarget.style.background = "#f8f6f1";
           ev.currentTarget.style.borderColor = "#d9d4c7";
         }}
@@ -1683,14 +1597,19 @@ const SIDEBAR_CATEGORIES = [
 // Active tab: ink text + 2px ink underline. Inactive: muted. Coming-soon
 // products render as disabled tabs with the same "soon" chip used in the
 // sidebar today.
-const ProductTabs = ({ active, onChange }) => (
+const ProductTabs = ({ active, onChange, locked = false }) => (
   <div
     className="flex items-end gap-6 px-5 pt-5 pb-0"
     style={{ borderBottom: `1px solid #d9d4c7` }}
   >
     {SIDEBAR_CATEGORIES.map((c) => {
       const isActive = c.key === active;
-      const disabled = c.comingSoon;
+      // In amend mode (`locked`) we only render the active tab so the
+      // user can't accidentally switch product mid-amendment. The
+      // amend operates on a specific deal_ref of a specific product
+      // — switching tabs would silently wipe the in-flight form.
+      if (locked && !isActive) return null;
+      const disabled = c.comingSoon || locked;
       return (
         <button
           key={c.key}
@@ -1721,7 +1640,10 @@ const ProductTabs = ({ active, onChange }) => (
         >
           <span className="inline-flex items-center gap-2">
             {c.label}
-            {disabled && (
+            {/* "soon" is a product-status marker — only show it for
+                comingSoon tabs, not when the tab is merely disabled
+                because we're in amend-locked mode. */}
+            {c.comingSoon && (
               <span
                 className="text-[8px] tracking-[0.2em] uppercase font-mono px-1.5 py-0.5"
                 style={{
@@ -1893,21 +1815,48 @@ function ModalShell({ open, onClose, children }) {
 // renders a timeline (oldest at the bottom, newest on top). For each
 // version after the first, highlights the fields that changed compared
 // to the prior version.
-const AUDIT_DIFF_FIELDS = [
+const AUDIT_DIFF_FIELDS_CASHFLOW = [
   "cashflow_type", "direction", "counterparty", "account",
   "account_type", "asset", "amount", "fee_asset", "fee_amount",
   "trade_date", "value_date", "network", "txid_reference",
   "status", "user_id", "comment", "external_trade_id",
+  // Loan links (`mappings`) deliberately omitted — the map table isn't
+  // bitemporal, so every version of a cashflow row carries the *same*
+  // current-mappings snapshot from the LEFT JOIN. A diff would always
+  // be empty. The current state is shown on the initial-booking line.
+];
+const AUDIT_DIFF_FIELDS_LOAN = [
+  "direction", "loan_type", "counterparty",
+  "principal_asset", "principal_amount",
+  "interest_asset", "interest_rate_pa_pct", "interest_type", "day_count_basis", "floating_benchmark",
+  "collateral_asset", "collateral_amount",
+  "is_hedged", "hedged_asset", "hedged_qty", "hedged_price",
+  "hedge_proceeds_asset", "hedge_proceeds_amount",
+  "trade_date", "maturity_date",
+  "status", "user_id", "comment", "order_id",
 ];
 const AUDIT_FIELD_LABELS = {
-  cashflow_type: "Cashflow Type", direction: "Direction",
-  counterparty: "Counterparty", account: "Account",
-  account_type: "Account Type", asset: "Asset", amount: "Amount",
-  fee_asset: "Fee Asset", fee_amount: "Fee Amount",
-  trade_date: "Trade Date", value_date: "Value Date",
-  network: "Network", txid_reference: "Tx Hash",
+  // shared
+  direction: "Direction", counterparty: "Counterparty", account: "Account",
+  account_type: "Account Type", trade_date: "Trade Date",
   status: "Status", user_id: "User", comment: "Comment",
+  // cashflow
+  cashflow_type: "Cashflow Type", asset: "Asset", amount: "Amount",
+  fee_asset: "Fee Asset", fee_amount: "Fee Amount",
+  value_date: "Value Date", network: "Network", txid_reference: "Tx Hash",
   external_trade_id: "External ID",
+  // loan
+  loan_type: "Loan Type",
+  principal_asset: "Principal Asset", principal_amount: "Principal Amount",
+  interest_asset: "Interest Asset", interest_rate_pa_pct: "Interest Rate (% p.a.)",
+  interest_type: "Interest Type", day_count_basis: "Day Basis", floating_benchmark: "Floating Benchmark",
+  collateral_asset: "Collateral Asset", collateral_amount: "Collateral Amount",
+  is_hedged: "Hedged", hedged_asset: "Hedged Asset", hedged_qty: "Hedged Qty",
+  hedged_price: "Hedged Price", hedge_proceeds_asset: "Hedge Proceeds Asset",
+  hedge_proceeds_amount: "Hedge Proceeds Amount",
+  maturity_date: "Maturity Date", order_id: "Order ID",
+  // Map-table links
+  mappings: "Linked Loans",
 };
 
 function HistoryModal({ open, dealRef, state, onClose }) {
@@ -1922,12 +1871,16 @@ function HistoryModal({ open, dealRef, state, onClose }) {
   if (!open) return null;
 
   const rows = state?.rows || [];
+  // Pick diff fields per product. Loan rows expose principal/interest/etc
+  // that cashflow doesn't, and vice-versa.
+  const product = rows[0]?.txn_type === "LOAN" ? "LOAN" : "CASHFLOW";
+  const diffFields = product === "LOAN" ? AUDIT_DIFF_FIELDS_LOAN : AUDIT_DIFF_FIELDS_CASHFLOW;
   // Build per-version diff: for each row (except the first), compute which
-  // AUDIT_DIFF_FIELDS changed vs the prior row.
+  // diffFields changed vs the prior row.
   const diffs = rows.map((row, i) => {
     if (i === 0) return { initial: true, changed: [] };
     const prev = rows[i - 1];
-    const changed = AUDIT_DIFF_FIELDS.filter((f) => {
+    const changed = diffFields.filter((f) => {
       const a = row[f] ?? null, b = prev[f] ?? null;
       return String(a) !== String(b);
     }).map((f) => ({ field: f, from: prev[f], to: row[f] }));
@@ -2022,11 +1975,30 @@ function HistoryModal({ open, dealRef, state, onClose }) {
                     {d.initial ? (
                       <div className="mt-2 text-[11px]">
                         Initial booking:{" "}
-                        <code>{row.cashflow_type}</code>{" · "}
-                        <code>{row.direction}</code>{" · "}
-                        <code>{row.amount} {row.asset}</code>{" · status "}
-                        <code>{row.status}</code>
-                        {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                        {row.txn_type === "LOAN" ? (
+                          <>
+                            <code>{row.loan_type}</code>{" · "}
+                            <code>{row.direction}</code>{" · "}
+                            <code>{row.principal_amount} {row.principal_asset}</code>{" @ "}
+                            <code>{row.interest_rate_pa_pct}% {row.interest_type}</code>{" · status "}
+                            <code>{row.status}</code>
+                            {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                          </>
+                        ) : (
+                          <>
+                            <code>{row.cashflow_type}</code>{" · "}
+                            <code>{row.direction}</code>{" · "}
+                            <code>{row.amount} {row.asset}</code>{" · status "}
+                            <code>{row.status}</code>
+                            {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                            {/* Currently-linked loans — pulled from the map
+                                table snapshot. Same for every version row
+                                (the map table is not bitemporal). */}
+                            {Array.isArray(row.mappings) && row.mappings.length > 0 && (
+                              <> · linked to <code>{row.mappings.map((m) => m.counterpart_deal_ref).join(", ")}</code></>
+                            )}
+                          </>
+                        )}
                       </div>
                     ) : d.changed.length === 0 ? (
                       <div className="mt-2 text-[11px] opacity-70">
@@ -2054,6 +2026,586 @@ function HistoryModal({ open, dealRef, state, onClose }) {
             </ol>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LoanScheduleModal — drill-down for one loan ──────────────────────
+// Fetches /api/loan/:deal_ref on open, renders the loan contract
+// summary + computed running balances + chronological table of mapped
+// cashflows. Buttons inline let the user jump to amend or audit history.
+function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, onCashflowSelect, onBookCashflow }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (!open) { setMounted(false); return; }
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  // Accrual Date — as-of date for the interest computation. Defaults
+  // to UTC today minus 1 (T-1 EOD convention — avoids the intraday
+  // ambiguity of running an accrual on the same day the trade lands).
+  // User can edit; the displayed numbers reactively recompute.
+  const defaultAccrualDate = useMemo(() => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  }, []);
+  const [accrualDate, setAccrualDate] = useState(defaultAccrualDate);
+  // Reset to T-1 whenever the modal re-opens with a different loan, so
+  // a stale date from a prior view doesn't leak across.
+  useEffect(() => {
+    if (open) setAccrualDate(defaultAccrualDate);
+  }, [open, dealRef, defaultAccrualDate]);
+
+  if (!open) return null;
+
+  const loan = state?.loan;
+  // Sort mappings chronologically. Backend already does this, but we
+  // re-sort defensively in case trade_date is null on some rows.
+  const mappings = [...(loan?.mappings || [])].sort((a, b) => {
+    const ta = String(a.trade_date || "");
+    const tb = String(b.trade_date || "");
+    return ta.localeCompare(tb);
+  });
+
+  // Running balances. Disbursed - Repaid = outstanding principal.
+  // Interest is tracked separately. Sign convention: amounts on the
+  // cashflow row are already signed (OUTGOING=-, INCOMING=+), so the
+  // magnitude is what we want.
+  let disbursed = 0, repaid = 0, interest = 0, fees = 0;
+  for (const m of mappings) {
+    const mag = Math.abs(parseFloat(m.amount) || 0);
+    if (m.mapping_type === "PRINCIPAL_DISBURSE") disbursed += mag;
+    else if (m.mapping_type === "PRINCIPAL_REPAY") repaid += mag;
+    else if (m.mapping_type === "INTEREST") interest += mag;
+    else if (m.mapping_type === "FEE") fees += mag;
+  }
+  const outstanding = disbursed - repaid;
+  const principalAsset = loan?.principal_asset || "";
+  const interestAsset = loan?.interest_asset || "";
+  const fmt = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 18 });
+  // Accrued figures are projections (rate × time), not entered amounts —
+  // cap at 5 decimal places so the UI doesn't expose float-precision tail.
+  const fmt5 = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 5 });
+
+  // ─── Accrued interest, segmented by repayment events ────────────
+  // Simple interest. Outstanding(t) starts at the booked principal on
+  // trade_date and steps down each time a PRINCIPAL_REPAY cashflow
+  // dated ≤ accrualDate lands. For each segment between events the
+  // accrual is principal × (rate/100) × (segment_days / day_basis).
+  // Sum across segments → gross accrued. Net = gross − interest_paid.
+  const dayBasis = parseInt(loan?.day_count_basis, 10) || 365;
+  const rate = (parseFloat(loan?.interest_rate_pa_pct) || 0) / 100;
+  const principalAmount = parseFloat(loan?.principal_amount) || 0;
+
+  // Build a sorted event timeline of repayments up to accrualDate.
+  // Each repayment dropped if its trade_date > accrualDate (hasn't
+  // happened yet from the as-of perspective).
+  const accrualEndMs = (() => {
+    if (!accrualDate) return null;
+    // Treat accrualDate as end-of-day UTC so a repayment booked that
+    // morning is counted as having occurred before the cutoff.
+    return Date.parse(accrualDate + "T23:59:59Z");
+  })();
+  const tradeStartMs = (() => {
+    if (!loan?.trade_date) return null;
+    return Date.parse(loan.trade_date);
+  })();
+
+  let accruedGross = 0;
+  let interestPaidUpToAccrual = 0;
+  const MS_PER_DAY = 86400000;
+  if (loan && accrualEndMs != null && tradeStartMs != null && accrualEndMs >= tradeStartMs) {
+    const repayEvents = mappings
+      .filter((m) => m.mapping_type === "PRINCIPAL_REPAY" && m.trade_date)
+      .map((m) => ({ ms: Date.parse(m.trade_date), amt: Math.abs(parseFloat(m.amount) || 0) }))
+      .filter((e) => !Number.isNaN(e.ms) && e.ms <= accrualEndMs)
+      .sort((a, b) => a.ms - b.ms);
+
+    let outstandingP = principalAmount;
+    let cursor = tradeStartMs;
+    for (const ev of repayEvents) {
+      const days = Math.max(0, (ev.ms - cursor) / MS_PER_DAY);
+      accruedGross += outstandingP * rate * (days / dayBasis);
+      outstandingP -= ev.amt;
+      cursor = ev.ms;
+    }
+    // Final segment from last event to accrualDate end-of-day.
+    const tailDays = Math.max(0, (accrualEndMs - cursor) / MS_PER_DAY);
+    accruedGross += outstandingP * rate * (tailDays / dayBasis);
+
+    // Interest already paid up to accrualDate (so Net = unpaid liability).
+    interestPaidUpToAccrual = mappings
+      .filter((m) => m.mapping_type === "INTEREST" && m.trade_date)
+      .filter((m) => {
+        const ms = Date.parse(m.trade_date);
+        return !Number.isNaN(ms) && ms <= accrualEndMs;
+      })
+      .reduce((s, m) => s + Math.abs(parseFloat(m.amount) || 0), 0);
+  }
+  const accruedNet = accruedGross - interestPaidUpToAccrual;
+
+  // ─── Hedge coverage projection (forward-looking from trade_date) ──
+  // When the loan is hedged with hedged_asset == interest_asset (the
+  // typical case — e.g. ETH loan hedged with ETH), the hedged_qty is
+  // a buffer of interest-asset units that can cover X days of accrual.
+  // Coverage span = hedged_qty / (daily accrual in interest_asset).
+  // We use the booked principal as the projection baseline (max draw —
+  // conservative). If outstanding changes, the date shifts.
+  const isHedged = !!loan?.is_hedged;
+  const hedgedQty = parseFloat(loan?.hedged_qty) || 0;
+  const hedgedPrice = parseFloat(loan?.hedged_price) || 0;
+  const hedgeProceedsAsset = loan?.hedge_proceeds_asset || "";
+  const hedgeProceedsAmount = parseFloat(loan?.hedge_proceeds_amount) || 0;
+  const hedgeMatchesInterestAsset = isHedged && loan?.hedged_asset === loan?.interest_asset;
+
+  const dailyAccrualInterest = (() => {
+    if (rate <= 0 || principalAmount <= 0) return 0;
+    return principalAmount * rate / dayBasis; // interest_asset per day @ full draw
+  })();
+
+  // coverageDays: days the hedge buffer will cover at the projected
+  // accrual rate. null when we can't compute (asset mismatch).
+  // Infinity when rate is 0 (no accrual → buffer never depletes).
+  let coverageDays = null;
+  let coverageEndDate = null;
+  if (isHedged && hedgeMatchesInterestAsset) {
+    if (dailyAccrualInterest <= 0) {
+      coverageDays = Infinity;
+    } else {
+      coverageDays = hedgedQty / dailyAccrualInterest;
+      if (tradeStartMs != null && Number.isFinite(coverageDays)) {
+        coverageEndDate = new Date(tradeStartMs + coverageDays * MS_PER_DAY);
+      }
+    }
+  }
+
+  // Accrued interest converted into the hedge_proceeds_asset using the
+  // locked-in hedged_price. Useful when interest accrues in (say) ETH
+  // but the operator wants the USD equivalent because that's what the
+  // hedge proceeds are denominated in.
+  let accruedInHedgeAsset = null;
+  let accruedInHedgeProceedsAsset = null;
+  if (isHedged) {
+    if (hedgeMatchesInterestAsset) {
+      // Same asset — hedge buffer is directly the interest currency.
+      accruedInHedgeAsset = { amount: accruedGross, asset: loan.hedged_asset };
+    }
+    if (hedgeProceedsAsset && hedgedPrice > 0 && hedgeMatchesInterestAsset) {
+      // Convert accrued (in interest_asset) to proceeds_asset by the
+      // hedge price (proceeds per 1 unit of interest_asset).
+      accruedInHedgeProceedsAsset = {
+        amount: accruedGross * hedgedPrice,
+        asset: hedgeProceedsAsset,
+      };
+    }
+  }
+
+  // Status pill styling reused from LoanEnquiry.
+  const statusStyle = (s) => ({
+    background: s === "LIVE" ? "#eef5e9" : s === "MATURED" ? "#eef0f6" : s === "CANCELLED" ? "#fff0eb" : "#f6f3ec",
+    border: `1px solid ${s === "LIVE" ? "#7ea66a" : s === "MATURED" ? "#c8cde0" : s === "CANCELLED" ? "#e08a6a" : "#d9d4c7"}`,
+    color: s === "LIVE" ? "#1f4a1f" : s === "MATURED" ? "#1f63ea" : s === "CANCELLED" ? "#7a1f00" : "#1f1f1f",
+  });
+
+  // Per-row mapping_type label + colour band.
+  const typeBadge = (mt) => {
+    const map = {
+      PRINCIPAL_DISBURSE: { label: "Disburse", colour: "#1f4a1f", bg: "#eef5e9", border: "#7ea66a" },
+      PRINCIPAL_REPAY:    { label: "Repay",    colour: "#7a1f00", bg: "#fff0eb", border: "#e08a6a" },
+      INTEREST:           { label: "Interest", colour: "#1f63ea", bg: "#eef0f6", border: "#c8cde0" },
+      COLLATERAL_POST:    { label: "Coll. Post", colour: "#5a3a1f", bg: "#f6efe4", border: "#c9b58e" },
+      COLLATERAL_RELEASE: { label: "Coll. Rel.", colour: "#5a3a1f", bg: "#f6efe4", border: "#c9b58e" },
+      FEE:                { label: "Fee",      colour: "#5a3a1f", bg: "#f6efe4", border: "#c9b58e" },
+    };
+    const e = map[mt] || { label: mt || "—", colour: "#1f1f1f", bg: "#f6f3ec", border: "#d9d4c7" };
+    return (
+      <span
+        className="px-1.5 py-0.5 text-[10px]"
+        style={{ background: e.bg, border: `1px solid ${e.border}`, color: e.colour }}
+      >{e.label}</span>
+    );
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 p-4 overflow-auto"
+      style={{
+        background: mounted ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)",
+        transition: "background 160ms ease-out",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="relative max-w-4xl mx-auto"
+        style={{
+          background: "#f6f3ec",
+          border: "1px solid #d9d4c7",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? "translateY(0)" : "translateY(-8px)",
+          transition: "opacity 160ms ease-out, transform 160ms ease-out",
+          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute z-10"
+          style={{
+            top: 10, right: 10, width: 32, height: 32,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "#1f1f1f", color: "#f2efe8",
+            fontSize: 20, lineHeight: 1, borderRadius: 16,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)", cursor: "pointer",
+          }}
+        >×</button>
+
+        {/* ─── Header ─── */}
+        <div className="px-6 py-5" style={{ borderBottom: "1px solid #d9d4c7" }}>
+          <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Loan Schedule</div>
+          {/* Headline reads "MLA00000003 — 3,300 ETH LOAN FROM ECHOCREEK".
+              Direction-aware: LEND → "LOAN TO X", BORROW → "LOAN FROM X". */}
+          <div
+            className="text-[24px] mt-1 leading-tight"
+            style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+          >
+            {dealRef}
+            {loan && (
+              <>
+                <span style={{ opacity: 0.5 }}>{" — "}</span>
+                <span>{fmt(loan.principal_amount)} {loan.principal_asset}</span>
+                <span>{loan.direction === "LEND" ? " LOAN TO " : " LOAN FROM "}</span>
+                {loan.counterparty
+                  ? <span>{String(loan.counterparty).toUpperCase()}</span>
+                  : <span style={{ opacity: 0.5 }}>—</span>}
+              </>
+            )}
+          </div>
+          {state?.loading && <div className="text-[11px] mt-2 opacity-60">Loading…</div>}
+          {state?.error && (
+            <div className="text-[12px] mt-2" style={{ color: "#7a1f00" }}>
+              Error: {state.error}
+            </div>
+          )}
+          {loan && (
+            <div className="flex items-center gap-3 flex-wrap mt-3 text-[11px]" style={{ color: "#6a665c" }}>
+              <span style={statusStyle(loan.status)} className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase">
+                {loan.status}
+              </span>
+              <span>{loan.loan_type}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>PTF {loan.portfolio_id}{loan.portfolio_name ? ` · ${loan.portfolio_name}` : ""}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>booked by {loan.user_id || "—"}</span>
+              {loan.order_id && <>
+                <span style={{ opacity: 0.4 }}>·</span>
+                <span>order id <code style={{ color: "#1f1f1f" }}>{loan.order_id}</code></span>
+              </>}
+            </div>
+          )}
+        </div>
+
+        {/* ─── Contract block — static loan terms in a key/value grid ─── */}
+        {loan && (
+          <div
+            className="px-6 py-4"
+            style={{ background: "#fcfbf6", borderBottom: "1px solid #d9d4c7" }}
+          >
+            <div className="text-[9px] uppercase tracking-[0.22em] mb-3" style={{ color: "#6a665c" }}>
+              Contract
+            </div>
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-[12px]">
+              {[
+                ["Direction", loan.direction],
+                ["Loan Type", loan.loan_type],
+                ["Counterparty", loan.counterparty || "—"],
+                ["Counterparty ID", loan.counterparty_id || "—"],
+                ["Principal", `${fmt(loan.principal_amount)} ${loan.principal_asset}`],
+                ["Interest Rate", `${loan.interest_rate_pa_pct || 0}% ${loan.interest_type || ""}`],
+                ["Day Basis", `Actual/${loan.day_count_basis || 365}`],
+                ["Floating Benchmark", loan.interest_type === "FLOATING" ? (loan.floating_benchmark || "—") : "—"],
+                ["Collateral", loan.collateral_asset
+                  ? `${fmt(loan.collateral_amount)} ${loan.collateral_asset}`
+                  : "unsecured"],
+                ["Hedge", loan.is_hedged
+                  ? `${fmt(loan.hedged_qty)} ${loan.hedged_asset} @ ${fmt(loan.hedged_price)}`
+                  : "—"],
+                ["Start Date", fmtTs(loan.trade_date)],
+                ["Maturity Date", loan.maturity_date ? fmtTs(loan.maturity_date) : "open-term"],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <dt
+                    className="text-[9px] uppercase tracking-[0.22em]"
+                    style={{ color: "#6a665c" }}
+                  >{k}</dt>
+                  <dd className="text-[12px] mt-0.5 font-mono">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
+        {/* ─── Balances — Principal panel + Interest/Accrual panel ─── */}
+        {loan && (
+          <div
+            className="grid grid-cols-1 md:grid-cols-2"
+            style={{ borderBottom: "1px solid #d9d4c7" }}
+          >
+            {/* Principal: Disbursed / Repaid → Outstanding (totaled). */}
+            <div className="px-6 py-4" style={{ borderRight: "1px solid #d9d4c7" }}>
+              <div className="text-[9px] uppercase tracking-[0.22em] mb-3" style={{ color: "#6a665c" }}>
+                Principal · {principalAsset || "—"}
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between text-[12px] font-mono">
+                  <span style={{ color: "#6a665c" }}>Disbursed</span>
+                  <span>{fmt(disbursed)}</span>
+                </div>
+                <div className="flex items-baseline justify-between text-[12px] font-mono">
+                  <span style={{ color: "#6a665c" }}>Repaid</span>
+                  <span>{fmt(repaid)}</span>
+                </div>
+                <div
+                  className="flex items-baseline justify-between text-[13px] font-mono pt-1.5 mt-1"
+                  style={{ borderTop: "1px solid #efece4", fontWeight: 600 }}
+                >
+                  <span>Outstanding</span>
+                  <span>{fmt(outstanding)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Interest: Paid (booked) / Accrued (computed @ Accrual Date) →
+                Outstanding Accrued. As-of-date picker lives in this panel
+                because everything below it is date-driven. */}
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                <div className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                  Interest · {interestAsset || "—"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                    Accrual Date
+                  </span>
+                  <input
+                    type="date"
+                    value={accrualDate}
+                    min={loan.trade_date ? String(loan.trade_date).slice(0, 10) : undefined}
+                    onChange={(e) => setAccrualDate(e.target.value)}
+                    className="px-1.5 py-0 text-[11px] font-mono"
+                    style={{ background: "#ffffff", border: "1px solid #d9d4c7" }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between text-[12px] font-mono">
+                  <span style={{ color: "#6a665c" }}>Paid</span>
+                  <span>{fmt(interest)}</span>
+                </div>
+                <div className="flex items-baseline justify-between text-[12px] font-mono">
+                  <span style={{ color: "#6a665c" }}>Accrued (gross)</span>
+                  <span>{fmt5(accruedGross)}</span>
+                </div>
+                <div
+                  className="flex items-baseline justify-between text-[13px] font-mono pt-1.5 mt-1"
+                  style={{ borderTop: "1px solid #efece4" }}
+                >
+                  <span style={{ fontWeight: 600 }}>Outstanding Accrued</span>
+                  <span
+                    className="px-2 py-0.5"
+                    style={{
+                      background: accruedNet <= 0 ? "#eef5e9" : "#eef0f6",
+                      border: `1px solid ${accruedNet <= 0 ? "#7ea66a" : "#c8cde0"}`,
+                      color: accruedNet <= 0 ? "#1f4a1f" : "#1f63ea",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {fmt5(accruedNet)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Hedge panel — only when loan.is_hedged ─── */}
+        {loan && isHedged && (
+          <div
+            className="px-6 py-4"
+            style={{ background: "#fafaf6", borderBottom: "1px solid #d9d4c7" }}
+          >
+            <div className="flex items-baseline gap-3 mb-3">
+              <div className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                Hedge
+              </div>
+              {!hedgeMatchesInterestAsset && (
+                <div className="text-[10px]" style={{ color: "#a23b1a" }}>
+                  ⚠ hedged_asset ({loan.hedged_asset}) ≠ interest_asset ({loan.interest_asset}) — coverage date can't be projected
+                </div>
+              )}
+            </div>
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-[12px]">
+              <div>
+                <dt className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                  Hedged Position
+                </dt>
+                <dd className="text-[12px] mt-0.5 font-mono">
+                  {fmt(hedgedQty)} {loan.hedged_asset} @ {fmt(hedgedPrice)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                  Proceeds Locked
+                </dt>
+                <dd className="text-[12px] mt-0.5 font-mono">
+                  {hedgeProceedsAmount > 0
+                    ? `${fmt(hedgeProceedsAmount)} ${hedgeProceedsAsset}`
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                  Accrued (hedge value)
+                </dt>
+                <dd className="text-[12px] mt-0.5 font-mono">
+                  {accruedInHedgeProceedsAsset
+                    ? `${fmt5(accruedInHedgeProceedsAsset.amount)} ${accruedInHedgeProceedsAsset.asset}`
+                    : accruedInHedgeAsset
+                    ? `${fmt5(accruedInHedgeAsset.amount)} ${accruedInHedgeAsset.asset}`
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                  Hedge Coverage Until
+                </dt>
+                <dd className="text-[12px] mt-0.5 font-mono">
+                  {coverageEndDate ? (
+                    <>
+                      <span style={{ fontWeight: 600 }}>{coverageEndDate.toISOString().slice(0, 10)}</span>
+                      <span style={{ opacity: 0.65 }}> · {Math.round(coverageDays)} days</span>
+                    </>
+                  ) : coverageDays === Infinity ? (
+                    <span style={{ opacity: 0.65 }}>indefinite (0% rate)</span>
+                  ) : (
+                    <span style={{ opacity: 0.65 }}>—</span>
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <div className="text-[10px] mt-3" style={{ color: "#6a665c" }}>
+              Projection assumes the loan stays drawn at <strong>{fmt(principalAmount)} {principalAsset}</strong> until the hedge depletes.
+              Repayments extend the date; further draws shorten it.
+            </div>
+          </div>
+        )}
+
+        {/* ─── Schedule table ─── */}
+        <div className="px-6 py-4 max-h-[55vh] overflow-y-auto">
+          <div className="text-[10px] tracking-[0.22em] uppercase mb-2" style={{ color: "#6a665c" }}>
+            Linked Cashflows · {mappings.length}
+          </div>
+          {!state?.loading && mappings.length === 0 && (
+            <div className="text-[12px] py-4" style={{ color: "#6a665c" }}>
+              No cashflows linked yet — tag a cashflow to this loan via the Cashflow form.
+            </div>
+          )}
+          {mappings.length > 0 && (
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr style={{ background: "#efece4", color: "#6a665c" }}>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Trade Date</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Type</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Direction</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap">Amount</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Asset</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Cashflow Ref</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">CF Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mappings.map((m, i) => {
+                  const amt = parseFloat(m.amount) || 0;
+                  const signed = amt >= 0 ? `+${fmt(amt)}` : fmt(amt); // amt already signed; preserve
+                  return (
+                    <tr key={m.counterpart_deal_ref + "/" + i} style={{ borderTop: "1px solid #efece4" }}>
+                      <td className="px-2 py-2 whitespace-nowrap">
+                        <HoverTip text={m.trade_date}>{fmtTs(m.trade_date)}</HoverTip>
+                      </td>
+                      <td className="px-2 py-2 whitespace-nowrap">{typeBadge(m.mapping_type)}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{m.direction || "—"}</td>
+                      <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: amt < 0 ? "#7a1f00" : "#1f4a1f" }}>
+                        {signed}
+                      </td>
+                      <td className="px-2 py-2 whitespace-nowrap">{m.asset || "—"}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">
+                        <button
+                          type="button"
+                          title="Open cashflow in form"
+                          onClick={() => onCashflowSelect && onCashflowSelect(m.counterpart_deal_ref)}
+                          style={{
+                            background: "transparent", border: "none", padding: 0,
+                            color: "#1f63ea", cursor: "pointer", font: "inherit",
+                          }}
+                        >{m.counterpart_deal_ref}</button>
+                      </td>
+                      <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#6a665c" }}>
+                        {m.cashflow_type || "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* ─── Action footer ─── */}
+        {loan && (
+          <div
+            className="px-6 py-3 flex items-center gap-2 justify-end"
+            style={{ borderTop: "1px solid #d9d4c7", background: "#efece4" }}
+          >
+            <button
+              type="button"
+              onClick={() => onHistory && onHistory(dealRef)}
+              className="px-3 py-1 text-[11px]"
+              style={{
+                background: "transparent",
+                border: "1px solid #d9d4c7",
+                color: "#1f1f1f",
+                cursor: "pointer",
+              }}
+            >📜 Audit History</button>
+            <button
+              type="button"
+              onClick={() => onBookCashflow && onBookCashflow(loan)}
+              className="px-3 py-1 text-[11px]"
+              style={{
+                background: "transparent",
+                border: "1px solid #1f63ea",
+                color: "#1f63ea",
+                cursor: "pointer",
+              }}
+              title="Open the Cashflow form pre-tagged to this loan"
+            >+ Book Cashflow</button>
+            <button
+              type="button"
+              onClick={() => onAmend && onAmend(loan)}
+              className="px-3 py-1 text-[11px]"
+              style={{
+                background: "#1f63ea",
+                border: "1px solid #1f63ea",
+                color: "#ffffff",
+                cursor: "pointer",
+              }}
+            >✎ Amend Loan</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2189,8 +2741,45 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
 //   non-IPF: "PTF 8888 RECEIVED 10 1INCH INTEREST INCOME"
 // The counterparty portfolio name isn't stored on the row (only `counterparty`
 // = the CP portfolio number under IPF), so we look it up in PORTFOLIOS.
+// Compact timestamp formatter for table cells. ISO "2026-05-16T06:10:00+00:00"
+// → "2026-05-16 06:10". Falls back to em-dash on null/empty.
+function fmtTs(iso, len = 16) {
+  return iso ? String(iso).replace("T", " ").slice(0, len) : "—";
+}
+
+// Per-row summary of mapped counterparts (the other side of the join).
+// Loan rows expose how many cashflows linked + an aggregate; cashflow
+// rows expose the linked loan ref(s). Returns "" when no mappings.
+function summarizeMappings(r) {
+  const m = r?.mappings;
+  if (!Array.isArray(m) || m.length === 0) return "";
+  if (r.txn_type === "LOAN") {
+    // Sum signed cashflow amounts grouped by mapping_type. Direction
+    // sign on cashflows is already on amount, so simple sum works.
+    const total = m.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+    const sign = total >= 0 ? "+" : "";
+    return `↗ ${m.length} cashflow${m.length === 1 ? "" : "s"} · ${sign}${total.toLocaleString("en-US", { maximumFractionDigits: 6 })}`;
+  }
+  // Cashflow side — just list the loan refs.
+  if (m.length === 1) return `↗ ${m[0].counterpart_deal_ref}`;
+  return `↗ ${m[0].counterpart_deal_ref} + ${m.length - 1} more`;
+}
+
 function summarizeDeal(r) {
-  if (!r || r.txn_type !== "CASHFLOW") return r?.deal_ref || "";
+  if (!r) return "";
+  if (r.txn_type === "LOAN") {
+    const verb = r.direction === "BORROW" ? "BORROWED" : "LENT";
+    const principal = Math.abs(parseFloat(r.principal_amount) || 0);
+    const fmtAmt = principal.toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
+    return join([
+      "PTF", r.portfolio_id, verb,
+      fmtAmt, (r.principal_asset || "").toUpperCase(),
+      "@", `${r.interest_rate_pa_pct || 0}%`, (r.interest_type || "").toLowerCase(),
+      r.counterparty ? `from ${String(r.counterparty).toUpperCase()}` : "",
+    ]);
+  }
+  if (r.txn_type !== "CASHFLOW") return r?.deal_ref || "";
   const shortPtfName = (n) => (n ? String(n).split(" - ").pop().trim().toUpperCase() : "");
   const lookupPtfName = (num) =>
     PORTFOLIOS.find((p) => String(p.number) === String(num))?.name || "";
@@ -2285,7 +2874,9 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       const td = String(r.trade_date || "").slice(0, 10);
       if (filters.trade_date_from && td && td < filters.trade_date_from) return false;
       if (filters.trade_date_to && td && td > filters.trade_date_to) return false;
-      const vd = String(r.value_date || "").slice(0, 10);
+      // Loan rows store the maturity in `maturity_date`; cashflow uses
+      // `value_date`. Treat them symmetrically for the Value-Date filter.
+      const vd = String(r.value_date || r.maturity_date || "").slice(0, 10);
       if (filters.value_date_from && vd && vd < filters.value_date_from) return false;
       if (filters.value_date_to && vd && vd > filters.value_date_to) return false;
       return true;
@@ -2296,9 +2887,12 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     setLoading(true);
     setError(null);
     try {
+      // Loans live in their own LoanEnquiry view now — Deal Enquiry only
+      // surfaces cashflow rows. The `mappings` array on each cashflow
+      // still shows linked loans inline (chip in the Details column).
       const r = await fetch("http://localhost:5181/api/cashflow/recent?limit=20");
       const j = await r.json();
-      if (!j.ok) throw new Error(j.error || "fetch failed");
+      if (!j.ok) throw new Error(j.error || "cashflow fetch failed");
       setRows(j.rows || []);
       setLastFetchedAt(new Date());
     } catch (e) {
@@ -2486,12 +3080,13 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-3 py-2 text-left whitespace-nowrap">Trade Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Value Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Account</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={13} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={14} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -2511,7 +3106,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             )}
             {!loading && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={13} className="px-3 py-6 text-center opacity-60">
+                <td colSpan={14} className="px-3 py-6 text-center opacity-60">
                   {rows.length === 0
                     ? "No live cashflow bookings yet."
                     : filtersActive
@@ -2521,7 +3116,6 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </tr>
             )}
             {filteredRows.map((r) => {
-              const fmtTs = (iso, len = 16) => iso ? String(iso).replace("T", " ").slice(0, len) : "—";
               // Month Year is intentionally NOT rendered in the GUI but is
               // still part of the audit schema — when CSV export is added,
               // include it derived from trade_date as Month YYYY (UTC).
@@ -2580,11 +3174,36 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       {r.counterparty || "—"}
                     </HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{summarizeDeal(r)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {summarizeDeal(r)}
+                    {(() => {
+                      const mapSummary = summarizeMappings(r);
+                      if (!mapSummary) return null;
+                      // Tooltip text lists every mapped counterpart so a user
+                      // can hover to confirm what they're linked to without
+                      // opening the row.
+                      const tipText = (r.mappings || [])
+                        .map((m) => m.counterpart_deal_ref)
+                        .join(", ");
+                      return (
+                        <HoverTip text={tipText}>
+                          <span
+                            className="ml-2 px-1.5 py-0.5 text-[10px]"
+                            style={{
+                              background: "#eef0f6",
+                              border: "1px solid #c8cde0",
+                              color: "#1f63ea",
+                            }}
+                          >{mapSummary}</span>
+                        </HoverTip>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type || r.loan_type || "—"}</td>
                   {/* CSV export should still emit asset/amount/fee_asset/fee_amount
                       as four separate columns per the audit schema, even though
-                      the table only renders the fee pair. */}
+                      the table only renders the fee pair. Loan rows have no
+                      fee column (interest accrues via separate cashflow rows). */}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {r.fee_amount && parseFloat(r.fee_amount) !== 0
                       ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
@@ -2594,18 +3213,385 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     <HoverTip text={r.trade_date}>{fmtTs(r.trade_date)}</HoverTip>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <HoverTip text={r.value_date}>{fmtTs(r.value_date)}</HoverTip>
+                    {/* Loan rows label the column "Value Date" but the
+                        underlying field is maturity_date (NULL = open-term). */}
+                    {r.value_date || r.maturity_date ? (
+                      <HoverTip text={r.value_date || r.maturity_date}>
+                        {fmtTs(r.value_date || r.maturity_date)}
+                      </HoverTip>
+                    ) : (
+                      <span style={{ opacity: 0.55 }}>open-term</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {/* Status pill — colour-coded to match the cashflow
+                        lifecycle: pending → confirmed → processed →
+                        settled (terminal-OK), or cancelled (terminal-NOK). */}
+                    {(() => {
+                      const s = r.status || "";
+                      const styles = {
+                        PENDING:   { bg: "#fcf6e8", border: "#d6c694", color: "#7a5a00" },
+                        CONFIRMED: { bg: "#eef0f6", border: "#c8cde0", color: "#1f63ea" },
+                        PROCESSED: { bg: "#eaf2ee", border: "#a3c4ad", color: "#22593c" },
+                        SETTLED:   { bg: "#eef5e9", border: "#7ea66a", color: "#1f4a1f" },
+                        CANCELLED: { bg: "#fff0eb", border: "#e08a6a", color: "#7a1f00" },
+                      };
+                      const e = styles[s] || { bg: "#f6f3ec", border: "#d9d4c7", color: "#1f1f1f" };
+                      return (
+                        <span
+                          className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                          style={{ background: e.bg, border: `1px solid ${e.border}`, color: e.color }}
+                        >{s || "—"}</span>
+                      );
+                    })()}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
 
-      <div className="text-[11px] mt-3 opacity-60" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
-        Click a row to load it into the booking form for amendment.
+// ─── LoanEnquiry — separate view for trades_loan rows ────────────────
+// Parallel to DealEnquiry but with loan-specific columns. Click the
+// deal_ref to amend; click 📜 to see SCD2 history.
+const LOAN_ENQUIRY_INITIAL_FILTERS = {
+  trade_date_from: "",
+  trade_date_to: "",
+  maturity_date_from: "",
+  maturity_date_to: "",
+  portfolios: [],
+  principal_asset: "",
+  status: "",
+  deal_ref: "",
+};
+
+function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState(null);
+  const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
+  const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+  const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
+  const filtersActive = Object.values(filters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v !== ""
+  );
+
+  const filteredRows = useMemo(() => {
+    const tokens = (s) =>
+      String(s || "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+    const assetTokens = tokens(filters.principal_asset).map((t) => t.toUpperCase());
+    const refTokens = tokens(filters.deal_ref).map((t) => t.toLowerCase());
+    return rows.filter((r) => {
+      if (refTokens.length > 0) {
+        const cand = String(r.deal_ref || "").toLowerCase();
+        if (!refTokens.some((t) => cand.includes(t))) return false;
+      }
+      if (filters.portfolios.length > 0 && !filters.portfolios.includes(String(r.portfolio_id || ""))) {
+        return false;
+      }
+      if (assetTokens.length > 0 && !assetTokens.includes(String(r.principal_asset || "").toUpperCase())) {
+        return false;
+      }
+      if (filters.status && r.status !== filters.status) return false;
+      const td = String(r.trade_date || "").slice(0, 10);
+      if (filters.trade_date_from && td && td < filters.trade_date_from) return false;
+      if (filters.trade_date_to && td && td > filters.trade_date_to) return false;
+      const md = String(r.maturity_date || "").slice(0, 10);
+      if (filters.maturity_date_from && md && md < filters.maturity_date_from) return false;
+      if (filters.maturity_date_to && md && md > filters.maturity_date_to) return false;
+      return true;
+    });
+  }, [rows, filters]);
+
+  const fetchRecent = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("http://localhost:5181/api/loan/recent?limit=200");
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "fetch failed");
+      setRows(j.rows || []);
+      setLastFetchedAt(new Date());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchRecent(); }, [fetchRecent, refreshSignal]);
+
+  return (
+    <div className="px-5 pt-4 pb-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <div
+          className="text-[22px]"
+          style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+        >Loan Enquiry</div>
+        <button
+          type="button"
+          onClick={fetchRecent}
+          disabled={loading}
+          className="px-3 py-1 text-[12px]"
+          style={{
+            background: BB?.surface || "#f6f3ec",
+            border: `1px solid ${BB?.border || "#d9d4c7"}`,
+            color: BB?.text || "#1f1f1f",
+            opacity: loading ? 0.5 : 1,
+          }}
+        >{loading ? "Loading…" : "↻ Refresh"}{lastFetchedAt ? ` · ${lastFetchedAt.toLocaleTimeString()}` : ""}</button>
+      </div>
+
+      {error && (
+        <div
+          className="px-3 py-2 mb-3 text-[12px]"
+          style={{ background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00" }}
+        >Error: {error}</div>
+      )}
+
+      {/* ─── Filters ─── */}
+      <div
+        className="mb-3 px-3 py-2 flex flex-wrap gap-3 items-end"
+        style={{
+          background: BB?.surface || "#f6f3ec",
+          border: `1px solid ${BB?.border || "#d9d4c7"}`,
+          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        }}
+      >
+        {[
+          { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+          { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
+        ].map((f) => (
+          <div key={f.fromKey} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 320 }}>
+            <span>{f.label}</span>
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                value={filters[f.fromKey]}
+                onChange={(e) => setFilter(f.fromKey, e.target.value)}
+              />
+              <span style={{ color: BB?.mute || "#666" }}>→</span>
+              <Input
+                type="date"
+                value={filters[f.toKey]}
+                onChange={(e) => setFilter(f.toKey, e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 260 }}>
+          <span>Portfolio</span>
+          <Select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (filters.portfolios.includes(v)) return;
+              setFilter("portfolios", [...filters.portfolios, v]);
+            }}
+          >
+            <option value="">
+              {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
+            </option>
+            {PORTFOLIOS.map((p) => (
+              <option key={p.number} value={String(p.number)}>
+                {p.number} · {p.name}
+              </option>
+            ))}
+          </Select>
+          {filters.portfolios.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {filters.portfolios.map((n) => (
+                <span
+                  key={n}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
+                  style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
+                >
+                  {n}
+                  <button
+                    type="button"
+                    onClick={() => setFilter("portfolios", filters.portfolios.filter((x) => x !== n))}
+                    style={{ background: "transparent", border: "none", color: "#1f63ea", cursor: "pointer", padding: 0, fontSize: 11, lineHeight: 1 }}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 140 }}>
+          <span>Principal Asset</span>
+          <Input
+            type="text"
+            value={filters.principal_asset}
+            onChange={(e) => setFilter("principal_asset", e.target.value)}
+            placeholder="e.g. ETH, USDT"
+          />
+        </div>
+        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 140 }}>
+          <span>Status</span>
+          <Select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
+            <option value="">— any —</option>
+            <option value="LIVE">LIVE</option>
+            <option value="MATURED">MATURED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 200 }}>
+          <span>Deal Reference</span>
+          <Input
+            type="text"
+            value={filters.deal_ref}
+            onChange={(e) => setFilter("deal_ref", e.target.value)}
+            placeholder="MLA00000001, MLA00000005…"
+          />
+        </div>
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="px-3 py-1 text-[11px]"
+            style={{ background: "transparent", border: `1px solid ${BB?.border || "#d9d4c7"}`, color: BB?.text || "#1f1f1f" }}
+          >Clear filters</button>
+        )}
+      </div>
+
+      {/* ─── Table ─── */}
+      <div className="overflow-x-auto" style={{ border: `1px solid ${BB?.border || "#d9d4c7"}` }}>
+        <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
+          <thead>
+            <tr style={{ background: BB?.surface || "#f6f3ec", color: BB?.mute || "#666" }}>
+              <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Direction</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Type</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Counterparty</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Principal</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Rate</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Start Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Maturity</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Linked Cashflows</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRows.length === 0 && !loading && (
+              <tr>
+                <td colSpan={13} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
+                  {rows.length === 0 ? "No loans booked yet." : "No rows match the current filters."}
+                </td>
+              </tr>
+            )}
+            {filteredRows.map((r) => {
+              const principalNum = parseFloat(r.principal_amount) || 0;
+              const principalFmt = principalNum.toLocaleString("en-US", { maximumFractionDigits: 18 });
+              const mapCount = (r.mappings || []).length;
+              const mapTotal = (r.mappings || []).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+              return (
+                <tr
+                  key={r.deal_ref}
+                  style={{ background: BB?.bg || "#ffffff", borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
+                >
+                  <td className="px-2 py-2 whitespace-nowrap text-center">
+                    <button
+                      type="button"
+                      title="View audit history"
+                      onClick={() => onHistory(r.deal_ref)}
+                      style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", color: BB?.mute || "#666", fontSize: 14 }}
+                    >📜</button>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.first_effective_start || r.effective_start}>
+                      {fmtTs(r.first_effective_start || r.effective_start)}
+                    </HoverTip>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      title="Open in form to amend"
+                      onClick={() => onSelect(r)}
+                      className="align-middle"
+                      style={{
+                        background: "transparent", border: "none", padding: 0,
+                        color: "#1f63ea", cursor: "pointer", font: "inherit",
+                      }}
+                    >{r.deal_ref}</button>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.direction}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.loan_type}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.portfolio_id}{r.portfolio_name ? <span style={{ opacity: 0.65 }}> · {r.portfolio_name}</span> : null}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.counterparty_id || (r.counterparty ? "(no refdata id)" : "")}>
+                      {r.counterparty || "—"}
+                    </HoverTip>
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {principalFmt} <span style={{ opacity: 0.7 }}>{r.principal_asset || ""}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {r.interest_rate_pa_pct ?? "—"}% <span style={{ opacity: 0.65 }}>{r.interest_type || ""}</span>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <HoverTip text={r.trade_date}>{fmtTs(r.trade_date)}</HoverTip>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.maturity_date ? (
+                      <HoverTip text={r.maturity_date}>{fmtTs(r.maturity_date)}</HoverTip>
+                    ) : (
+                      <span style={{ opacity: 0.55 }}>open-term</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span
+                      className="px-1.5 py-0.5 text-[10px]"
+                      style={{
+                        background:
+                          r.status === "LIVE" ? "#eef5e9" :
+                          r.status === "MATURED" ? "#eef0f6" :
+                          r.status === "CANCELLED" ? "#fff0eb" : "#f6f3ec",
+                        border: `1px solid ${
+                          r.status === "LIVE" ? "#7ea66a" :
+                          r.status === "MATURED" ? "#c8cde0" :
+                          r.status === "CANCELLED" ? "#e08a6a" : "#d9d4c7"
+                        }`,
+                        color:
+                          r.status === "LIVE" ? "#1f4a1f" :
+                          r.status === "MATURED" ? "#1f63ea" :
+                          r.status === "CANCELLED" ? "#7a1f00" : "#1f1f1f",
+                      }}
+                    >{r.status}</span>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {mapCount === 0 ? (
+                      <span style={{ opacity: 0.55 }}>—</span>
+                    ) : (
+                      <HoverTip text={(r.mappings || []).map((m) => m.counterpart_deal_ref).join(", ")}>
+                        <span
+                          className="px-1.5 py-0.5 text-[10px]"
+                          style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
+                        >
+                          ↗ {mapCount} · {mapTotal >= 0 ? "+" : ""}{mapTotal.toLocaleString("en-US", { maximumFractionDigits: 6 })} {r.principal_asset || ""}
+                        </span>
+                      </HoverTip>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -2649,12 +3635,89 @@ export default function TradeBookingForm() {
     })();
   }, []);
 
+  // ─── Live loans (for the cashflow form's loan-link picker) ─────────
+  // Fetched once on mount + after every successful insert/amend, so a
+  // freshly booked loan shows up in the picker without a hard refresh.
+  // Filtered to the form's current portfolio inside the picker.
+  const [liveLoans, setLiveLoans] = useState([]);
+  const refreshLiveLoans = useCallback(async () => {
+    try {
+      const r = await fetch("http://localhost:5181/api/loan/recent?limit=200", { cache: "no-cache" });
+      const j = await r.json();
+      if (j.ok && Array.isArray(j.rows)) setLiveLoans(j.rows);
+    } catch { /* server might be down — picker just shows empty */ }
+  }, []);
+  useEffect(() => { refreshLiveLoans(); }, [refreshLiveLoans]);
+
+  // ─── Refdata (counterparties, portfolios, users) — runtime fetch ───
+  // PORTFOLIOS / COUNTERPARTIES / SUPERADMIN_USERS / USER_PROFILES are
+  // module-scope mutable holders. fetchRefdataOnce() populates them
+  // from /refdata/*.json. We bump refdataTick to force a re-render
+  // each time so pickers see the new lists.
+  const [refdataTick, setRefdataTick] = useState(0);
+  const [refdataLoading, setRefdataLoading] = useState(false);
+  const [refdataLastAt, setRefdataLastAt] = useState(null);
+  const [refdataError, setRefdataError] = useState(null);
+
+  useEffect(() => {
+    // Initial load on mount.
+    (async () => {
+      try {
+        await fetchRefdataOnce();
+        setRefdataTick((t) => t + 1);
+        setRefdataLastAt(new Date());
+      } catch (e) {
+        setRefdataError(String(e));
+      }
+    })();
+  }, []);
+
+  // Manual "↻ Refresh refdata" button handler: kicks the server to
+  // re-sync all 4 sources from MySQL, then re-reads the JSON files.
+  const refreshRefdata = useCallback(async () => {
+    if (refdataLoading) return;
+    setRefdataLoading(true);
+    setRefdataError(null);
+    const hosts = ["", "http://localhost:5181"];
+    let serverOk = false;
+    for (const h of hosts) {
+      try {
+        const r = await fetch(h + "/api/refdata/refresh", { method: "POST" });
+        if (r.ok) { serverOk = true; break; }
+      } catch { /* try next */ }
+    }
+    if (!serverOk) {
+      setRefdataError("server refresh failed — check trade-booking server is running");
+      setRefdataLoading(false);
+      return;
+    }
+    try {
+      await fetchRefdataOnce();
+      setRefdataTick((t) => t + 1);
+      setRefdataLastAt(new Date());
+    } catch (e) {
+      setRefdataError(String(e));
+    } finally {
+      setRefdataLoading(false);
+    }
+  }, [refdataLoading]);
+
+  // After the initial refdata load completes, seed the form's created_by
+  // if it's still empty (initial() runs before fetchRefdataOnce resolves
+  // so SUPERADMIN_USERS was empty at that point).
+  useEffect(() => {
+    if (refdataTick > 0 && SUPERADMIN_USERS.length > 0) {
+      setForm((f) => (f.created_by ? f : { ...f, created_by: SUPERADMIN_USERS[0] }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refdataTick]);
+
   const initial = () => ({
     trade_id: genTradeId("SPOT"),
     external_trade_id: "",
     created_at: isoNow(),
     last_modified_at: isoNow(),
-    created_by: SUPERADMIN_USERS[0],
+    created_by: SUPERADMIN_USERS[0] || "",
     trade_date: nowUtc(),
     value_date: nowUtc(),
     // Portfolio is the source of truth — entity is derived from it
@@ -2704,23 +3767,34 @@ export default function TradeBookingForm() {
     cf_mirror_account_name: "",
     cf_asset: "USDT",
     cf_amount: "",
+    // Loan ↔ cashflow mappings. Only meaningful when cf_type is one of
+    // LOAN / LOAN REPAYMENT / INTEREST EXPENSE / INTEREST INCOME — see
+    // LOAN_RELATED_CF_TYPES. Persisted in loan_cashflow_map (not on
+    // trades_cashflow) so it ships via _meta.loan_deal_refs.
+    cf_loan_deal_refs: [],
     network: "",
     gas_fee: "",
     gas_asset: "ETH",
     tx_hash: "",
     loan_direction: "BORROW",
-    loan_type: "TERM",
+    loan_type: "VIP LOAN",
     loan_term_days: "",
     principal_asset: "USDT",
     interest_asset: "USDT",
     principal_amount: "",
     interest_rate: "",
     interest_type: "FIXED",
+    // Days-per-year for interest accrual. 365 (Actual/365) is the
+    // crypto default; 360 (Actual/360) for USD money-market style loans.
+    day_count_basis: 365,
     floating_benchmark: "",
     collateral_asset: "",
     collateral_amount: "",
     is_hedged: false,
-    hedged_asset: "BTC",
+    // Hedged asset defaults to track interest_asset (the typical hedge
+    // — sell the same asset interest accrues in). Synced automatically
+    // when interest_asset or principal_asset change; user can override.
+    hedged_asset: "USDT",
     hedged_qty: "",
     hedged_price: "",
     hedge_proceeds_asset: "USDT",
@@ -2729,6 +3803,48 @@ export default function TradeBookingForm() {
   });
 
   const [form, setForm] = useState(initial);
+
+  // When the cashflow is tagged to a loan, the cashflow's asset is
+  // *constrained* to match the loan's relevant asset:
+  //   LOAN / LOAN REPAYMENT   → loan.principal_asset
+  //   INTEREST EXPENSE/INCOME → loan.interest_asset
+  // (e.g. a 3,300-ETH loan's interest payments must also be in ETH unless
+  // the loan was booked with a different interest_asset on purpose.)
+  // Returns the locked symbol, or "" when nothing is locked yet, or
+  // null when the picked loans disagree (caller treats as a conflict).
+  const cfAssetLock = useMemo(() => {
+    if (!LOAN_RELATED_CF_TYPES.has(form.cf_type)) return "";
+    const refs = form.cf_loan_deal_refs || [];
+    if (refs.length === 0) return "";
+    const useInterest =
+      form.cf_type === "INTEREST EXPENSE" || form.cf_type === "INTEREST INCOME";
+    const assets = new Set();
+    for (const r of refs) {
+      const loan = liveLoans.find((l) => l.deal_ref === r);
+      if (!loan) continue;
+      assets.add(useInterest ? loan.interest_asset : loan.principal_asset);
+    }
+    if (assets.size === 0) return "";
+    if (assets.size > 1) return null; // conflict — UI shouldn't allow this
+    return [...assets][0];
+  }, [form.cf_type, form.cf_loan_deal_refs, liveLoans]);
+
+  // Auto-snap cf_asset (and fee_asset, if it was trailing) to the lock.
+  // Only fires when the lock is a real symbol — for null (conflict) we
+  // leave the user's prior asset alone so the warning surfaces it.
+  useEffect(() => {
+    if (!cfAssetLock) return;
+    setForm((f) => {
+      if (f.cf_asset === cfAssetLock) return f;
+      return {
+        ...f,
+        cf_asset: cfAssetLock,
+        fee_asset: f.fee_asset === f.cf_asset ? cfAssetLock : f.fee_asset,
+        last_modified_at: isoNow(),
+      };
+    });
+  }, [cfAssetLock]);
+
   const [submittedRecord, setSubmittedRecord] = useState(null);
   const [copied, setCopied] = useState(false);
   const [env, setEnv] = useState("PROD");
@@ -3057,6 +4173,14 @@ export default function TradeBookingForm() {
         _meta: {
           mirror: form.cf_type === "INTER PTF FUNDING" && form.cf_mirror,
           attachments: form.attachments.map(({ _file, ...rest }) => rest),
+          // Loan ↔ cashflow links. Backend's cashflow_insert/amend reads
+          // this and writes rows into loan_cashflow_map in the same txn.
+          // Only meaningful for LOAN_RELATED_CF_TYPES — for other types
+          // the picker is hidden so this stays []. Mirror-leg 2 inherits
+          // the same refs (irrelevant in practice — IPF isn't loan-related).
+          loan_deal_refs: LOAN_RELATED_CF_TYPES.has(form.cf_type)
+            ? (form.cf_loan_deal_refs || []).filter(Boolean)
+            : [],
         },
       };
 
@@ -3087,7 +4211,67 @@ export default function TradeBookingForm() {
       return cfRecord;
     }
 
-    // ─── SPOT / FUTURE / LOAN: legacy base+payload split ────────────────
+    // ─── LOAN: flat, schema-aligned to trades_loan ──────────────────────
+    // Every top-level key maps 1:1 to a column in the trades_loan table
+    // (see trade-booking/scripts/apply_schema_loan.py). Key order mirrors
+    // the DDL column order exactly so the backend can build INSERTs
+    // without renaming. UI-only state (loan_term_days, attachments) sits
+    // in `_meta` so the backend can strip it cleanly.
+    if (form.category === "LOAN") {
+      const hasCollateral = !!form.collateral_asset;
+      const loanRecord = {
+        deal_ref: form.trade_id,
+        // Schema column is `order_id` (counterparty's loan reference, e.g.
+        // Binance VIP loan ID); React state still calls it
+        // external_trade_id to share the input with SPOT/FUTURE/CASHFLOW.
+        order_id: form.external_trade_id || null,
+        txn_type: "LOAN",
+        direction: form.loan_direction,
+        loan_type: form.loan_type,
+        entity: portfolioEntry ? portfolioEntry.entity : null,
+        portfolio_id: portfolioEntry ? portfolioEntry.number : null,
+        portfolio_name: portfolioEntry ? portfolioEntry.name : null,
+        counterparty_id: formatCID(COUNTERPARTY_IDS[form.counterparty]),
+        counterparty: form.counterparty || null,
+        principal_asset: form.principal_asset,
+        principal_amount: parseFloat(form.principal_amount) || 0,
+        interest_asset: form.interest_asset,
+        interest_rate_pa_pct: parseFloat(form.interest_rate) || 0,
+        interest_type: form.interest_type,
+        day_count_basis: parseInt(form.day_count_basis, 10) || 365,
+        floating_benchmark:
+          form.interest_type === "FLOATING" ? form.floating_benchmark || null : null,
+        // trades_loan_collateral_pair CHECK: both NULL or both set.
+        collateral_asset: hasCollateral ? form.collateral_asset : null,
+        collateral_amount: hasCollateral ? parseFloat(form.collateral_amount) || 0 : null,
+        // trades_loan_hedge_consistency CHECK: hedge_* required when is_hedged.
+        is_hedged: form.is_hedged,
+        hedged_asset: form.is_hedged ? form.hedged_asset : null,
+        hedged_qty: form.is_hedged ? parseFloat(form.hedged_qty) || 0 : null,
+        hedged_price: form.is_hedged ? parseFloat(form.hedged_price) || 0 : null,
+        hedge_proceeds_asset: form.is_hedged ? form.hedge_proceeds_asset : null,
+        hedge_proceeds_amount:
+          form.is_hedged ? parseFloat(form.hedge_proceeds_amount) || 0 : null,
+        // form.trade_date is "Start Date"; form.value_date is "Maturity Date"
+        // (NULL = open-term).
+        trade_date: form.trade_date,
+        maturity_date: form.value_date || null,
+        effective_start: null,
+        effective_end: null,
+        user_id: form.created_by || null,
+        status: form.status,
+        comment: form.notes || null,
+        _meta: {
+          // Derived in the form for convenience; schema doesn't store it
+          // (maturity_date - trade_date is the canonical term).
+          loan_term_days: parseInt(form.loan_term_days, 10) || null,
+          attachments: form.attachments.map(({ _file, ...rest }) => rest),
+        },
+      };
+      return loanRecord;
+    }
+
+    // ─── SPOT / FUTURE: legacy base+payload split ───────────────────────
     // Their target tables haven't been designed yet, so the JSON keeps a
     // form-driven shape until schemas are nailed down.
     const base = {
@@ -3164,35 +4348,6 @@ export default function TradeBookingForm() {
         gas_fee: parseFloat(form.gas_fee) || null,
         gas_asset: form.network ? form.gas_asset : null,
       };
-    } else if (form.category === "LOAN") {
-      const hedgedQty = parseFloat(form.hedged_qty) || 0;
-      const hedgedPx = parseFloat(form.hedged_price) || 0;
-      payload = {
-        direction: form.loan_direction,
-        loan_type: form.loan_type,
-        loan_term_days: parseInt(form.loan_term_days, 10) || null,
-        counterparty: form.counterparty || null,
-        account_venue_type: form.account_venue_type,
-        account_name: form.account_name || null,
-        principal_asset: form.principal_asset,
-        principal_amount: parseFloat(form.principal_amount) || 0,
-        interest_asset: form.interest_asset,
-        interest_rate_pa_pct: parseFloat(form.interest_rate) || 0,
-        interest_type: form.interest_type,
-        floating_benchmark:
-          form.interest_type === "FLOATING" ? form.floating_benchmark || null : null,
-        collateral_asset: form.collateral_asset || null,
-        collateral_amount: parseFloat(form.collateral_amount) || 0,
-        hedge: form.is_hedged
-          ? {
-              hedged_asset: form.hedged_asset,
-              hedged_qty: hedgedQty,
-              hedged_price: hedgedPx,
-              hedge_proceeds_asset: form.hedge_proceeds_asset,
-              hedge_proceeds_amount: parseFloat(form.hedge_proceeds_amount) || 0,
-            }
-          : null,
-      };
     }
 
     return { ...base, payload };
@@ -3245,10 +4400,22 @@ export default function TradeBookingForm() {
   // Booking submission feedback. Cleared when the form is edited again
   // or after ~4s on success.
   const [feedback, setFeedback] = useState(null);
+  // Guard against double-submits: a fast double-click (or a finger
+  // bouncing on the button) would fire two POSTs before the first
+  // returned, allocating two consecutive deal_refs from the sequence.
+  // Flips true on submit start, back to false in finally.
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // null | { dealRef: string, message: string }
   const [conflictModal, setConflictModal] = useState(null);
   // null | "MCF-42"  — when set, form is in amend mode (PUT vs POST)
   const [amendingDealRef, setAmendingDealRef] = useState(null);
+  // Snapshot of form + categoryCache taken right before an Amend opens.
+  // The Amend modal overlays the user's in-progress Create Deal draft;
+  // on close we restore the snapshot so the draft survives. Cleared
+  // after restore and on successful submit. Only set when transitioning
+  // from "no amend" → "amend", not on conflict-modal reloads (which
+  // re-enter loadIntoForm while already in amend mode).
+  const formSnapshotRef = useRef(null);
   // Top-level success notice that survives modal close. Auto-clears
   // after 4s. null | { message: string }
   const [toast, setToast] = useState(null);
@@ -3257,12 +4424,74 @@ export default function TradeBookingForm() {
   const [dealEnquiryRefreshSignal, setDealEnquiryRefreshSignal] = useState(0);
   // null | { dealRef, rows, loading, error } — drives HistoryModal
   const [historyModal, setHistoryModal] = useState(null);
+  // null | { dealRef, loan, loading, error } — drives LoanScheduleModal
+  const [loanScheduleModal, setLoanScheduleModal] = useState(null);
+
+  async function openLoanSchedule(dealRef) {
+    setLoanScheduleModal({ dealRef, loan: null, loading: true, error: null });
+    let res;
+    try {
+      res = await fetch(`http://localhost:5181/api/loan/${encodeURIComponent(dealRef)}`);
+    } catch (e) {
+      setLoanScheduleModal({ dealRef, loan: null, loading: false, error: String(e) });
+      return;
+    }
+    const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+    if (!result.ok) {
+      setLoanScheduleModal({ dealRef, loan: null, loading: false, error: result.error || "Failed to load loan" });
+      return;
+    }
+    setLoanScheduleModal({ dealRef, loan: result.rows[0], loading: false, error: null });
+  }
+
+  // When the user clicks a cashflow ref inside the loan schedule, fetch
+  // the cashflow row and open it in the form for amend (same UX as
+  // clicking a row in Deal Enquiry).
+  async function openCashflowFromSchedule(cashflowDealRef) {
+    // loadIntoForm already dispatches on the deal_ref prefix → /api/cashflow/:ref
+    setLoanScheduleModal(null);
+    await loadIntoForm(cashflowDealRef);
+  }
+
+  // "+ Book Cashflow" from the Loan Schedule modal — opens the Cashflow
+  // form pre-populated with the loan's portfolio/counterparty/interest_asset
+  // and the loan tagged in the picker. Snapshots the current draft first
+  // so closing without submit restores the user's in-progress work
+  // (same pattern as Amend overlay).
+  function openCashflowBookingForLoan(loan) {
+    if (!loan) return;
+    formSnapshotRef.current = { form, categoryCache };
+    // Direction-aware defaults: BORROW → INTEREST EXPENSE OUTGOING (you
+    // pay interest); LEND → INTEREST INCOME INCOMING (you receive).
+    // User can change cf_type to LOAN / LOAN REPAYMENT etc. if they're
+    // booking a different leg of the loan lifecycle.
+    const isLend = loan.direction === "LEND";
+    const cfType = isLend ? "INTEREST INCOME" : "INTEREST EXPENSE";
+    const cfDirection = isLend ? "INCOMING" : "OUTGOING";
+    const interestAsset = loan.interest_asset || "USDT";
+    setForm({
+      ...initial(),
+      category: "CASHFLOW",
+      portfolio: String(loan.portfolio_id || ""),
+      counterparty: loan.counterparty || "",
+      cf_type: cfType,
+      cf_direction: cfDirection,
+      cf_asset: interestAsset,
+      fee_asset: interestAsset,
+      cf_loan_deal_refs: [loan.deal_ref],
+    });
+    setCategoryCache({});
+    setLoanScheduleModal(null);
+    setAmendingDealRef(null);
+    setCreateDealOpen(true);
+  }
 
   async function openHistory(dealRef) {
     setHistoryModal({ dealRef, rows: [], loading: true, error: null });
+    const base = productFromDealRef(dealRef) === "LOAN" ? "loan" : "cashflow";
     let res;
     try {
-      res = await fetch(`http://localhost:5181/api/cashflow/${encodeURIComponent(dealRef)}/history`);
+      res = await fetch(`http://localhost:5181/api/${base}/${encodeURIComponent(dealRef)}/history`);
     } catch (e) {
       setHistoryModal({ dealRef, rows: [], loading: false, error: String(e) });
       return;
@@ -3304,14 +4533,76 @@ export default function TradeBookingForm() {
       created_by: row.user_id,
       status: row.status,
       notes: row.comment || "",
+      // Pre-fill the loan picker from joined mappings (server attaches
+      // `mappings: [{counterpart_deal_ref, mapping_type, mapped_amount}]`).
+      cf_loan_deal_refs: (row.mappings || []).map((m) => m.counterpart_deal_ref).filter(Boolean),
     };
+  }
+
+  // Inverse of outputRecord for category="LOAN". Maps a backend
+  // trades_loan row back into form-state keys.
+  function loanPayloadToFormState(row) {
+    return {
+      category: "LOAN",
+      trade_id: row.deal_ref,
+      // Schema column is order_id; form state reuses external_trade_id.
+      external_trade_id: row.order_id || "",
+      loan_direction: row.direction,
+      loan_type: row.loan_type,
+      portfolio: String(row.portfolio_id),
+      counterparty: row.counterparty || "",
+      principal_asset: row.principal_asset,
+      principal_amount: row.principal_amount == null ? "" : String(row.principal_amount),
+      interest_asset: row.interest_asset,
+      interest_rate: row.interest_rate_pa_pct == null ? "" : String(row.interest_rate_pa_pct),
+      interest_type: row.interest_type,
+      day_count_basis: row.day_count_basis ?? 365,
+      floating_benchmark: row.floating_benchmark || "",
+      collateral_asset: row.collateral_asset || "",
+      collateral_amount: row.collateral_amount == null ? "" : String(row.collateral_amount),
+      is_hedged: !!row.is_hedged,
+      // If the loaded row is unhedged (hedged_asset NULL), preseed the
+      // picker with the loan's interest_asset so flipping is_hedged on
+      // starts at the typical default rather than a random "BTC".
+      hedged_asset: row.hedged_asset || row.interest_asset || "USDT",
+      hedged_qty: row.hedged_qty == null ? "" : String(row.hedged_qty),
+      hedged_price: row.hedged_price == null ? "" : String(row.hedged_price),
+      hedge_proceeds_asset: row.hedge_proceeds_asset || "USDT",
+      hedge_proceeds_amount:
+        row.hedge_proceeds_amount == null ? "" : String(row.hedge_proceeds_amount),
+      // Loan-specific naming for the date pair: trade_date=Start, maturity_date=Maturity.
+      trade_date: row.trade_date,
+      value_date: row.maturity_date || "",
+      // loan_term_days is derived in the form; clear so the open-term
+      // input shows blank unless the user re-enters a term.
+      loan_term_days: "",
+      created_by: row.user_id,
+      status: row.status,
+      notes: row.comment || "",
+    };
+  }
+
+  // Deal-ref prefix routes to the right product backend.
+  // MCF → cashflow (trade_seq_cashflow), MLA → loan (trade_seq_loan).
+  function productFromDealRef(dealRef) {
+    if (typeof dealRef === "string" && dealRef.startsWith("MLA")) return "LOAN";
+    return "CASHFLOW";
   }
 
   // Synchronous: row data is already in hand (Deal Enquiry already
   // fetched the recent list). No network round-trip on row click.
   function loadRowIntoForm(row) {
     setFeedback(null);
-    setMany(payloadToFormState(row));
+    // Snapshot the existing draft before overwriting — but only if
+    // we're entering amend mode fresh. Conflict-modal "Reload" calls
+    // this while already in amend mode; in that case the snapshot
+    // already represents the pre-amend draft and we shouldn't clobber
+    // it with the now-amended state.
+    if (!amendingDealRef) {
+      formSnapshotRef.current = { form, categoryCache };
+    }
+    const product = row.txn_type === "LOAN" ? "LOAN" : "CASHFLOW";
+    setMany(product === "LOAN" ? loanPayloadToFormState(row) : payloadToFormState(row));
     setAmendingDealRef(row.deal_ref);
     // Don't change view — if the user is on Deal Enquiry, the form opens
     // as a modal (see ModalShell wrapper); if they're already on
@@ -3322,9 +4613,11 @@ export default function TradeBookingForm() {
   // modal's Reload button, where the cached copy is known to be stale.
   async function loadIntoForm(dealRef) {
     setFeedback(null);
+    const product = productFromDealRef(dealRef);
+    const base = product === "LOAN" ? "loan" : "cashflow";
     let res;
     try {
-      res = await fetch(`http://localhost:5181/api/cashflow/${encodeURIComponent(dealRef)}`);
+      res = await fetch(`http://localhost:5181/api/${base}/${encodeURIComponent(dealRef)}`);
     } catch (e) {
       setFeedback({ kind: "error", message: "Server unreachable", detail: String(e) });
       return;
@@ -3338,47 +4631,56 @@ export default function TradeBookingForm() {
   }
 
   const handleSubmit = async () => {
-    if (form.category !== "CASHFLOW") {
-      // SPOT/FUTURE/LOAN: not wired to backend yet — keep the existing
-      // JSON preview behavior so those forms still work.
+    if (form.category !== "CASHFLOW" && form.category !== "LOAN") {
+      // SPOT/FUTURE: not wired to backend yet — keep the existing JSON
+      // preview behavior so those forms still work.
       if (!canSubmit) return;
       setSubmittedRecord(outputRecord);
       return;
     }
     if (!canSubmit) return;
+    if (isSubmitting) return;  // bail on duplicate clicks while in-flight
+    setIsSubmitting(true);
     setFeedback(null);
+    const base = form.category === "LOAN" ? "loan" : "cashflow";
     const endpoint = amendingDealRef
-      ? "http://localhost:5181/api/cashflow/amend"
-      : "http://localhost:5181/api/cashflow/insert";
-    let res;
+      ? `http://localhost:5181/api/${base}/amend`
+      : `http://localhost:5181/api/${base}/insert`;
     try {
-      res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(outputRecord),
-      });
-    } catch (e) {
-      setFeedback({ kind: "error", message: "Server unreachable", detail: String(e) });
-      return;
-    }
-    const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
-    if (result.ok && result.rows && result.rows.length > 0) {
-      setSubmittedRecord(result.rows.length === 1 ? result.rows[0] : result.rows);
-      const verb = amendingDealRef ? "updated" : "booked";
-      const refs = result.rows.map((r) => r.deal_ref);
-      const label = refs.length > 1 ? `Deals ${refs.join(" + ")}` : `Deal ${refs[0]}`;
-      setAmendingDealRef(null);          // closes the amend modal (if open)
-      setCreateDealOpen(false);           // closes the create modal (if open)
-      setFeedback(null);                  // clear any prior inline error
-      setForm(initial());                 // fresh form, default category SPOT
-      setCategoryCache({});               // drop any other-product drafts too
-      setToast({ message: `${label} ${verb}` });
-      setDealEnquiryRefreshSignal((s) => s + 1);   // table refetches
-      setTimeout(() => setToast(null), 4000);
-    } else if (res.status === 409) {
-      setConflictModal({ dealRef: amendingDealRef, message: result.error });
-    } else {
-      setFeedback({ kind: "error", message: result.error || "Booking failed", detail: result.detail });
+      let res;
+      try {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(outputRecord),
+        });
+      } catch (e) {
+        setFeedback({ kind: "error", message: "Server unreachable", detail: String(e) });
+        return;
+      }
+      const result = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+      if (result.ok && result.rows && result.rows.length > 0) {
+        setSubmittedRecord(result.rows.length === 1 ? result.rows[0] : result.rows);
+        const verb = amendingDealRef ? "updated" : "booked";
+        const refs = result.rows.map((r) => r.deal_ref);
+        const label = refs.length > 1 ? `Deals ${refs.join(" + ")}` : `Deal ${refs[0]}`;
+        setAmendingDealRef(null);          // closes the amend modal (if open)
+        setCreateDealOpen(false);           // closes the create modal (if open)
+        setFeedback(null);                  // clear any prior inline error
+        setForm(initial());                 // fresh form, default category SPOT
+        setCategoryCache({});               // drop any other-product drafts too
+        formSnapshotRef.current = null;     // submitted — pre-amend draft no longer relevant
+        setToast({ message: `${label} ${verb}` });
+        setDealEnquiryRefreshSignal((s) => s + 1);   // table refetches
+        refreshLiveLoans();                          // picker sees the new loan
+        setTimeout(() => setToast(null), 4000);
+      } else if (res.status === 409) {
+        setConflictModal({ dealRef: amendingDealRef, message: result.error });
+      } else {
+        setFeedback({ kind: "error", message: result.error || "Booking failed", detail: result.detail });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -3443,7 +4745,7 @@ export default function TradeBookingForm() {
     },
     LOAN: {
       loan_direction: "BORROW",
-      loan_type: "TERM",
+      loan_type: "VIP LOAN",
       loan_term_days: "",
       principal_asset: "USDT",
       interest_asset: "USDT",
@@ -3454,7 +4756,7 @@ export default function TradeBookingForm() {
       collateral_asset: "",
       collateral_amount: "",
       is_hedged: false,
-      hedged_asset: "BTC",
+      hedged_asset: "USDT",
       hedged_qty: "",
       hedged_price: "",
       hedge_proceeds_asset: "USDT",
@@ -3663,6 +4965,53 @@ export default function TradeBookingForm() {
 
           <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
 
+          {/* REFDATA — re-sync portfolios/counterparties/users/tokens from MySQL */}
+          <button
+            type="button"
+            onClick={refreshRefdata}
+            disabled={refdataLoading}
+            className="flex flex-col items-start gap-0.5 transition-opacity hover:opacity-80 leading-none"
+            style={{ opacity: refdataLoading ? 0.55 : 1, cursor: refdataLoading ? "wait" : "pointer" }}
+            title={
+              refdataError
+                ? `Refresh failed: ${refdataError}`
+                : refdataLastAt
+                ? `Last refreshed ${refdataLastAt.toLocaleTimeString()} · click to re-sync MySQL`
+                : "Click to re-sync MySQL refdata (portfolios / counterparties / users / tokens)"
+            }
+          >
+            <span style={{ color: "#6a665c" }}>REFDATA</span>
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block"
+                style={{
+                  width: 7,
+                  height: 7,
+                  background: refdataError ? BB.red : refdataLoading ? "#1f63ea" : BB.green,
+                  boxShadow: `0 0 6px ${refdataError ? BB.red : refdataLoading ? "#1f63ea" : BB.green}`,
+                }}
+              />
+              <span
+                style={{
+                  color: refdataError ? "#fca5a5" : refdataLoading ? "#bfdbfe" : "#6ee7b7",
+                  fontWeight: 600,
+                  letterSpacing: "0.18em",
+                }}
+              >
+                {refdataLoading
+                  ? "SYNCING"
+                  : refdataError
+                  ? "ERROR"
+                  : refdataLastAt
+                  ? refdataLastAt.toLocaleTimeString().slice(0, 5)
+                  : "—"}
+              </span>
+            </span>
+          </button>
+
+          <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
+
           {/* UTC date · time */}
           <div className="flex items-baseline gap-2">
             <span
@@ -3694,6 +5043,12 @@ export default function TradeBookingForm() {
             <div className="px-5 pb-3">
               <button
                 type="button"
+                // No reset on open — the in-progress Create Deal draft
+                // is preserved across modal close+reopen. Reset only
+                // fires on a successful submit (see handleSubmit). If
+                // the user comes from an Amend, the snapshot/restore
+                // logic in loadRowIntoForm already restored the draft
+                // before this point.
                 onClick={() => setCreateDealOpen(true)}
                 className="w-full py-2.5 text-[12px] font-medium uppercase tracking-[0.22em] transition-colors font-mono flex items-center justify-center gap-2"
                 style={{
@@ -3725,6 +5080,11 @@ export default function TradeBookingForm() {
               label="Deal Enquiry"
               active={view === "DEAL_ENQUIRY"}
               onClick={() => setView("DEAL_ENQUIRY")}
+            />
+            <NavTabRow
+              label="Loan Enquiry"
+              active={view === "LOAN_ENQUIRY"}
+              onClick={() => setView("LOAN_ENQUIRY")}
             />
             <NavTabRow
               label="Pending Bookings"
@@ -3788,6 +5148,17 @@ export default function TradeBookingForm() {
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
+          {view === "LOAN_ENQUIRY" && (
+            <LoanEnquiry
+              BB={BB}
+              // Clicking the deal_ref opens the schedule modal (the
+              // canonical "view a loan" surface). The modal exposes an
+              // Amend button that re-routes to the form.
+              onSelect={(row) => openLoanSchedule(row.deal_ref)}
+              onHistory={(dealRef) => openHistory(dealRef)}
+              refreshSignal={dealEnquiryRefreshSignal}
+            />
+          )}
           {view === "PENDING_BOOKINGS" && (
             <PlaceholderView
               title="Pending Bookings"
@@ -3797,9 +5168,28 @@ export default function TradeBookingForm() {
           {form.category !== "FUTURE" && (
       <ModalShell
         open={createDealOpen || Boolean(amendingDealRef)}
-        onClose={() => { setCreateDealOpen(false); setAmendingDealRef(null); setFeedback(null); }}
+        onClose={() => {
+          // A snapshot exists when the form was overlaid with "other"
+          // data — either an Amend row OR a loan-pre-filled Cashflow
+          // booking. Either way, restore the user's prior draft on
+          // close so their in-progress Create Deal survives. Pure
+          // Create Deal opens take no snapshot, so close just leaves
+          // the form untouched (continues from where they left off).
+          if (formSnapshotRef.current) {
+            setForm(formSnapshotRef.current.form);
+            setCategoryCache(formSnapshotRef.current.categoryCache);
+          }
+          formSnapshotRef.current = null;
+          setCreateDealOpen(false);
+          setAmendingDealRef(null);
+          setFeedback(null);
+        }}
       >
-      <ProductTabs active={form.category} onChange={(k) => switchCategory(k)} />
+      <ProductTabs
+        active={form.category}
+        onChange={(k) => switchCategory(k)}
+        locked={Boolean(amendingDealRef)}
+      />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-5 pt-4">
         {/* ═══════════ LEFT — form ═══════════ */}
         <div
@@ -3836,9 +5226,9 @@ export default function TradeBookingForm() {
                 }}
               />
             </Field>
-            <Field label="External Trade Id (optional)" span={6}>
+            <Field label={form.category === "LOAN" ? "Order ID" : "External Trade Id (optional)"} span={6}>
               <Input
-                placeholder="exchange order id / counterparty ref / 0x…"
+                placeholder={form.category === "LOAN" ? "" : "exchange order id / counterparty ref / 0x…"}
                 value={form.external_trade_id}
                 onChange={(e) => set("external_trade_id", e.target.value)}
               />
@@ -3952,17 +5342,24 @@ export default function TradeBookingForm() {
                       const nextType = e.target.value;
                       const wasIPF = form.cf_type === "INTER PTF FUNDING";
                       const nowIPF = nextType === "INTER PTF FUNDING";
+                      const wasLoanRelated = LOAN_RELATED_CF_TYPES.has(form.cf_type);
+                      const nowLoanRelated = LOAN_RELATED_CF_TYPES.has(nextType);
+                      // Drop any loan picker selections when the new type
+                      // isn't loan-related — keeps stale mapping refs from
+                      // shipping in _meta.
+                      const patch = { cf_type: nextType };
                       if (wasIPF !== nowIPF) {
-                        setMany({
-                          cf_type: nextType,
+                        Object.assign(patch, {
                           counterparty: "",
                           cf_mirror: false,
                           cf_mirror_account_name: "",
                           cf_mirror_account_venue_type: "EXCHANGE",
                         });
-                      } else {
-                        set("cf_type", nextType);
                       }
+                      if (wasLoanRelated && !nowLoanRelated) {
+                        patch.cf_loan_deal_refs = [];
+                      }
+                      setMany(patch);
                     }}
                   >
                     <option value="">— select —</option>
@@ -3986,6 +5383,58 @@ export default function TradeBookingForm() {
                       Mirror Trade
                     </label>
                   </div>
+                ) : LOAN_RELATED_CF_TYPES.has(form.cf_type) ? (
+                  (() => {
+                    // Picker options = live loans (effective_end IS NULL)
+                    // filtered to the cashflow's selected portfolio. If
+                    // portfolio is blank we show everything so the user
+                    // can preview; the filter snaps once they pick one.
+                    const onPortfolio = form.portfolio
+                      ? liveLoans.filter((l) => String(l.portfolio_id) === String(form.portfolio))
+                      : liveLoans;
+                    // Asset-compatibility filter: once one loan is picked,
+                    // hide loans whose locking-asset would conflict (so the
+                    // user can never end up in a "mixed assets" state).
+                    // cfAssetLock=="" means no lock yet (zero picked or all
+                    // candidate loans agree); cfAssetLock=null means
+                    // existing picks already conflict — show everything so
+                    // the user can recover by removing one.
+                    const useInterest =
+                      form.cf_type === "INTEREST EXPENSE" || form.cf_type === "INTEREST INCOME";
+                    const eligible = cfAssetLock
+                      ? onPortfolio.filter((l) => {
+                          const a = useInterest ? l.interest_asset : l.principal_asset;
+                          return a === cfAssetLock;
+                        })
+                      : onPortfolio;
+                    return (
+                      <Field label="Linked Loan(s) (optional)" span={8}>
+                        <LoanPicker
+                          selected={form.cf_loan_deal_refs || []}
+                          onChange={(next) => set("cf_loan_deal_refs", next)}
+                          options={eligible}
+                        />
+                        {form.portfolio && eligible.length === 0 && (
+                          <div
+                            className="text-[10px] mt-1 font-mono"
+                            style={{ color: BB.mute || "#6a665c" }}
+                          >
+                            {cfAssetLock
+                              ? `No more live loans on portfolio ${form.portfolio} in ${cfAssetLock}.`
+                              : `No live loans on portfolio ${form.portfolio} — book the loan first if needed.`}
+                          </div>
+                        )}
+                        {cfAssetLock === null && (
+                          <div
+                            className="text-[10px] mt-1 font-mono"
+                            style={{ color: "#a23b1a" }}
+                          >
+                            ⚠ Linked loans use different assets — remove one to continue.
+                          </div>
+                        )}
+                      </Field>
+                    );
+                  })()
                 ) : (
                   <div className="col-span-8" />
                 )}
@@ -4349,6 +5798,11 @@ export default function TradeBookingForm() {
               <Field label="Notional Asset" required span={3}>
                 <AssetPicker
                   value={form.cf_asset}
+                  // Lock the asset when a loan link constrains it.
+                  // The auto-sync useEffect above keeps cf_asset in sync;
+                  // disabling the picker just stops the user from changing
+                  // it back to something incompatible.
+                  disabled={!!cfAssetLock}
                   onChange={(v) => {
                     // Fee Asset trails Notional Asset until the user customizes it.
                     // We detect "uncustomized" by checking whether fee_asset still
@@ -4361,6 +5815,14 @@ export default function TradeBookingForm() {
                     }));
                   }}
                 />
+                {cfAssetLock && (
+                  <div
+                    className="text-[10px] mt-1 font-mono"
+                    style={{ color: BB.mute || "#6a665c" }}
+                  >
+                    Locked to {cfAssetLock} by {(form.cf_loan_deal_refs || []).join(", ")}
+                  </div>
+                )}
               </Field>
               <Field label="Notional Amount" required span={3}>
                 <NumberInput value={form.cf_amount} onChange={(v) => set("cf_amount", v)} />
@@ -4530,7 +5992,16 @@ export default function TradeBookingForm() {
                   <AssetPicker
                     value={form.interest_asset}
                     onChange={(v) =>
-                      setMany({ interest_asset: v, hedged_asset: v })
+                      setForm((f) => {
+                        const next = { ...f, interest_asset: v, last_modified_at: isoNow() };
+                        // Hedged Asset auto-tracks Interest Asset, but only
+                        // while the user hasn't diverged them. Once they pick
+                        // a different hedged_asset, this stops overriding.
+                        if (f.hedged_asset === f.interest_asset) {
+                          next.hedged_asset = v;
+                        }
+                        return next;
+                      })
                     }
                   />
                 </Field>
@@ -4550,47 +6021,26 @@ export default function TradeBookingForm() {
                     <option>FLOATING</option>
                   </Select>
                 </Field>
+                <Field label="Day Basis" span={4}>
+                  <Select
+                    value={String(form.day_count_basis ?? 365)}
+                    onChange={(e) => set("day_count_basis", parseInt(e.target.value, 10))}
+                  >
+                    <option value="365">365</option>
+                    <option value="360">360</option>
+                  </Select>
+                </Field>
                 {form.interest_type === "FLOATING" ? (
-                  <Field label="Floating Benchmark" span={8}>
+                  <Field label="Floating Benchmark" span={4}>
                     <Input
-                      placeholder="e.g. SOFR + 200bps, Aave borrow rate"
+                      placeholder="e.g. SOFR + 200bps"
                       value={form.floating_benchmark}
                       onChange={(e) => set("floating_benchmark", e.target.value)}
                     />
                   </Field>
                 ) : (
-                  <div className="col-span-8" />
+                  <div className="col-span-4" />
                 )}
-
-                {/* Account (matches cashflow) */}
-                <Field label="Account Type" required span={4}>
-                  <Select
-                    value={form.account_venue_type}
-                    onChange={(e) =>
-                      setMany({ account_venue_type: e.target.value, account_name: "" })
-                    }
-                  >
-                    {ACCOUNT_VENUE_TYPES.map((v) => (
-                      <option key={v.key} value={v.key}>
-                        {v.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Account Name" required span={8}>
-                  <AccountPicker
-                    value={form.account_name}
-                    onChange={(v) => set("account_name", v)}
-                    options={accountOptions}
-                    placeholder={
-                      !form.portfolio
-                        ? "— select portfolio first —"
-                        : accountOptions.length === 0
-                        ? "— no accounts for this portfolio + account type —"
-                        : "— select account —"
-                    }
-                  />
-                </Field>
 
                 {/* Collateral — loan-specific extras at the bottom */}
                 <Field label="Collateral Asset" span={6}>
@@ -4793,25 +6243,27 @@ export default function TradeBookingForm() {
           <div className="flex gap-2 pt-1">
             <button
               onClick={handleSubmit}
-              disabled={!canSubmit}
+              disabled={!canSubmit || isSubmitting}
               className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
               style={{
-                background: canSubmit ? BB.orange : BB.surface2,
-                color: canSubmit ? "#ffffff" : BB.faint,
-                border: `1px solid ${canSubmit ? BB.orange : BB.border}`,
-                cursor: canSubmit ? "pointer" : "not-allowed",
+                background: canSubmit && !isSubmitting ? BB.orange : BB.surface2,
+                color: canSubmit && !isSubmitting ? "#ffffff" : BB.faint,
+                border: `1px solid ${canSubmit && !isSubmitting ? BB.orange : BB.border}`,
+                cursor: canSubmit && !isSubmitting ? "pointer" : "not-allowed",
                 letterSpacing: "0.28em",
               }}
               onMouseEnter={(ev) => {
-                if (canSubmit) ev.currentTarget.style.background = BB.amber;
+                if (canSubmit && !isSubmitting) ev.currentTarget.style.background = BB.amber;
               }}
               onMouseLeave={(ev) => {
-                if (canSubmit) ev.currentTarget.style.background = BB.orange;
+                if (canSubmit && !isSubmitting) ev.currentTarget.style.background = BB.orange;
               }}
             >
-              {amendingDealRef ? `Update ${amendingDealRef}` : (
-                form.category === "CASHFLOW" ? "Book Cashflow" : "Generate Output"
-              )}
+              {isSubmitting
+                ? "Submitting…"
+                : amendingDealRef ? `Update ${amendingDealRef}` : (
+                  form.category === "CASHFLOW" ? "Book Cashflow" : "Generate Output"
+                )}
             </button>
             {amendingDealRef && (
               <button
@@ -4979,6 +6431,25 @@ export default function TradeBookingForm() {
               dealRef={historyModal?.dealRef}
               state={historyModal}
               onClose={() => setHistoryModal(null)}
+            />
+            <LoanScheduleModal
+              open={Boolean(loanScheduleModal)}
+              dealRef={loanScheduleModal?.dealRef}
+              state={loanScheduleModal}
+              onClose={() => setLoanScheduleModal(null)}
+              onAmend={(loan) => {
+                // Close schedule, then drop the loan row into the form
+                // for amendment. Reuses the existing loanPayloadToFormState
+                // → setMany → amendingDealRef pipeline.
+                setLoanScheduleModal(null);
+                loadRowIntoForm(loan);
+              }}
+              onHistory={(dealRef) => {
+                setLoanScheduleModal(null);
+                openHistory(dealRef);
+              }}
+              onCashflowSelect={openCashflowFromSchedule}
+              onBookCashflow={openCashflowBookingForLoan}
             />
       </div>
     </div>
