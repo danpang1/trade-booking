@@ -1,0 +1,37 @@
+[
+  {
+    "id": 7,
+    "username": "danny.pang",
+    "displayName": "Danny Pang",
+    "email": "danny.pang@tokkalabs.com",
+    "roleName": "superadmin"
+  },
+  {
+    "id": 59,
+    "username": "irven.heng",
+    "displayName": "Irven Heng",
+    "email": "irven.heng@tokkalabs.com",
+    "roleName": "superadmin"
+  },
+  {
+    "id": 2,
+    "username": "mo",
+    "displayName": "Mo",
+    "email": "mo@tokkalabs.com",
+    "roleName": "superadmin"
+  },
+  {
+    "id": 14,
+    "username": "weehowe.ang",
+    "displayName": "Weehowe Ang",
+    "email": "weehowe.ang@tokkalabs.com",
+    "roleName": "superadmin"
+  },
+  {
+    "id": 9,
+    "username": "yaqing.bie",
+    "displayName": "Yaqing Bie",
+    "email": "yaqing.bie@tokkalabs.com",
+    "roleName": "superadmin"
+  }
+]

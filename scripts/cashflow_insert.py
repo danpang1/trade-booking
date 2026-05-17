@@ -40,6 +40,7 @@ import json
 import sys
 
 import cashflow_db
+import loan_cashflow_map_db
 
 
 def _insert_one(cur, payload: dict) -> dict:
@@ -56,7 +57,30 @@ def _insert_one(cur, payload: dict) -> dict:
         vals,
     )
     out_cols = [d.name for d in cur.description]
-    return cashflow_db.row_to_payload(out_cols, cur.fetchone())
+    row = cashflow_db.row_to_payload(out_cols, cur.fetchone())
+
+    # Loan mappings (optional). The frontend stashes them in _meta so
+    # they don't pollute the column-aligned cashflow payload. Mapping
+    # write rides on the same txn — atomic with the cashflow insert.
+    meta = payload.get("_meta") or {}
+    refs = meta.get("loan_deal_refs") or []
+    mappings = loan_cashflow_map_db.set_mappings_for_cashflow(
+        cur,
+        cashflow_deal_ref=deal_ref,
+        loan_deal_refs=refs,
+        user_id=payload.get("user_id") or "unknown",
+        cashflow_type=payload.get("cashflow_type"),
+        direction=payload.get("direction"),
+    )
+    row["mappings"] = [
+        {
+            "counterpart_deal_ref": m["loan_deal_ref"],
+            "mapping_type": m["mapping_type"],
+            "mapped_amount": m["mapped_amount"],
+        }
+        for m in mappings
+    ]
+    return row
 
 
 def main() -> int:
@@ -79,6 +103,9 @@ def main() -> int:
                 rows = [_insert_one(cur, leg) for leg in legs]
         print(json.dumps({"ok": True, "rows": rows}))
         return 0
+    except loan_cashflow_map_db.MappingError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5

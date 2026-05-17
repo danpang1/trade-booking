@@ -1,16 +1,13 @@
-"""List the N most recent live cashflow rows for the Deal Enquiry view.
+"""List N most recent live loan rows for Deal Enquiry.
 
 Reads `{"limit": N}` from stdin (default 20, max 200).
 Writes {"ok": true, "rows": [...]} to stdout.
-
-Manual smoke:
-    echo '{"limit": 5}' | python3 trade-booking/scripts/cashflow_recent.py
 """
 from __future__ import annotations
 import json
 import sys
 
-import cashflow_db
+import loan_db
 import loan_cashflow_map_db
 
 
@@ -28,20 +25,19 @@ def main() -> int:
         return 3
     limit = max(1, min(200, limit))
 
-    conn = cashflow_db.connect()
+    conn = loan_db.connect()
     try:
         with conn.cursor() as cur:
-            # Pull the live row plus the *earliest* effective_start for
-            # the same deal_ref so the UI can show "Input Date" as the
-            # original booking moment (immutable across amendments).
-            # LEFT JOIN attaches mapped loan refs as a JSON array.
             cur.execute(
                 "SELECT t.*, "
-                "       (SELECT MIN(effective_start) FROM trades_cashflow "
+                "       (SELECT MIN(effective_start) FROM trades_loan "
                 "         WHERE deal_ref = t.deal_ref) AS first_effective_start, "
-                f"      {loan_cashflow_map_db.CASHFLOW_MAPPINGS_JSON_AGG} "
-                "  FROM trades_cashflow t "
-                "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
+                f"      {loan_cashflow_map_db.LOAN_MAPPINGS_JSON_AGG} "
+                "  FROM trades_loan t "
+                "  LEFT JOIN loan_cashflow_map m ON m.loan_deal_ref = t.deal_ref "
+                "  LEFT JOIN trades_cashflow cf "
+                "         ON cf.deal_ref = m.cashflow_deal_ref "
+                "        AND cf.effective_end IS NULL AND cf.status <> 'CANCELLED' "
                 " WHERE t.effective_end IS NULL "
                 " GROUP BY t.deal_ref, t.effective_start "
                 " ORDER BY t.trade_date DESC, t.deal_ref DESC "
@@ -49,7 +45,7 @@ def main() -> int:
                 (limit,),
             )
             cols = [d.name for d in cur.description]
-            rows = [cashflow_db.row_to_payload(cols, r) for r in cur.fetchall()]
+            rows = [loan_db.row_to_payload(cols, r) for r in cur.fetchall()]
         print(json.dumps({"ok": True, "rows": rows}))
         return 0
     except Exception as e:

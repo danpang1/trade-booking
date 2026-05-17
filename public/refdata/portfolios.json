@@ -1,0 +1,308 @@
+[
+  {
+    "id": 42,
+    "number": 1000,
+    "name": "SOSOVALUE - SODEXMM",
+    "entity": "IMAGINE LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "SOSOVALUE",
+    "manager": "ZHICHAO YE"
+  },
+  {
+    "id": 2,
+    "number": 8000,
+    "name": "TOKKA LABS - MM PMM - RFQ",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 3,
+    "number": 8001,
+    "name": "TOKKA LABS - SSB - 1INCH FUSION",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 4,
+    "number": 8003,
+    "name": "TOKKA LABS - CLOB - DEX MM BLUEFIN",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 7,
+    "number": 8006,
+    "name": "TOKKA LABS - SSB - CDA ALTCHAINS",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 8,
+    "number": 8007,
+    "name": "TOKKA LABS - SSB - MEV ETH",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 10,
+    "number": 8009,
+    "name": "TOKKA LABS - INNOVATION LAB - TESTING",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 13,
+    "number": 8012,
+    "name": "TOKKA LABS - CLOB - DBS DDEX MM",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 17,
+    "number": 8017,
+    "name": "TOKKA LABS - SSB - BUILDER ETH",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 20,
+    "number": 8020,
+    "name": "TOKKA LABS - SSB - COWSWAP",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 21,
+    "number": 8021,
+    "name": "TOKKA LABS - SSB - PYTH EXPRESS RELAY",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 22,
+    "number": 8022,
+    "name": "TOKKA LABS - MM LP - ALKIMIYA",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 23,
+    "number": 8023,
+    "name": "TOKKA LABS - SSB - CDA SOL",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 24,
+    "number": 8025,
+    "name": "TOKKA LABS - SSB PYTH",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 26,
+    "number": 8026,
+    "name": "TOKKA LABS - CLOB - DEX REYA",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 27,
+    "number": 8027,
+    "name": "TOKKA LABS - MM LP - SOSOVALUE",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 30,
+    "number": 8028,
+    "name": "TOKKA LABS - MM PMM - CROSSCHAIN",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 28,
+    "number": 8029,
+    "name": "TOKKA LABS - SSB - SEARCHER SOLANA",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 31,
+    "number": 8030,
+    "name": "TOKKA LABS - CLOB - SYNFUTURES DEX",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 32,
+    "number": 8031,
+    "name": "TOKKA LABS - SSB - CDA TON HG",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 35,
+    "number": 8032,
+    "name": "TOKKA LABS - CLOB - HYPERLIQUID",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 34,
+    "number": 8033,
+    "name": "TOKKA LABS - CLOB - GRVT VERTEX",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 36,
+    "number": 8034,
+    "name": "TOKKA LABS - SSB - VEROLA",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 37,
+    "number": 8035,
+    "name": "TOKKA LABS - MM LP - ARMSTROM",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 38,
+    "number": 8036,
+    "name": "TOKKA LABS - MM LP - SOSOVAULT",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 40,
+    "number": 8037,
+    "name": "TOKKA LABS - SSB - LIQUIDATION",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 41,
+    "number": 8038,
+    "name": "TOKKA LABS - ARB - HYPERARBITRAGE",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 43,
+    "number": 8039,
+    "name": "TOKKA LABS - SPP - SODEX",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 44,
+    "number": 8040,
+    "name": "TOKKA LABS - RFQ - PROPAMM",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 45,
+    "number": 8041,
+    "name": "TOKKA LABS - MM - CENTRAL RISK BOOK",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 46,
+    "number": 8042,
+    "name": "TOKKA LABS - SD - STOCKS ARBITRAGE",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 1,
+    "number": 8888,
+    "name": "TOKKA LABS - TREASURY",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 29,
+    "number": 8889,
+    "name": "TOKKA LABS - TREASURY - INVESTMENTS",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "INVESTMENT",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  },
+  {
+    "id": 25,
+    "number": 9999,
+    "name": "TOKKA LABS - DUMMY",
+    "entity": "TOKKA LABS PTE LTD",
+    "type": "TRADING",
+    "mainGroup": "TOKKA LABS",
+    "manager": "WEE HOWE ANG"
+  }
+]

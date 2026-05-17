@@ -48,6 +48,7 @@ import json
 import sys
 
 import cashflow_db
+import loan_cashflow_map_db
 
 
 def main() -> int:
@@ -96,8 +97,33 @@ def main() -> int:
                 )
                 out_cols = [d.name for d in cur.description]
                 row = cashflow_db.row_to_payload(out_cols, cur.fetchone())
+
+                # Mapping replace runs in the same txn as the SCD2
+                # rewrite; if it fails (bad MLA ref) the whole amend
+                # rolls back including the new cashflow version.
+                meta = payload.get("_meta") or {}
+                refs = meta.get("loan_deal_refs") or []
+                mappings = loan_cashflow_map_db.set_mappings_for_cashflow(
+                    cur,
+                    cashflow_deal_ref=deal_ref,
+                    loan_deal_refs=refs,
+                    user_id=payload.get("user_id") or "unknown",
+                    cashflow_type=payload.get("cashflow_type"),
+                    direction=payload.get("direction"),
+                )
+                row["mappings"] = [
+                    {
+                        "counterpart_deal_ref": m["loan_deal_ref"],
+                        "mapping_type": m["mapping_type"],
+                        "mapped_amount": m["mapped_amount"],
+                    }
+                    for m in mappings
+                ]
         print(json.dumps({"ok": True, "rows": [row]}))
         return 0
+    except loan_cashflow_map_db.MappingError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5

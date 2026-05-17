@@ -1,17 +1,14 @@
-"""Return every row version for one deal_ref, ordered oldest → newest.
+"""Return every row version for one loan deal_ref, oldest → newest.
 
 Used by the audit-trail UI in Deal Enquiry. Reads
-`{"deal_ref": "MCF00000001"}` from stdin. Writes
-`{"ok": true, "rows": [<v1>, <v2>, ...]}` on hit (rows in ascending
-effective_start order so a UI can diff each row against its predecessor),
-or `{"ok": false, "error": "...", "code": "not_found"}` if no rows
-exist for the deal_ref (exit 4).
+`{"deal_ref": "MLA00000001"}` from stdin. Returns
+`{"ok": true, "rows": [<v1>, <v2>, ...]}` ordered by effective_start ASC.
 """
 from __future__ import annotations
 import json
 import sys
 
-import cashflow_db
+import loan_db
 import loan_cashflow_map_db
 
 
@@ -27,17 +24,19 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "deal_ref is required"}))
         return 3
 
-    conn = cashflow_db.connect()
+    conn = loan_db.connect()
     try:
         with conn.cursor() as cur:
-            # Every version row gets the *current* mapping snapshot
-            # attached — the map table isn't bitemporal so historical
-            # mapping sets aren't recoverable. UI can still render
-            # "currently linked to MLA…" alongside the SCD2 timeline.
+            # Every loan version row gets the *current* mapping
+            # snapshot attached. The map table isn't bitemporal so
+            # prior mapping sets aren't recoverable per-version.
             cur.execute(
-                f"SELECT t.*, {loan_cashflow_map_db.CASHFLOW_MAPPINGS_JSON_AGG} "
-                "  FROM trades_cashflow t "
-                "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
+                f"SELECT t.*, {loan_cashflow_map_db.LOAN_MAPPINGS_JSON_AGG} "
+                "  FROM trades_loan t "
+                "  LEFT JOIN loan_cashflow_map m ON m.loan_deal_ref = t.deal_ref "
+                "  LEFT JOIN trades_cashflow cf "
+                "         ON cf.deal_ref = m.cashflow_deal_ref "
+                "        AND cf.effective_end IS NULL AND cf.status <> 'CANCELLED' "
                 " WHERE t.deal_ref = %s "
                 " GROUP BY t.deal_ref, t.effective_start "
                 " ORDER BY t.effective_start ASC",
@@ -52,7 +51,7 @@ def main() -> int:
                 }))
                 return 4
             cols = [d.name for d in cur.description]
-            out = [cashflow_db.row_to_payload(cols, r) for r in rows]
+            out = [loan_db.row_to_payload(cols, r) for r in rows]
         print(json.dumps({"ok": True, "rows": out}))
         return 0
     except Exception as e:

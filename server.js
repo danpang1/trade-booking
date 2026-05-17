@@ -15,46 +15,89 @@ const PYTHON = platform() === "win32" ? "python" : "python3";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = 5181;
 
-const SNAPSHOT_SCRIPT = resolve(__dirname, "scripts", "snapshot_tokens.py");
 const CASHFLOW_INSERT_SCRIPT = resolve(__dirname, "scripts", "cashflow_insert.py");
 const CASHFLOW_AMEND_SCRIPT  = resolve(__dirname, "scripts", "cashflow_amend.py");
 const CASHFLOW_RECENT_SCRIPT = resolve(__dirname, "scripts", "cashflow_recent.py");
 const CASHFLOW_GET_SCRIPT    = resolve(__dirname, "scripts", "cashflow_get.py");
 const CASHFLOW_HISTORY_SCRIPT = resolve(__dirname, "scripts", "cashflow_history.py");
-const TOKENS_JSON = resolve(__dirname, "public", "tokens.json");
+const LOAN_INSERT_SCRIPT  = resolve(__dirname, "scripts", "loan_insert.py");
+const LOAN_AMEND_SCRIPT   = resolve(__dirname, "scripts", "loan_amend.py");
+const LOAN_RECENT_SCRIPT  = resolve(__dirname, "scripts", "loan_recent.py");
+const LOAN_GET_SCRIPT     = resolve(__dirname, "scripts", "loan_get.py");
+const LOAN_HISTORY_SCRIPT = resolve(__dirname, "scripts", "loan_history.py");
 
-let snapshotRunning = false;
-let lastSnapshotAt = null;
-let lastSnapshotOk = null;
-let lastSnapshotError = null;
+// ── Refdata syncs ──────────────────────────────────────────────────────
+// Each entry: { key, script, label } — the key drives state tracking,
+// route lookup (/refdata/<key>.json), and the response body of
+// /api/refdata/refresh. To add a new dropdown source, drop a new
+// sync_*.py under scripts/ and add a row here.
+const REFDATA_SOURCES = [
+  { key: "tokens",        script: "snapshot_tokens.py",     label: "tokens" },
+  { key: "counterparties", script: "sync_counterparties.py", label: "counterparties" },
+  { key: "portfolios",    script: "sync_portfolios.py",     label: "portfolios" },
+  { key: "users",         script: "sync_users.py",          label: "users" },
+];
+const REFDATA_BY_KEY = new Map(REFDATA_SOURCES.map((s) => [s.key, s]));
+const PUBLIC_DIR     = resolve(__dirname, "public");
+const REFDATA_DIR    = resolve(PUBLIC_DIR, "refdata");
+const TOKENS_JSON    = resolve(PUBLIC_DIR, "tokens.json");
 
-function runSnapshotOnce(label) {
-  if (snapshotRunning) {
-    console.log(`[tokens] ${label}: skipped — prior run still in flight`);
-    return;
+// Per-source state. Same shape across all 4 so the /api/health endpoint
+// can serialize them uniformly.
+const refdataState = new Map(
+  REFDATA_SOURCES.map((s) => [
+    s.key,
+    { running: false, lastAt: null, lastOk: null, lastError: null },
+  ])
+);
+
+// Run a single sync script. Returns a Promise that resolves with
+// {key, ok, exitCode, error} so callers can await one or many.
+function runSyncOnce(key, runLabel) {
+  const source = REFDATA_BY_KEY.get(key);
+  if (!source) {
+    return Promise.resolve({ key, ok: false, exitCode: -1, error: "unknown refdata key" });
   }
-  snapshotRunning = true;
-  console.log(`[tokens] ${label}: spawning snapshot_tokens.py`);
-  const proc = spawn(PYTHON, [SNAPSHOT_SCRIPT], { cwd: __dirname });
-  let stderr = "";
-  proc.stdout.on("data", (d) => process.stdout.write(`[tokens] ${d}`));
-  proc.stderr.on("data", (d) => {
-    stderr += d;
-    process.stderr.write(`[tokens:err] ${d}`);
+  const state = refdataState.get(key);
+  if (state.running) {
+    console.log(`[${source.label}] ${runLabel}: skipped — prior run still in flight`);
+    return Promise.resolve({ key, ok: true, exitCode: 0, skipped: true });
+  }
+
+  return new Promise((res) => {
+    state.running = true;
+    const scriptPath = resolve(__dirname, "scripts", source.script);
+    console.log(`[${source.label}] ${runLabel}: spawning ${source.script}`);
+    const proc = spawn(PYTHON, [scriptPath], { cwd: __dirname });
+    let stderr = "";
+    proc.stdout.on("data", (d) => process.stdout.write(`[${source.label}] ${d}`));
+    proc.stderr.on("data", (d) => {
+      stderr += d;
+      process.stderr.write(`[${source.label}:err] ${d}`);
+    });
+    proc.on("close", (code) => {
+      state.running = false;
+      state.lastAt = new Date().toISOString();
+      if (code === 0) {
+        state.lastOk = true;
+        state.lastError = null;
+        console.log(`[${source.label}] ${runLabel}: ok`);
+        res({ key, ok: true, exitCode: 0 });
+      } else {
+        state.lastOk = false;
+        state.lastError = stderr.trim().split("\n").slice(-5).join(" | ");
+        console.error(`[${source.label}] ${runLabel}: exit ${code}: ${state.lastError}`);
+        res({ key, ok: false, exitCode: code, error: state.lastError });
+      }
+    });
   });
-  proc.on("close", (code) => {
-    snapshotRunning = false;
-    lastSnapshotAt = new Date().toISOString();
-    if (code === 0) {
-      lastSnapshotOk = true;
-      lastSnapshotError = null;
-      console.log(`[tokens] ${label}: ok`);
-    } else {
-      lastSnapshotOk = false;
-      lastSnapshotError = stderr.trim().split("\n").slice(-5).join(" | ");
-      console.error(`[tokens] ${label}: exit ${code}: ${lastSnapshotError}`);
-    }
-  });
+}
+
+// Fan all 4 sync scripts out in parallel and resolve when the last
+// one finishes. Per-script failures don't fail the batch — the caller
+// gets per-script status in the response body.
+async function runAllSyncs(runLabel) {
+  return Promise.all(REFDATA_SOURCES.map((s) => runSyncOnce(s.key, runLabel)));
 }
 
 function msUntilNextHH15UTC() {
@@ -74,13 +117,13 @@ function msUntilNextHH15UTC() {
   return target.getTime() - now.getTime();
 }
 
-function scheduleHourlySnapshot() {
-  runSnapshotOnce("startup-backfill");
+function scheduleHourlyRefdataSync() {
+  runAllSyncs("startup-backfill");
   const firstDelay = msUntilNextHH15UTC();
-  console.log(`[tokens] next tick in ${Math.round(firstDelay / 1000)}s`);
+  console.log(`[refdata] next hourly tick in ${Math.round(firstDelay / 1000)}s`);
   setTimeout(() => {
-    runSnapshotOnce("hourly-tick");
-    setInterval(() => runSnapshotOnce("hourly-tick"), 60 * 60 * 1000);
+    runAllSyncs("hourly-tick");
+    setInterval(() => runAllSyncs("hourly-tick"), 60 * 60 * 1000);
   }, firstDelay);
 }
 
@@ -142,24 +185,54 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.url === "/api/health") {
+    const refdata = {};
+    for (const [k, v] of refdataState.entries()) refdata[k] = v;
     res.setHeader("Content-Type", "application/json");
-    res.end(
-      JSON.stringify({
-        status: "ok",
-        last_snapshot_at: lastSnapshotAt,
-        last_snapshot_ok: lastSnapshotOk,
-        last_snapshot_error: lastSnapshotError,
-        snapshot_running: snapshotRunning,
-      })
-    );
+    res.end(JSON.stringify({ status: "ok", refdata }));
     return;
   }
 
+  // Manual refresh of ALL refdata sources (tokens + counterparties +
+  // portfolios + users). Awaits the batch so the response carries
+  // per-source success/fail status.
+  if (req.url === "/api/refdata/refresh" && req.method === "POST") {
+    const t0 = Date.now();
+    const results = await runAllSyncs("manual-refresh");
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
+      ok: results.every((r) => r.ok),
+      elapsed_ms: Date.now() - t0,
+      results,
+    }));
+    return;
+  }
+
+  // Back-compat: legacy /api/refresh endpoint kicked off the token
+  // snapshot only. Keep it working for any code that still calls it.
   if (req.url === "/api/refresh" && req.method === "POST") {
-    runSnapshotOnce("manual-refresh");
+    runSyncOnce("tokens", "manual-refresh");
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ status: "scheduled" }));
     return;
+  }
+
+  // Static serve of any refdata JSON: /refdata/portfolios.json, etc.
+  // Only matches known keys (REFDATA_SOURCES) so we don't accidentally
+  // expose other files under public/refdata/.
+  {
+    const m = /^\/refdata\/([a-z_]+)\.json$/.exec(req.url || "");
+    if (m && REFDATA_BY_KEY.has(m[1])) {
+      try {
+        const data = await readFile(resolve(REFDATA_DIR, `${m[1]}.json`));
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-cache");
+        res.end(data);
+      } catch (e) {
+        res.statusCode = 503;
+        res.end(JSON.stringify({ error: `${m[1]}.json not yet generated` }));
+      }
+      return;
+    }
   }
 
   if (req.url === "/tokens.json") {
@@ -240,19 +313,89 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/loan/insert
+  if (req.url === "/api/loan/insert" && req.method === "POST") {
+    const body = await readBody(req);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(LOAN_INSERT_SCRIPT, body);
+    const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
+    console.log(`[loan] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // POST /api/loan/amend
+  if (req.url === "/api/loan/amend" && req.method === "POST") {
+    const body = await readBody(req);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(LOAN_AMEND_SCRIPT, body);
+    const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
+    console.log(`[loan] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/loan/recent?limit=N
+  if (req.method === "GET" && req.url.startsWith("/api/loan/recent")) {
+    const url = new URL(req.url, "http://localhost");
+    const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+    const stdin = JSON.stringify({ limit: Number.isNaN(limit) ? 20 : limit });
+    const { code, json } = await spawnPython(LOAN_RECENT_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/loan/:deal_ref/history  (must come BEFORE the bare :deal_ref route)
+  if (req.method === "GET" && /^\/api\/loan\/[^/]+\/history$/.test(req.url)) {
+    const segments = req.url.split("/");
+    const dealRef = decodeURIComponent(segments[segments.length - 2]);
+    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const { code, json } = await spawnPython(LOAN_HISTORY_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/loan/:deal_ref  (must come AFTER /api/loan/recent so the more-specific route matches first)
+  if (req.method === "GET" && /^\/api\/loan\/[^/]+$/.test(req.url)) {
+    const dealRef = decodeURIComponent(req.url.split("/").pop());
+    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const { code, json } = await spawnPython(LOAN_GET_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   res.statusCode = 404;
   res.end("Not found");
 });
 
 server.listen(PORT, () => {
   console.log(`[server] trade-booking API listening on http://localhost:${PORT}`);
-  console.log(`[server]   GET  /tokens.json    — serve current snapshot`);
-  console.log(`[server]   GET  /api/health     — last-run status`);
-  console.log(`[server]   POST /api/refresh    — force a re-snapshot`);
-  console.log(`[server]   POST /api/cashflow/insert    — book new cashflow row(s)`);
-  console.log(`[server]   POST /api/cashflow/amend     — amend an existing cashflow`);
-  console.log(`[server]   GET  /api/cashflow/recent    — list N recent live rows`);
-  console.log(`[server]   GET  /api/cashflow/:deal_ref — fetch one live row`);
+  console.log(`[server]   GET  /tokens.json              — token snapshot (legacy path)`);
+  console.log(`[server]   GET  /refdata/<key>.json       — counterparties / portfolios / users / tokens`);
+  console.log(`[server]   GET  /api/health               — per-source last-run status`);
+  console.log(`[server]   POST /api/refdata/refresh      — re-sync all refdata sources (awaits)`);
+  console.log(`[server]   POST /api/refresh              — re-sync tokens only (legacy)`);
+  console.log(`[server]   POST /api/cashflow/insert      — book new cashflow row(s)`);
+  console.log(`[server]   POST /api/cashflow/amend       — amend an existing cashflow`);
+  console.log(`[server]   GET  /api/cashflow/recent      — list N recent live rows`);
+  console.log(`[server]   GET  /api/cashflow/:deal_ref   — fetch one live row`);
   console.log(`[server]   GET  /api/cashflow/:deal_ref/history — all SCD2 versions`);
-  scheduleHourlySnapshot();
+  console.log(`[server]   POST /api/loan/insert          — book new loan row`);
+  console.log(`[server]   POST /api/loan/amend           — amend an existing loan`);
+  console.log(`[server]   GET  /api/loan/recent          — list N recent live rows`);
+  console.log(`[server]   GET  /api/loan/:deal_ref       — fetch one live row`);
+  console.log(`[server]   GET  /api/loan/:deal_ref/history — all SCD2 versions`);
+  scheduleHourlyRefdataSync();
 });

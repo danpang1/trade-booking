@@ -19,7 +19,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, r'C:\Users\peter\OneDrive\Desktop\Claude\nxgenmo\scripts\pnl')
+_PNL_DIR = Path(__file__).resolve().parents[2] / "scripts" / "pnl"
+sys.path.insert(0, str(_PNL_DIR))
 from mysql_rates import _connect
 
 ROOT = Path(__file__).resolve().parents[1]
