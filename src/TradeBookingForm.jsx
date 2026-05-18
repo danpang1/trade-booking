@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef, useContext, createContext } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useContext, createContext } from "react";
+import { createPortal } from "react-dom";
 import {
   Copy,
   Check,
@@ -259,11 +260,20 @@ const today00Utc = () => new Date().toISOString().slice(0, 10) + "T00:00";
 // Helpers for the fused date+time field: state stays as one
 // "YYYY-MM-DDTHH:mm" string; the UI exposes a date <input> + a time <input>.
 const splitDt = (dt) => {
-  if (!dt) return { d: "", t: "00:00" };
-  const [d, t = "00:00"] = dt.split("T");
-  return { d, t: t.slice(0, 5) };
+  if (!dt) return { d: "", t: "00:00", s: "00" };
+  const [d, tRaw = "00:00"] = dt.split("T");
+  return {
+    d,
+    t: tRaw.slice(0, 5),
+    s: tRaw.length >= 8 ? tRaw.slice(6, 8) : "00",
+  };
 };
-const joinDt = (d, t) => `${d || today00Utc().slice(0, 10)}T${(t || "00:00").slice(0, 5)}`;
+// joinDt always pads to seconds so the canonical form is HH:MM:SS;
+// Postgres TIMESTAMPTZ parses both forms but uniform output keeps the
+// UI display and DB rows aligned. Pass an explicit `s` to preserve
+// non-zero seconds typed by the user.
+const joinDt = (d, t, s = "00") =>
+  `${d || today00Utc().slice(0, 10)}T${(t || "00:00").slice(0, 5)}:${(s || "00").slice(0, 2)}`;
 const fmtSize = (b) => {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
@@ -432,18 +442,36 @@ const TimeColumn = ({ values, selected, onSelect, ariaLabel }) => {
 // both a month calendar AND a 24h-only HH:MM input. Fully custom-rendered so
 // the OS locale can never inject AM/PM.
 const DateTimePicker24 = ({ value, onChange, syncLabel, onSync }) => {
-  const { d, t } = splitDt(value);
+  const { d, t, s: secsFromValue } = splitDt(value);
   const [open, setOpen] = useState(false);
   const [viewYM, setViewYM] = useState(() => {
     const ref = d ? new Date(`${d}T00:00:00Z`) : new Date();
     return { y: ref.getUTCFullYear(), m: ref.getUTCMonth() };
   });
   const [timeDraft, setTimeDraft] = useState(t);
+  const [secDraft, setSecDraft] = useState(secsFromValue);
+  // Free-form text draft for the trigger input — accepts DD/MM/YYYY
+  // HH:MM:SS (and variants). parseErr flips text red until corrected
+  // or Escaped.
+  const display = displayDateTime(value);
+  const [draft, setDraft] = useState(display);
+  const [parseErr, setParseErr] = useState(false);
   const popRef = useRef(null);
   const triggerRef = useRef(null);
 
-  // Keep local draft in sync when parent value changes (sync checkbox)
   useEffect(() => setTimeDraft(t), [t]);
+  useEffect(() => setSecDraft(secsFromValue), [secsFromValue]);
+  useEffect(() => { setDraft(display); setParseErr(false); }, [display]);
+
+  const commitDraft = () => {
+    const raw = (draft || "").trim();
+    if (raw === "") { onChange(""); setParseErr(false); return; }
+    const parsed = parseDateTimeInput(raw);
+    if (parsed === null) { setParseErr(true); return; }
+    setParseErr(false);
+    if (parsed !== value) onChange(parsed);
+    else setDraft(display);
+  };
 
   // Close on outside click
   useEffect(() => {
@@ -520,33 +548,89 @@ const DateTimePicker24 = ({ value, onChange, syncLabel, onSync }) => {
 
   return (
     <div className="relative w-full">
-      {/* Trigger — looks like the rest of the form's inputs */}
-      <button
+      {/* Trigger — editable text input with calendar icon. Type freely
+          (YYYY-MM-DD HH:mm and friends) or click the icon for the
+          calendar surface. */}
+      <div
         ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono text-left transition-colors"
+        className="w-full flex items-center gap-1 px-1 text-[12px] font-mono transition-colors"
         style={{
           background: "#f8f6f1",
-          border: `1px solid ${open ? BB.orange : BB.border}`,
+          border: `1px solid ${open ? BB.orange : (parseErr ? "#b91c1c" : BB.border)}`,
+          height: 30,
         }}
         onMouseEnter={(ev) => {
           if (open) return;
           ev.currentTarget.style.background = "#ffffff";
-          ev.currentTarget.style.borderColor = "#6a665c";
+          if (!parseErr) ev.currentTarget.style.borderColor = "#6a665c";
         }}
         onMouseLeave={(ev) => {
           if (open) return;
           ev.currentTarget.style.background = "#f8f6f1";
-          ev.currentTarget.style.borderColor = BB.border;
+          if (!parseErr) ev.currentTarget.style.borderColor = BB.border;
         }}
       >
-        <Calendar size={12} style={{ color: BB.orange }} />
-        <span className="flex-1 tracking-[0.04em]">
-          {d || "----"} <span style={{ color: BB.faint }}>·</span> {t}
-        </span>
-        <span className="text-[10px]" style={{ color: BB.faint }}>▾</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Open calendar"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: "0 4px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+          }}
+          tabIndex={-1}
+        >
+          <Calendar size={12} style={{ color: BB.orange }} />
+        </button>
+        <input
+          type="text"
+          value={draft}
+          placeholder="dd/mm/yyyy hh:mm:ss"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitDraft}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitDraft();
+              setOpen(false);
+            } else if (e.key === "Escape") {
+              setDraft(display);
+              setParseErr(false);
+              setOpen(false);
+            }
+          }}
+          className="flex-1 min-w-0 tracking-[0.04em]"
+          style={{
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: parseErr ? "#b91c1c" : "#0d0d0d",
+            padding: "0 4px",
+            font: "inherit",
+            width: "100%",
+          }}
+          title={parseErr ? "Couldn't parse — try 'DD/MM/YYYY HH:mm:ss'" : undefined}
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Toggle calendar"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: "0 4px",
+            cursor: "pointer",
+            color: BB.faint,
+            fontSize: 10,
+            lineHeight: 1,
+          }}
+          tabIndex={-1}
+        >▾</button>
+      </div>
 
       {open && (
         <div
@@ -750,6 +834,332 @@ const DateTimePicker24 = ({ value, onChange, syncLabel, onSync }) => {
   );
 };
 
+// Parse a free-form date string into canonical YYYY-MM-DD.
+// Accepts: 2025-08-15, 2025/8/15, 15/08/2025, 15-8-2025, 20250815, 2025.08.15.
+// Returns null on parse failure, "" on empty input.
+function parseDateInput(raw) {
+  if (raw == null) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  const validate = (y, mo, da) => {
+    const yi = parseInt(y, 10), mi = parseInt(mo, 10), di = parseInt(da, 10);
+    if (mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+    const dt = new Date(Date.UTC(yi, mi - 1, di));
+    if (dt.getUTCFullYear() !== yi || dt.getUTCMonth() !== mi - 1 || dt.getUTCDate() !== di) return null;
+    return `${yi}-${String(mi).padStart(2, "0")}-${String(di).padStart(2, "0")}`;
+  };
+  let m;
+  if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) return validate(m[1], m[2], m[3]);
+  if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/))) return validate(m[3], m[2], m[1]);
+  if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) return validate(m[1], m[2], m[3]);
+  return null;
+}
+
+// Parse free-form date-time → "YYYY-MM-DDTHH:MM:SS". Time portion is
+// optional and defaults to 00:00:00; seconds are optional within the
+// time portion. Separator between date and time may be space, "T", or
+// comma.
+function parseDateTimeInput(raw) {
+  if (raw == null) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  const m = s.match(/^(.+?)[\sT,]+(\d{1,2}:\d{1,2}(?::\d{1,2})?)$/);
+  const datePart = m ? m[1] : s;
+  const timePart = m ? m[2] : "00:00";
+  const d = parseDateInput(datePart);
+  if (d === null || d === "") return d;
+  const tm = timePart.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+  if (!tm) return null;
+  const hh = parseInt(tm[1], 10);
+  const mi = parseInt(tm[2], 10);
+  const ss = tm[3] != null ? parseInt(tm[3], 10) : 0;
+  if (hh < 0 || hh > 23 || mi < 0 || mi > 59 || ss < 0 || ss > 59) return null;
+  return `${d}T${String(hh).padStart(2, "0")}:${String(mi).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+}
+
+// Format helpers — convert canonical ISO storage to the DD/MM/YYYY
+// display format used inside the date pickers' typed inputs.
+function displayDate(canonical) {
+  if (!canonical) return "";
+  const m = String(canonical).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+function displayDateTime(canonical) {
+  if (!canonical) return "";
+  const parts = String(canonical).split("T");
+  const dStr = displayDate(parts[0]);
+  if (!dStr) return "";
+  const tRaw = (parts[1] || "00:00:00").slice(0, 8);
+  const tFull = tRaw.length >= 8 ? tRaw : `${tRaw.slice(0, 5)}:00`;
+  return `${dStr} ${tFull}`;
+}
+
+// Date-only sibling of DateTimePicker24 — same editorial calendar UI
+// (Tokka orange accent, monospace, Mon-first week, today highlight)
+// but no time column. Value is a plain YYYY-MM-DD string; emits "" when
+// cleared. Used everywhere a date without a time component is required
+// (loan-form dates, both enquiry filters, Accrual Date, Future Expiry)
+// so all calendar surfaces in the app look identical.
+//
+// Manual typing: the trigger is a text input. Enter or blur parses and
+// commits via parseDateInput; invalid drafts stay visible in red until
+// corrected (or Escape reverts to the prior valid value).
+const DatePicker = ({ value, onChange, placeholder = "dd/mm/yyyy", min, max, allowClear = true }) => {
+  const d = (value || "").slice(0, 10);
+  const display = displayDate(d);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(display);
+  const [parseErr, setParseErr] = useState(false);
+  const [viewYM, setViewYM] = useState(() => {
+    const ref = d ? new Date(`${d}T00:00:00Z`) : new Date();
+    return { y: ref.getUTCFullYear(), m: ref.getUTCMonth() };
+  });
+  const popRef = useRef(null);
+  const triggerRef = useRef(null);
+
+  // Keep the typed draft in sync when the canonical value changes
+  // (picker selection, parent reset). Display in DD/MM/YYYY to match
+  // the placeholder hint.
+  useEffect(() => { setDraft(display); setParseErr(false); }, [display]);
+
+  const commitDraft = () => {
+    const s = (draft || "").trim();
+    if (s === "") { onChange(""); setParseErr(false); return; }
+    const parsed = parseDateInput(s);
+    if (parsed === null) { setParseErr(true); return; }
+    if (min && parsed < min) { setParseErr(true); return; }
+    if (max && parsed > max) { setParseErr(true); return; }
+    setParseErr(false);
+    if (parsed !== d) onChange(parsed);
+    else setDraft(displayDate(parsed));
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (popRef.current?.contains(e.target)) return;
+      if (triggerRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !d) return;
+    const ref = new Date(`${d}T00:00:00Z`);
+    setViewYM({ y: ref.getUTCFullYear(), m: ref.getUTCMonth() });
+  }, [open, d]);
+
+  const pickDate = (yyyy, mm, dd) => {
+    const newD = `${yyyy}-${String(mm + 1).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    if (min && newD < min) return;
+    if (max && newD > max) return;
+    onChange(newD);
+    setOpen(false); // snap shut — feels responsive for filter-style UX
+  };
+
+  const setToday = () => {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear();
+    const mm = now.getUTCMonth();
+    const dd = now.getUTCDate();
+    const newD = `${yyyy}-${String(mm + 1).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    if (min && newD < min) return;
+    if (max && newD > max) return;
+    setViewYM({ y: yyyy, m: mm });
+    onChange(newD);
+    setOpen(false);
+  };
+
+  const clear = () => {
+    onChange("");
+    setOpen(false);
+  };
+
+  const { y: vy, m: vm } = viewYM;
+  const firstDow = new Date(Date.UTC(vy, vm, 1)).getUTCDay();
+  const leadingBlanks = (firstDow + 6) % 7;
+  const daysInMonth = new Date(Date.UTC(vy, vm + 1, 0)).getUTCDate();
+  const today = new Date();
+  const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
+  const cells = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let i = 1; i <= daysInMonth; i++) cells.push(i);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const goPrev = () => setViewYM((s) => (s.m === 0 ? { y: s.y - 1, m: 11 } : { ...s, m: s.m - 1 }));
+  const goNext = () => setViewYM((s) => (s.m === 11 ? { y: s.y + 1, m: 0 } : { ...s, m: s.m + 1 }));
+
+  return (
+    <div className="relative w-full">
+      <div
+        ref={triggerRef}
+        className="w-full flex items-center gap-1 px-1 text-[12px] font-mono transition-colors"
+        style={{
+          background: "#f8f6f1",
+          border: `1px solid ${open ? BB.orange : (parseErr ? "#b91c1c" : BB.border)}`,
+          height: 30,
+        }}
+        onMouseEnter={(ev) => {
+          if (open) return;
+          ev.currentTarget.style.background = "#ffffff";
+          if (!parseErr) ev.currentTarget.style.borderColor = "#6a665c";
+        }}
+        onMouseLeave={(ev) => {
+          if (open) return;
+          ev.currentTarget.style.background = "#f8f6f1";
+          if (!parseErr) ev.currentTarget.style.borderColor = BB.border;
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Open calendar"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: "0 4px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+          }}
+          tabIndex={-1}
+        >
+          <Calendar size={12} style={{ color: BB.orange }} />
+        </button>
+        <input
+          type="text"
+          value={draft}
+          placeholder={placeholder}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitDraft}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitDraft();
+              setOpen(false);
+            } else if (e.key === "Escape") {
+              setDraft(display);
+              setParseErr(false);
+              setOpen(false);
+            }
+          }}
+          className="flex-1 min-w-0 tracking-[0.04em]"
+          style={{
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: parseErr ? "#b91c1c" : "#0d0d0d",
+            padding: "0 4px",
+            font: "inherit",
+            width: "100%",
+          }}
+          title={parseErr ? "Couldn't parse this date — try DD/MM/YYYY" : undefined}
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Toggle calendar"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: "0 4px",
+            cursor: "pointer",
+            color: BB.faint,
+            fontSize: 10,
+            lineHeight: 1,
+          }}
+          tabIndex={-1}
+        >▾</button>
+      </div>
+
+      {open && (
+        <div
+          ref={popRef}
+          className="absolute z-50 mt-1 p-2.5"
+          style={{
+            background: "#ffffff",
+            border: `1px solid ${BB.orange}`,
+            boxShadow: "0 12px 32px rgba(13,13,13,0.12)",
+            minWidth: 240,
+          }}
+        >
+          <div className="flex items-center justify-between mb-2 font-mono">
+            <button type="button" onClick={goPrev} className="p-1" style={{ color: BB.amber }} aria-label="Previous month">
+              <ChevronLeft size={14} />
+            </button>
+            <div className="text-[11px] tracking-[0.24em] uppercase" style={{ color: BB.orange }}>
+              {MONTH_NAMES[vm]} {vy}
+            </div>
+            <button type="button" onClick={goNext} className="p-1" style={{ color: BB.amber }} aria-label="Next month">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5 mb-1">
+            {WEEKDAY_HEADERS.map((w) => (
+              <div key={w} className="text-center text-[9px] tracking-[0.15em] font-mono py-0.5" style={{ color: BB.mute }}>
+                {w}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map((cell, i) => {
+              if (cell == null) return <div key={i} />;
+              const cellStr = `${vy}-${String(vm + 1).padStart(2, "0")}-${String(cell).padStart(2, "0")}`;
+              const isSelected = cellStr === d;
+              const isToday = cellStr === todayStr;
+              const disabled = (min && cellStr < min) || (max && cellStr > max);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => pickDate(vy, vm, cell)}
+                  className="text-center text-[11px] font-mono py-1.5 transition-colors"
+                  style={{
+                    background: isSelected ? BB.orange : "transparent",
+                    color: disabled ? BB.faint : (isSelected ? "#ffffff" : isToday ? BB.cyan : BB.text),
+                    border: isToday && !isSelected ? `1px solid ${BB.cyan}` : "1px solid transparent",
+                    cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: disabled ? 0.5 : 1,
+                  }}
+                  onMouseEnter={(ev) => { if (!isSelected && !disabled) ev.currentTarget.style.background = "#ece7dd"; }}
+                  onMouseLeave={(ev) => { if (!isSelected && !disabled) ev.currentTarget.style.background = "transparent"; }}
+                >{cell}</button>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={setToday}
+              className="flex-1 py-1 text-[10px] uppercase tracking-[0.18em] font-mono transition-colors"
+              style={{ background: BB.surface2, color: BB.dim, border: `1px solid ${BB.border}` }}
+              onMouseEnter={(ev) => { ev.currentTarget.style.borderColor = BB.cyan; ev.currentTarget.style.color = BB.cyan; }}
+              onMouseLeave={(ev) => { ev.currentTarget.style.borderColor = BB.border; ev.currentTarget.style.color = BB.dim; }}
+            >Today</button>
+            {allowClear && d && (
+              <button
+                type="button"
+                onClick={clear}
+                className="flex-1 py-1 text-[10px] uppercase tracking-[0.18em] font-mono transition-colors"
+                style={{ background: BB.surface2, color: BB.dim, border: `1px solid ${BB.border}` }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.borderColor = BB.red; ev.currentTarget.style.color = BB.red; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.borderColor = BB.border; ev.currentTarget.style.color = BB.dim; }}
+              >× Clear</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Field = ({ label, required, children, span = 1, hint }) => (
   <div style={{ gridColumn: `span ${span}` }}>
     <div className="flex items-baseline justify-between">
@@ -834,7 +1244,7 @@ const FKey = ({ index, label, active, onClick }) => (
 // Replaces a native <select> for fields where the option list is
 // long and scrolling is slow.
 // ─────────────────────────────────────────────────────────────
-const PortfolioPicker = ({ value, onChange, options }) => {
+const PortfolioPicker = ({ value, onChange, options, fallbackLabel }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const wrapRef = useRef(null);
@@ -894,6 +1304,23 @@ const PortfolioPicker = ({ value, onChange, options }) => {
               <span style={{ color: "#1f63ea" }}>{selected.number}</span>
               <span style={{ color: "#9a9488" }}> · </span>
               <span>{selected.name}</span>
+            </>
+          ) : value ? (
+            // No refdata match. Prefer the row-side fallback label (the
+            // portfolio_name straight off the trades_cashflow row) so we
+            // don't depend on the async refdata fetch having completed
+            // for an existing deal. Only show "refdata loading…" if we
+            // also have no fallback.
+            <>
+              <span style={{ color: "#1f63ea" }}>{value}</span>
+              {fallbackLabel ? (
+                <>
+                  <span style={{ color: "#9a9488" }}> · </span>
+                  <span>{fallbackLabel}</span>
+                </>
+              ) : options.length === 0 ? (
+                <span style={{ color: "#9a9488", fontStyle: "italic" }}> · refdata loading…</span>
+              ) : null}
             </>
           ) : (
             <span style={{ color: "#9a9488" }}>— select portfolio —</span>
@@ -984,7 +1411,7 @@ const PortfolioPicker = ({ value, onChange, options }) => {
 
 // Searchable counterparty combobox — value is the counterparty NAME (string).
 // Filter is by name or subType (so typing "DEX" or "LENDER" narrows the list).
-const CounterpartyPicker = ({ value, onChange, options }) => {
+const CounterpartyPicker = ({ value, onChange, options, fallbackLabel }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const wrapRef = useRef(null);
@@ -1045,6 +1472,19 @@ const CounterpartyPicker = ({ value, onChange, options }) => {
               {selected.subType && (
                 <span style={{ color: "#9a9488" }}> · {selected.subType}</span>
               )}
+            </>
+          ) : value ? (
+            // No refdata match. Prefer the row-side fallback label (the
+            // counterparty_id straight off the trades_cashflow row) so
+            // we don't depend on the async refdata fetch having
+            // completed for an existing deal.
+            <>
+              <span>{value}</span>
+              {fallbackLabel ? (
+                <span style={{ color: "#9a9488" }}> · {fallbackLabel}</span>
+              ) : options.length === 0 ? (
+                <span style={{ color: "#9a9488", fontStyle: "italic" }}> · refdata loading…</span>
+              ) : null}
             </>
           ) : (
             <span style={{ color: "#9a9488" }}>— select counterparty —</span>
@@ -1136,7 +1576,7 @@ const CounterpartyPicker = ({ value, onChange, options }) => {
 function formatLoanOptionLabel(loan) {
   if (!loan) return "";
   const principal = parseFloat(loan.principal_amount) || 0;
-  const fmt = principal.toLocaleString("en-US", { maximumFractionDigits: 18 });
+  const fmt = principal.toLocaleString("en-US", { maximumFractionDigits: 5 });
   const matures = loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "open-term";
   const cp = loan.counterparty ? ` · ${loan.counterparty}` : "";
   return `${loan.deal_ref} · ${loan.direction} ${fmt} ${loan.principal_asset || ""} @ ${loan.interest_rate_pa_pct || 0}% ${loan.interest_type || ""}${cp} · matures ${matures}`;
@@ -1245,7 +1685,7 @@ const LoanPicker = ({ selected, onChange, options }) => {
             >
               <span style={{ color: "#1f63ea" }}>{loan.deal_ref}</span>
               <span style={{ color: "#9a9488" }}> · </span>
-              <span>{loan.direction} {parseFloat(loan.principal_amount || 0).toLocaleString("en-US", { maximumFractionDigits: 18 })} {loan.principal_asset}</span>
+              <span>{loan.direction} {parseFloat(loan.principal_amount || 0).toLocaleString("en-US", { maximumFractionDigits: 5 })} {loan.principal_asset}</span>
               <span style={{ color: "#9a9488" }}> · </span>
               <span>{loan.interest_rate_pa_pct || 0}% {loan.interest_type}</span>
               {loan.counterparty && <>
@@ -2035,7 +2475,7 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 // Fetches /api/loan/:deal_ref on open, renders the loan contract
 // summary + computed running balances + chronological table of mapped
 // cashflows. Buttons inline let the user jump to amend or audit history.
-function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, onCashflowSelect, onBookCashflow }) {
+function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend, onHistory, onCashflowSelect, onBookCashflow }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     if (!open) { setMounted(false); return; }
@@ -2053,11 +2493,93 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
     return d.toISOString().slice(0, 10); // YYYY-MM-DD
   }, []);
   const [accrualDate, setAccrualDate] = useState(defaultAccrualDate);
-  // Reset to T-1 whenever the modal re-opens with a different loan, so
-  // a stale date from a prior view doesn't leak across.
+  // Active tab — three views: "details" (contract / principal / hedge),
+  // "schedule" (amortization-by-event), "cashflows" (mapped rows).
+  const [activeTab, setActiveTab] = useState("details");
+  // Per-row editable Comment cells in the Loan Schedule. Keyed by the
+  // row's startMs (stable across re-renders since collapsedEvents are
+  // deterministic from the mappings). Seeded from loan.schedule_comments
+  // when the loan loads; saved back via onBlur → /api/loan/schedule-comment.
+  const [rowComments, setRowComments] = useState({});
+  // Per-row save-error state — set when /api/loan/schedule-comment fails,
+  // cleared on next successful save. Drives the red-border indicator.
+  const [rowSaveErrors, setRowSaveErrors] = useState({});
+  // Snapshot of the last-saved value per row, used to skip POSTs when
+  // a blur fires with no actual change.
+  const savedCommentsRef = useRef({});
+  // Reset to T-1 + Details tab + empty comments whenever the modal
+  // re-opens with a different loan, so stale state doesn't leak.
   useEffect(() => {
-    if (open) setAccrualDate(defaultAccrualDate);
+    if (open) {
+      setAccrualDate(defaultAccrualDate);
+      setActiveTab("details");
+      setRowComments({});
+      setRowSaveErrors({});
+      savedCommentsRef.current = {};
+    }
   }, [open, dealRef, defaultAccrualDate]);
+
+  // Seed rowComments from loan.schedule_comments once the loan loads.
+  // Keys by trigger_cashflow_deal_ref (stable across cashflow trade_date
+  // amends). Each schedule row also carries its triggerDealRef, so the
+  // input cell can look up its comment by that same key regardless of
+  // where the row currently sits on the schedule.
+  const scheduleCommentsFromLoan = state?.loan?.schedule_comments;
+  useEffect(() => {
+    if (!Array.isArray(scheduleCommentsFromLoan)) return;
+    const seeded = {};
+    for (const c of scheduleCommentsFromLoan) {
+      const ref = c.trigger_cashflow_deal_ref;
+      if (ref) seeded[ref] = c.comment || "";
+    }
+    setRowComments(seeded);
+    savedCommentsRef.current = { ...seeded };
+  }, [scheduleCommentsFromLoan]);
+
+  // POST one comment to the upsert endpoint. Called on blur; no-op when
+  // the value hasn't changed since last save. Keyed by triggerDealRef
+  // (stable across cashflow trade_date amends). period_start_date is
+  // still sent for informational refresh of the DB column.
+  const saveRowComment = useCallback(async (triggerDealRef, startMs, comment) => {
+    if (!dealRef || !triggerDealRef) return;
+    if (savedCommentsRef.current[triggerDealRef] === comment) return;
+    const dateStr =
+      startMs != null ? new Date(startMs).toISOString().slice(0, 10) : "";
+    const payload = {
+      deal_ref: dealRef,
+      trigger_cashflow_deal_ref: triggerDealRef,
+      period_start_date: dateStr,
+      comment,
+      user_id: currentUser || "unknown",
+    };
+    const hosts = ["", "http://localhost:5181"];
+    let lastErr = "";
+    for (const h of hosts) {
+      try {
+        const r = await fetch(h + "/api/loan/schedule-comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (r.ok) {
+          savedCommentsRef.current[triggerDealRef] = comment;
+          setRowSaveErrors((prev) => {
+            if (!(triggerDealRef in prev)) return prev;
+            const next = { ...prev };
+            delete next[triggerDealRef];
+            return next;
+          });
+          return;
+        }
+        const text = await r.text().catch(() => "");
+        lastErr = `HTTP ${r.status}${text ? `: ${text.slice(0, 200)}` : ""}`;
+      } catch (e) {
+        lastErr = String(e);
+      }
+    }
+    console.error(`[schedule-comment] save failed for ${dealRef}/${triggerDealRef}: ${lastErr}`);
+    setRowSaveErrors((prev) => ({ ...prev, [triggerDealRef]: lastErr || "save failed" }));
+  }, [dealRef, currentUser]);
 
   if (!open) return null;
 
@@ -2085,67 +2607,152 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
   const outstanding = disbursed - repaid;
   const principalAsset = loan?.principal_asset || "";
   const interestAsset = loan?.interest_asset || "";
-  const fmt = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 18 });
-  // Accrued figures are projections (rate × time), not entered amounts —
-  // cap at 5 decimal places so the UI doesn't expose float-precision tail.
-  const fmt5 = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 5 });
+  // All loan figures capped at 5 decimal places.
+  const fmt = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 5 });
+  const fmt5 = fmt;
 
-  // ─── Accrued interest, segmented by repayment events ────────────
-  // Simple interest. Outstanding(t) starts at the booked principal on
-  // trade_date and steps down each time a PRINCIPAL_REPAY cashflow
-  // dated ≤ accrualDate lands. For each segment between events the
-  // accrual is principal × (rate/100) × (segment_days / day_basis).
-  // Sum across segments → gross accrued. Net = gross − interest_paid.
+  // ─── Per-row interest accrual ────────────────────────────────────
+  // For each PRINCIPAL_DISBURSE cashflow row, simple interest accrues
+  // from THAT ROW's trade_date until the user-picked Accrual Date:
+  //
+  //   accrued_row = abs(cashflow.amount) × (rate/100) × (days / day_basis)
+  //
+  // Rate and day_basis still come from the MLA loan row; the principal
+  // slice is the disbursement cashflow's own amount (so multiple
+  // disbursements on different dates each accrue on their own date).
+  // Other mapping types render no figure (column shows —).
   const dayBasis = parseInt(loan?.day_count_basis, 10) || 365;
   const rate = (parseFloat(loan?.interest_rate_pa_pct) || 0) / 100;
   const principalAmount = parseFloat(loan?.principal_amount) || 0;
-
-  // Build a sorted event timeline of repayments up to accrualDate.
-  // Each repayment dropped if its trade_date > accrualDate (hasn't
-  // happened yet from the as-of perspective).
-  const accrualEndMs = (() => {
-    if (!accrualDate) return null;
-    // Treat accrualDate as end-of-day UTC so a repayment booked that
-    // morning is counted as having occurred before the cutoff.
-    return Date.parse(accrualDate + "T23:59:59Z");
-  })();
-  const tradeStartMs = (() => {
-    if (!loan?.trade_date) return null;
-    return Date.parse(loan.trade_date);
-  })();
-
-  let accruedGross = 0;
-  let interestPaidUpToAccrual = 0;
   const MS_PER_DAY = 86400000;
-  if (loan && accrualEndMs != null && tradeStartMs != null && accrualEndMs >= tradeStartMs) {
-    const repayEvents = mappings
-      .filter((m) => m.mapping_type === "PRINCIPAL_REPAY" && m.trade_date)
-      .map((m) => ({ ms: Date.parse(m.trade_date), amt: Math.abs(parseFloat(m.amount) || 0) }))
-      .filter((e) => !Number.isNaN(e.ms) && e.ms <= accrualEndMs)
-      .sort((a, b) => a.ms - b.ms);
+  const accrualEndMs = accrualDate ? Date.parse(accrualDate + "T23:59:59Z") : null;
+  const tradeStartMs = loan?.trade_date ? Date.parse(loan.trade_date) : null;
 
-    let outstandingP = principalAmount;
-    let cursor = tradeStartMs;
-    for (const ev of repayEvents) {
-      const days = Math.max(0, (ev.ms - cursor) / MS_PER_DAY);
-      accruedGross += outstandingP * rate * (days / dayBasis);
-      outstandingP -= ev.amt;
-      cursor = ev.ms;
+  // Per-row accrual aligned 1:1 with `mappings` indices; null when n/a.
+  const perRowAccrued = mappings.map((m) => {
+    if (m.mapping_type !== "PRINCIPAL_DISBURSE" || !m.trade_date) return null;
+    const rowMs = Date.parse(m.trade_date);
+    if (Number.isNaN(rowMs) || accrualEndMs == null) return null;
+    const days = Math.max(0, (accrualEndMs - rowMs) / MS_PER_DAY);
+    const amt = Math.abs(parseFloat(m.amount) || 0);
+    return amt * rate * (days / dayBasis);
+  });
+  const accruedGross = perRowAccrued.reduce((s, v) => s + (v || 0), 0);
+
+  // ─── Loan Schedule (amortization-style by principal event) ───────
+  // One row per principal segment, split by PRINCIPAL_DISBURSE /
+  // PRINCIPAL_REPAY events. Each row carries the notional outstanding
+  // during that segment plus the interest accrued over its days.
+  //
+  //   start    = event.trade_date
+  //   end      = next event.trade_date − 1 day, or null (= LIVE)
+  //   notional = running balance after applying the event
+  //   accrued  = notional × rate × days(start, end_or_accrualDate) / day_basis
+  //
+  // Net Paid Interest = sum of INTEREST cashflows whose trade_date
+  // falls within [start, end] (inclusive). WHT placeholder for now.
+  // If no PRINCIPAL_DISBURSE is linked (legacy data), synthesize one
+  // from loan.trade_date + loan.principal_amount so the schedule still
+  // has a row.
+  const scheduleRows = (() => {
+    if (!loan) return [];
+    const events = [];
+    for (const m of mappings) {
+      if (!m.trade_date) continue;
+      const ms = Date.parse(m.trade_date);
+      if (Number.isNaN(ms)) continue;
+      // dealRef tracked alongside so each schedule row knows the
+      // triggering cashflow — used as the stable key for comments.
+      if (m.mapping_type === "PRINCIPAL_DISBURSE") {
+        events.push({ ms, type: "DISBURSE", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+      } else if (m.mapping_type === "PRINCIPAL_REPAY") {
+        events.push({ ms, type: "REPAY", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+      }
     }
-    // Final segment from last event to accrualDate end-of-day.
-    const tailDays = Math.max(0, (accrualEndMs - cursor) / MS_PER_DAY);
-    accruedGross += outstandingP * rate * (tailDays / dayBasis);
+    // Fallback: no disburse cashflow linked → synthesise from the loan
+    // row itself. Has no cashflow dealRef, so its comment uses a sentinel.
+    if (!events.some((e) => e.type === "DISBURSE") && tradeStartMs != null) {
+      events.push({ ms: tradeStartMs, type: "DISBURSE", amount: principalAmount, dealRef: null });
+    }
+    events.sort((a, b) => a.ms - b.ms);
+    if (events.length === 0) return [];
 
-    // Interest already paid up to accrualDate (so Net = unpaid liability).
-    interestPaidUpToAccrual = mappings
+    // Collapse same-day same-type events. Multiple cashflows on the
+    // same trade_date merge into one schedule row. The canonical
+    // dealRef = the alphabetically-earliest contributing cashflow ref
+    // (deterministic across renders).
+    const eventsByDayType = new Map();
+    for (const ev of events) {
+      const key = `${ev.ms}|${ev.type}`;
+      const prior = eventsByDayType.get(key);
+      if (prior) {
+        prior.amount += ev.amount;
+        if (ev.dealRef && (!prior.dealRef || ev.dealRef < prior.dealRef)) {
+          prior.dealRef = ev.dealRef;
+        }
+      } else {
+        eventsByDayType.set(key, { ...ev });
+      }
+    }
+    const collapsedEvents = Array.from(eventsByDayType.values()).sort((a, b) => {
+      if (a.ms !== b.ms) return a.ms - b.ms;
+      // Same-day mixed types: DISBURSE before REPAY so notional is sane.
+      return a.type === "DISBURSE" ? -1 : 1;
+    });
+
+    // Pre-collect INTEREST cashflow events for per-period "Net Paid".
+    const interestEvents = mappings
       .filter((m) => m.mapping_type === "INTEREST" && m.trade_date)
-      .filter((m) => {
-        const ms = Date.parse(m.trade_date);
-        return !Number.isNaN(ms) && ms <= accrualEndMs;
-      })
-      .reduce((s, m) => s + Math.abs(parseFloat(m.amount) || 0), 0);
-  }
-  const accruedNet = accruedGross - interestPaidUpToAccrual;
+      .map((m) => ({ ms: Date.parse(m.trade_date), amt: Math.abs(parseFloat(m.amount) || 0) }))
+      .filter((e) => !Number.isNaN(e.ms));
+
+    const periods = [];
+    let notional = 0;
+    for (let i = 0; i < collapsedEvents.length; i++) {
+      const ev = collapsedEvents[i];
+      if (ev.type === "DISBURSE") notional += ev.amount;
+      else notional -= ev.amount;
+      // Convention: the event's trade_date IS the maturity of the period
+      // it terminates. The new period (with the updated notional) starts
+      // the day AFTER, so interest is owed on the repay day itself but
+      // the post-repay balance only earns from the next day onward. The
+      // very first event (initial disburse) is the exception — period 1
+      // starts on the disburse day itself.
+      const startMs = i === 0 ? ev.ms : ev.ms + MS_PER_DAY;
+      const next = collapsedEvents[i + 1];
+      const endMs = next ? next.ms : null; // null = LIVE
+      if (notional <= 0) continue;
+
+      // Days from start to (endMs or accrualEndMs), inclusive.
+      const cutoffMs = endMs != null ? endMs : accrualEndMs;
+      let days = 0;
+      let calcEndMs = null;
+      if (cutoffMs != null && cutoffMs >= startMs) {
+        days = Math.floor((cutoffMs - startMs) / MS_PER_DAY) + 1;
+        calcEndMs = cutoffMs;
+      }
+      const accrued = notional * rate * days / dayBasis;
+
+      // Net Paid Interest = sum of INTEREST cashflows in [startMs, endMs or +∞].
+      const periodEndForPaid = endMs != null ? endMs : Number.POSITIVE_INFINITY;
+      const netPaid = interestEvents.reduce(
+        (s, e) => (e.ms >= startMs && e.ms <= periodEndForPaid ? s + e.amt : s),
+        0
+      );
+
+      periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
+    }
+    return periods;
+  })();
+
+  // Date formatter matching the user's "D/M/YYYY" convention for the
+  // schedule table. Uses UTC components so the date doesn't shift
+  // across timezones for midnight-stamped trade_dates.
+  const fmtScheduleDate = (ms) => {
+    if (ms == null) return "—";
+    const d = new Date(ms);
+    return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
+  };
 
   // ─── Hedge coverage projection (forward-looking from trade_date) ──
   // When the loan is hedged with hedged_asset == interest_asset (the
@@ -2166,19 +2773,50 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
     return principalAmount * rate / dayBasis; // interest_asset per day @ full draw
   })();
 
-  // coverageDays: days the hedge buffer will cover at the projected
-  // accrual rate. null when we can't compute (asset mismatch).
+  // coverageDays: days the hedge buffer will cover, accounting for
+  // interest already accrued on matured tranches and projecting the
+  // remaining balance against the LIVE tranche's outstanding notional.
+  //
+  //   remainingHedge = hedgedQty − Σ(matured-tranche accrued)
+  //   liveDaily      = liveNotional × rate / dayBasis
+  //   coverageDays   = remainingHedge / liveDaily   (from live-tranche start)
+  //
+  // Null when we can't compute (asset mismatch or no live tranche).
   // Infinity when rate is 0 (no accrual → buffer never depletes).
   let coverageDays = null;
   let coverageEndDate = null;
+  let maturedAccrued = 0;
+  let coverageNotional = principalAmount;
+  let remainingHedge = hedgedQty;
   if (isHedged && hedgeMatchesInterestAsset) {
-    if (dailyAccrualInterest <= 0) {
-      coverageDays = Infinity;
-    } else {
+    const lastRow = scheduleRows[scheduleRows.length - 1];
+    const hasLiveTranche = !!lastRow && lastRow.endMs == null;
+    if (hasLiveTranche) {
+      maturedAccrued = scheduleRows
+        .slice(0, -1)
+        .reduce((s, p) => s + (p.accrued || 0), 0);
+      coverageNotional = lastRow.notional;
+      remainingHedge = hedgedQty - maturedAccrued;
+      const liveDaily = coverageNotional * rate / dayBasis;
+      if (liveDaily <= 0) {
+        coverageDays = Infinity;
+      } else if (remainingHedge <= 0) {
+        coverageDays = 0;
+      } else {
+        coverageDays = remainingHedge / liveDaily;
+        if (lastRow.startMs != null && Number.isFinite(coverageDays)) {
+          coverageEndDate = new Date(lastRow.startMs + coverageDays * MS_PER_DAY);
+        }
+      }
+    } else if (dailyAccrualInterest > 0) {
+      // No live tranche (no schedule yet, or fully repaid). Fall back to
+      // the booked-principal projection from the loan's trade_date.
       coverageDays = hedgedQty / dailyAccrualInterest;
       if (tradeStartMs != null && Number.isFinite(coverageDays)) {
         coverageEndDate = new Date(tradeStartMs + coverageDays * MS_PER_DAY);
       }
+    } else {
+      coverageDays = Infinity;
     }
   }
 
@@ -2239,7 +2877,7 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="relative max-w-4xl mx-auto"
+        className="relative max-w-7xl mx-auto"
         style={{
           background: "#f6f3ec",
           border: "1px solid #d9d4c7",
@@ -2266,7 +2904,7 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
 
         {/* ─── Header ─── */}
         <div className="px-6 py-5" style={{ borderBottom: "1px solid #d9d4c7" }}>
-          <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Loan Schedule</div>
+          <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Loan Details</div>
           {/* Headline reads "MLA00000003 — 3,300 ETH LOAN FROM ECHOCREEK".
               Direction-aware: LEND → "LOAN TO X", BORROW → "LOAN FROM X". */}
           <div
@@ -2277,7 +2915,20 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
             {loan && (
               <>
                 <span style={{ opacity: 0.5 }}>{" — "}</span>
-                <span>{fmt(loan.principal_amount)} {loan.principal_asset}</span>
+                {/* Number rendered in IBM Plex Mono with tabular-nums so
+                    digits stay vertically aligned and don't jitter as the
+                    principal value changes. The serif headline keeps its
+                    editorial feel for the surrounding text. */}
+                <span
+                  style={{
+                    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+                    fontVariantNumeric: "tabular-nums",
+                    fontFeatureSettings: '"tnum"',
+                    fontSize: "0.92em",
+                    letterSpacing: "0.005em",
+                  }}
+                >{fmt(loan.principal_amount)}</span>
+                <span>{" "}{loan.principal_asset}</span>
                 <span>{loan.direction === "LEND" ? " LOAN TO " : " LOAN FROM "}</span>
                 {loan.counterparty
                   ? <span>{String(loan.counterparty).toUpperCase()}</span>
@@ -2309,6 +2960,45 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
           )}
         </div>
 
+        {/* ─── Tab bar ─── */}
+        <div style={{ background: "#fcfbf6", borderBottom: "1px solid #d9d4c7" }}>
+          <div className="px-6 flex gap-0" role="tablist">
+            {[
+              { id: "details",   label: "Loan Summary",     count: null },
+              { id: "schedule",  label: "Loan Schedule",    count: scheduleRows.length },
+              { id: "cashflows", label: "Linked Cashflows", count: mappings.length },
+            ].map((t) => {
+              const isActive = activeTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveTab(t.id)}
+                  className="px-4 py-3 text-[10px] uppercase tracking-[0.22em]"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    borderBottom: isActive ? "2px solid #1f1f1f" : "2px solid transparent",
+                    color: isActive ? "#1f1f1f" : "#6a665c",
+                    cursor: "pointer",
+                    marginBottom: -1,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {t.label}
+                  {t.count != null && (
+                    <span style={{ marginLeft: 6, opacity: 0.6 }}>· {t.count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ─── Tab: Loan Details (Contract + Principal + Hedge) ─── */}
+        {activeTab === "details" && (<>
         {/* ─── Contract block — static loan terms in a key/value grid ─── */}
         {loan && (
           <div
@@ -2349,84 +3039,27 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
           </div>
         )}
 
-        {/* ─── Balances — Principal panel + Interest/Accrual panel ─── */}
+        {/* ─── Principal balances: Disbursed / Repaid → Outstanding ─── */}
         {loan && (
-          <div
-            className="grid grid-cols-1 md:grid-cols-2"
-            style={{ borderBottom: "1px solid #d9d4c7" }}
-          >
-            {/* Principal: Disbursed / Repaid → Outstanding (totaled). */}
-            <div className="px-6 py-4" style={{ borderRight: "1px solid #d9d4c7" }}>
-              <div className="text-[9px] uppercase tracking-[0.22em] mb-3" style={{ color: "#6a665c" }}>
-                Principal · {principalAsset || "—"}
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-baseline justify-between text-[12px] font-mono">
-                  <span style={{ color: "#6a665c" }}>Disbursed</span>
-                  <span>{fmt(disbursed)}</span>
-                </div>
-                <div className="flex items-baseline justify-between text-[12px] font-mono">
-                  <span style={{ color: "#6a665c" }}>Repaid</span>
-                  <span>{fmt(repaid)}</span>
-                </div>
-                <div
-                  className="flex items-baseline justify-between text-[13px] font-mono pt-1.5 mt-1"
-                  style={{ borderTop: "1px solid #efece4", fontWeight: 600 }}
-                >
-                  <span>Outstanding</span>
-                  <span>{fmt(outstanding)}</span>
-                </div>
-              </div>
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid #d9d4c7" }}>
+            <div className="text-[9px] uppercase tracking-[0.22em] mb-3" style={{ color: "#6a665c" }}>
+              Principal · {principalAsset || "—"}
             </div>
-
-            {/* Interest: Paid (booked) / Accrued (computed @ Accrual Date) →
-                Outstanding Accrued. As-of-date picker lives in this panel
-                because everything below it is date-driven. */}
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                <div className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
-                  Interest · {interestAsset || "—"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
-                    Accrual Date
-                  </span>
-                  <input
-                    type="date"
-                    value={accrualDate}
-                    min={loan.trade_date ? String(loan.trade_date).slice(0, 10) : undefined}
-                    onChange={(e) => setAccrualDate(e.target.value)}
-                    className="px-1.5 py-0 text-[11px] font-mono"
-                    style={{ background: "#ffffff", border: "1px solid #d9d4c7" }}
-                  />
-                </div>
+            <div className="space-y-1.5">
+              <div className="flex items-baseline justify-between text-[12px] font-mono">
+                <span style={{ color: "#6a665c" }}>Disbursed</span>
+                <span>{fmt(disbursed)}</span>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-baseline justify-between text-[12px] font-mono">
-                  <span style={{ color: "#6a665c" }}>Paid</span>
-                  <span>{fmt(interest)}</span>
-                </div>
-                <div className="flex items-baseline justify-between text-[12px] font-mono">
-                  <span style={{ color: "#6a665c" }}>Accrued (gross)</span>
-                  <span>{fmt5(accruedGross)}</span>
-                </div>
-                <div
-                  className="flex items-baseline justify-between text-[13px] font-mono pt-1.5 mt-1"
-                  style={{ borderTop: "1px solid #efece4" }}
-                >
-                  <span style={{ fontWeight: 600 }}>Outstanding Accrued</span>
-                  <span
-                    className="px-2 py-0.5"
-                    style={{
-                      background: accruedNet <= 0 ? "#eef5e9" : "#eef0f6",
-                      border: `1px solid ${accruedNet <= 0 ? "#7ea66a" : "#c8cde0"}`,
-                      color: accruedNet <= 0 ? "#1f4a1f" : "#1f63ea",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {fmt5(accruedNet)}
-                  </span>
-                </div>
+              <div className="flex items-baseline justify-between text-[12px] font-mono">
+                <span style={{ color: "#6a665c" }}>Repaid</span>
+                <span>{fmt(repaid)}</span>
+              </div>
+              <div
+                className="flex items-baseline justify-between text-[13px] font-mono pt-1.5 mt-1"
+                style={{ borderTop: "1px solid #efece4", fontWeight: 600 }}
+              >
+                <span>Outstanding</span>
+                <span>{fmt(outstanding)}</span>
               </div>
             </div>
           </div>
@@ -2442,11 +3075,6 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
               <div className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
                 Hedge
               </div>
-              {!hedgeMatchesInterestAsset && (
-                <div className="text-[10px]" style={{ color: "#a23b1a" }}>
-                  ⚠ hedged_asset ({loan.hedged_asset}) ≠ interest_asset ({loan.interest_asset}) — coverage date can't be projected
-                </div>
-              )}
             </div>
             <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-[12px]">
               <div>
@@ -2498,16 +3126,352 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
               </div>
             </dl>
             <div className="text-[10px] mt-3" style={{ color: "#6a665c" }}>
-              Projection assumes the loan stays drawn at <strong>{fmt(principalAmount)} {principalAsset}</strong> until the hedge depletes.
-              Repayments extend the date; further draws shorten it.
+              Remaining buffer <strong>{fmt(remainingHedge)} {loan.hedged_asset}</strong>
+              {" "}( initial {fmt(hedgedQty)} − {fmt(maturedAccrued)} accrued on matured tranches )
+              depletes against the live tranche of
+              {" "}<strong>{fmt(coverageNotional)} {principalAsset}</strong> @ {loan.interest_rate_pa_pct || 0}%.
+              Further draws shorten the date; further repayments extend it.
             </div>
           </div>
         )}
+        </>)}
 
-        {/* ─── Schedule table ─── */}
+        {/* ─── Tab: Loan Schedule (amortization-by-event) ─── */}
+        {activeTab === "schedule" && (
+          loan && scheduleRows.length > 0 ? (
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid #d9d4c7" }}>
+            <div className="flex items-baseline justify-between mb-2 gap-3 flex-wrap">
+              <div className="text-[10px] tracking-[0.22em] uppercase" style={{ color: "#6a665c" }}>
+                Loan Schedule · {scheduleRows.length}
+              </div>
+              <div className="text-[10px]" style={{ color: "#9a9488", fontStyle: "italic" }}>
+                One row per principal-balance segment · accrued = notional × rate × days / {dayBasis}
+              </div>
+            </div>
+            <div className="overflow-x-auto" style={{ border: "1px solid #efece4" }}>
+              <table className="w-full text-[11px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
+                <thead>
+                  <tr style={{ background: "#efece4", color: "#6a665c" }}>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Start Date</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Maturity Date</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Portfolio</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Portfolio Name</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Asset</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Amount</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Rate (USD)</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Amount (USD)</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Interest Calc Date</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Interest Rate P.A. (%)</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Interest Asset</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Accrued Interest</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">WHT</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Net Paid Interest</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Loan Type</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Counterparty</th>
+                    <th className="px-2 py-2 text-left whitespace-nowrap">Comment</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Hedged Interest</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Hedged Price</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Hedge USDT</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Acc Interest To Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Running cumulative accrued interest across the schedule.
+                    // Reset per-render — scheduleRows is already chronological.
+                    let cumAcc = 0;
+                    // Hedge buffer drain: each tranche's accrued ETH consumes
+                    // the buffer in chronological order. Once depleted,
+                    // subsequent tranches' Hedged Interest = 0.
+                    let hedgeRemaining =
+                      isHedged && hedgeMatchesInterestAsset ? hedgedQty : 0;
+                    // Footer aggregates — built up during the map below.
+                    let totalHedgedInterest = 0;
+                    let totalHedgeUSDT = 0;
+                    const dash = <span style={{ opacity: 0.4 }}>—</span>;
+                    const rowEls = scheduleRows.map((p, i) => {
+                      cumAcc += (p.accrued || 0);
+                      // coveredEth = hedge buffer allocated to THIS row.
+                      //   Matured rows: min(remaining, accrued) — buffer
+                      //     drains by the period's actual accrual.
+                      //   LIVE row    : entire remaining buffer — it's all
+                      //     reserved for the in-flight tranche (accrued
+                      //     already + future accrual until depletion).
+                      // Displayed in interest_asset units so the column
+                      // lines up with Accrued Interest 1:1.
+                      const isLiveRow = p.endMs == null;
+                      let coveredEth = 0;
+                      const hedgeOn = isHedged && hedgeMatchesInterestAsset;
+                      if (hedgeOn && hedgeRemaining > 0) {
+                        if (isLiveRow) {
+                          coveredEth = hedgeRemaining;
+                          hedgeRemaining = 0;
+                        } else if (p.days > 0 && (p.accrued || 0) > 0) {
+                          coveredEth = Math.min(hedgeRemaining, p.accrued);
+                          hedgeRemaining -= coveredEth;
+                        }
+                      }
+                      // hedgedInterest is null only when the hedge concept
+                      // doesn't apply at all; explicit 0 (e.g. exhausted)
+                      // is rendered as "0" so the row stays meaningful.
+                      const hedgedInterest = hedgeOn ? coveredEth : null;
+                      // hedgeRemaining is the buffer left AFTER this row —
+                      // surfaced in the tooltip so the user can see how
+                      // much is still available.
+                      const hedgeRemainingAfter = hedgeRemaining;
+                      // Live tranche's "future buffer" = what's left of the
+                      // covered amount once current accrued is subtracted.
+                      const futureBuffer = isLiveRow
+                        ? Math.max(0, coveredEth - (p.accrued || 0))
+                        : 0;
+                      // Footer accumulators.
+                      if (hedgedInterest != null) {
+                        totalHedgedInterest += hedgedInterest;
+                        if (hedgedPrice > 0) {
+                          totalHedgeUSDT += hedgedInterest * hedgedPrice;
+                        }
+                      }
+                      return (
+                        <tr key={i} style={{ borderTop: "1px solid #efece4" }}>
+                          {/* Start Date */}
+                          <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {fmtScheduleDate(p.startMs)}
+                          </td>
+                          {/* Maturity Date */}
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            {p.endMs != null ? (
+                              <span style={{ color: "#0d0d0d" }}>{fmtScheduleDate(p.endMs)}</span>
+                            ) : (
+                              <span
+                                className="px-1.5 py-0.5 text-[10px]"
+                                style={{ background: "#eef5e9", border: "1px solid #7ea66a", color: "#1f4a1f" }}
+                              >LIVE</span>
+                            )}
+                          </td>
+                          {/* Portfolio */}
+                          <td className="px-2 py-2 whitespace-nowrap">{loan.portfolio_id ?? "—"}</td>
+                          {/* Portfolio Name */}
+                          <td className="px-2 py-2 whitespace-nowrap">{loan.portfolio_name || "—"}</td>
+                          {/* Asset */}
+                          <td className="px-2 py-2 whitespace-nowrap">{principalAsset || "—"}</td>
+                          {/* Amount */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {fmt(p.notional)}
+                          </td>
+                          {/* Rate (USD) — FX placeholder */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap">{dash}</td>
+                          {/* Amount (USD) — notional × USD rate, placeholder */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap">{dash}</td>
+                          {/* Interest Calc Date */}
+                          <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {p.calcEndMs != null ? fmtScheduleDate(p.calcEndMs) : dash}
+                          </td>
+                          {/* Interest Rate P.A. (%) */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {loan.interest_rate_pa_pct ?? 0}
+                          </td>
+                          {/* Interest Asset */}
+                          <td className="px-2 py-2 whitespace-nowrap">{interestAsset || "—"}</td>
+                          {/* Accrued Interest */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {p.days > 0 ? (
+                              <HoverTip text={`${fmt(p.notional)} × ${loan.interest_rate_pa_pct || 0}% × ${p.days}d / ${dayBasis}`}>
+                                {fmt(p.accrued)}
+                              </HoverTip>
+                            ) : dash}
+                          </td>
+                          {/* WHT — placeholder */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap">{dash}</td>
+                          {/* Net Paid Interest */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {p.netPaid > 0 ? fmt(p.netPaid) : dash}
+                          </td>
+                          {/* Loan Type */}
+                          <td className="px-2 py-2 whitespace-nowrap">{loan.loan_type || "—"}</td>
+                          {/* Counterparty */}
+                          <td className="px-2 py-2 whitespace-nowrap">{loan.counterparty || "—"}</td>
+                          {/* Comment — editable, auto-saved onBlur. Keyed
+                              by trigger cashflow deal_ref (stable across
+                              cashflow trade_date amends). If a row has no
+                              triggering cashflow (synthetic-disburse
+                              fallback when no PRINCIPAL_DISBURSE mapping
+                              exists), the cell is disabled with a tooltip
+                              prompting the user to link a cashflow first. */}
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            {(() => {
+                              const trigRef = p.triggerDealRef;
+                              const noTrigger = !trigRef;
+                              const saveErr = trigRef ? rowSaveErrors[trigRef] : null;
+                              const restBorder = saveErr ? "#b91c1c" : "#d9d4c7";
+                              const value = trigRef ? (rowComments[trigRef] ?? "") : "";
+                              const tip = noTrigger
+                                ? "Link a PRINCIPAL_DISBURSE cashflow to enable comments on this row"
+                                : (saveErr
+                                  ? `Save failed: ${saveErr}`
+                                  : (value || ""));
+                              return (
+                                <HoverTip text={tip}>
+                                  <input
+                                    type="text"
+                                    disabled={noTrigger}
+                                    value={value}
+                                    onChange={(e) => {
+                                      if (!trigRef) return;
+                                      setRowComments((prev) => ({
+                                        ...prev,
+                                        [trigRef]: e.target.value,
+                                      }));
+                                    }}
+                                    onBlur={(e) => {
+                                      e.currentTarget.style.background = "#f8f6f1";
+                                      e.currentTarget.style.borderColor = restBorder;
+                                      if (trigRef) saveRowComment(trigRef, p.startMs, e.target.value);
+                                    }}
+                                    onFocus={(e) => {
+                                      e.currentTarget.style.background = "#ffffff";
+                                      e.currentTarget.style.borderColor = saveErr ? "#b91c1c" : "#0d0d0d";
+                                    }}
+                                    placeholder={noTrigger ? "(no cashflow linked)" : "—"}
+                                    className="font-mono"
+                                    style={{
+                                      background: noTrigger ? "#ece7dd" : "#f8f6f1",
+                                      border: `1px solid ${restBorder}`,
+                                      color: "#0d0d0d",
+                                      fontSize: 11,
+                                      padding: "2px 6px",
+                                      width: 180,
+                                      outline: "none",
+                                      cursor: noTrigger ? "not-allowed" : "text",
+                                      opacity: noTrigger ? 0.6 : 1,
+                                    }}
+                                  />
+                                </HoverTip>
+                              );
+                            })()}
+                          </td>
+                          {/* Hedged Interest (in interest_asset).
+                              Matured rows: covered = min(remaining, accrued).
+                              LIVE row:     covered = entire remaining buffer
+                                            (accrued so far + future reserve). */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {hedgedInterest != null ? (
+                              <HoverTip
+                                text={
+                                  isLiveRow
+                                    ? `live tranche · entire remaining hedge buffer = ${fmt(p.accrued)} accrued + ${fmt(futureBuffer)} reserved = ${fmt(coveredEth)} ${interestAsset}`
+                                    : `covered ${fmt(coveredEth)} of ${fmt(p.accrued)} ${interestAsset} accrued · buffer remaining ${fmt(hedgeRemainingAfter)} ${interestAsset}${coveredEth < p.accrued ? " — hedge exhausted on this row" : ""}`
+                                }
+                              >
+                                {fmt(hedgedInterest)}
+                              </HoverTip>
+                            ) : dash}
+                          </td>
+                          {/* Hedged Price */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {isHedged && hedgedPrice > 0 ? fmt(hedgedPrice) : dash}
+                          </td>
+                          {/* Hedge USDT = Hedged Interest × Hedged Price.
+                              Per-row proceeds-asset value of the portion of
+                              this tranche's interest covered by the hedge. */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {hedgedInterest != null && hedgedPrice > 0 ? (
+                              <HoverTip
+                                text={`${fmt(coveredEth)} ${interestAsset} × ${fmt(hedgedPrice)} = ${fmt(coveredEth * hedgedPrice)} ${hedgeProceedsAsset || "USDT"}`}
+                              >
+                                {fmt(coveredEth * hedgedPrice)}
+                              </HoverTip>
+                            ) : dash}
+                          </td>
+                          {/* Acc Interest To Date = Accrued Interest ×
+                              Hedged Price for this row (proceeds-asset
+                              value of this period's accrual). */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {(p.accrued || 0) > 0 && hedgedPrice > 0 ? (
+                              <HoverTip text={`${fmt(p.accrued)} ${interestAsset} × ${fmt(hedgedPrice)} = ${fmt(p.accrued * hedgedPrice)} ${hedgeProceedsAsset || "USDT"}`}>
+                                {fmt(p.accrued * hedgedPrice)}
+                              </HoverTip>
+                            ) : dash}
+                          </td>
+                        </tr>
+                      );
+                    });
+                    // Final totals row — sums for Hedged Interest, Hedge USDT,
+                    // and Acc Interest To Date (Σ accrued × hedged_price).
+                    // 17 leading columns are blank/labelled "TOTAL".
+                    const totalAccInterestToDateUSD =
+                      hedgedPrice > 0 ? cumAcc * hedgedPrice : 0;
+                    const totalsRow = (
+                      <tr
+                        key="__totals__"
+                        style={{
+                          borderTop: "2px solid #d9d4c7",
+                          background: "#efece4",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <td
+                          colSpan={17}
+                          className="px-2 py-2 text-right whitespace-nowrap"
+                          style={{
+                            color: "#6a665c",
+                            letterSpacing: "0.22em",
+                            fontSize: 10,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Total
+                        </td>
+                        {/* 18: Hedged Interest */}
+                        <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                          {totalHedgedInterest > 0 ? fmt(totalHedgedInterest) : dash}
+                        </td>
+                        {/* 19: Hedged Price — doesn't sum meaningfully */}
+                        <td className="px-2 py-2 text-right whitespace-nowrap">{dash}</td>
+                        {/* 20: Hedge USDT */}
+                        <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                          {totalHedgeUSDT > 0 ? fmt(totalHedgeUSDT) : dash}
+                        </td>
+                        {/* 21: Acc Interest To Date */}
+                        <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                          {totalAccInterestToDateUSD > 0 ? fmt(totalAccInterestToDateUSD) : dash}
+                        </td>
+                      </tr>
+                    );
+                    return [...rowEls, totalsRow];
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          ) : (
+            <div className="px-6 py-6 text-[12px]" style={{ color: "#6a665c", borderBottom: "1px solid #d9d4c7" }}>
+              No schedule yet — link a PRINCIPAL_DISBURSE cashflow to this loan first.
+            </div>
+          )
+        )}
+
+        {/* ─── Tab: Linked Cashflows ─── */}
+        {activeTab === "cashflows" && (
         <div className="px-6 py-4 max-h-[55vh] overflow-y-auto">
-          <div className="text-[10px] tracking-[0.22em] uppercase mb-2" style={{ color: "#6a665c" }}>
-            Linked Cashflows · {mappings.length}
+          <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+            <div className="text-[10px] tracking-[0.22em] uppercase" style={{ color: "#6a665c" }}>
+              Linked Cashflows · {mappings.length}
+            </div>
+            {loan && (
+              <div className="flex items-center gap-2" style={{ minWidth: 220 }}>
+                <span className="text-[9px] uppercase tracking-[0.22em]" style={{ color: "#6a665c" }}>
+                  Accrual Date
+                </span>
+                <div style={{ width: 170 }}>
+                  <DatePicker
+                    value={accrualDate}
+                    min={loan.trade_date ? String(loan.trade_date).slice(0, 10) : undefined}
+                    onChange={(v) => setAccrualDate(v || defaultAccrualDate)}
+                    allowClear={false}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           {!state?.loading && mappings.length === 0 && (
             <div className="text-[12px] py-4" style={{ color: "#6a665c" }}>
@@ -2519,29 +3483,29 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
               <thead>
                 <tr style={{ background: "#efece4", color: "#6a665c" }}>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Trade Date</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Cashflow Ref</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Type</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Direction</th>
                   <th className="px-2 py-2 text-right whitespace-nowrap">Amount</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Asset</th>
-                  <th className="px-2 py-2 text-left whitespace-nowrap">Cashflow Ref</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap">Interest Accrued</th>
+                  <th className="px-2 py-2 text-right whitespace-nowrap">Hedged Interest Accrued</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">CF Type</th>
                 </tr>
               </thead>
               <tbody>
                 {mappings.map((m, i) => {
-                  const amt = parseFloat(m.amount) || 0;
-                  const signed = amt >= 0 ? `+${fmt(amt)}` : fmt(amt); // amt already signed; preserve
+                  // amount in trades_cashflow is always positive magnitude;
+                  // sign comes from direction (OUTGOING → −, INCOMING → +).
+                  const mag = Math.abs(parseFloat(m.amount) || 0);
+                  const isOutgoing = m.direction === "OUTGOING";
+                  const signed = isOutgoing ? `−${fmt(mag)}` : `+${fmt(mag)}`;
+                  const acc = perRowAccrued[i];
                   return (
                     <tr key={m.counterpart_deal_ref + "/" + i} style={{ borderTop: "1px solid #efece4" }}>
                       <td className="px-2 py-2 whitespace-nowrap">
                         <HoverTip text={m.trade_date}>{fmtTs(m.trade_date)}</HoverTip>
                       </td>
-                      <td className="px-2 py-2 whitespace-nowrap">{typeBadge(m.mapping_type)}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">{m.direction || "—"}</td>
-                      <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: amt < 0 ? "#7a1f00" : "#1f4a1f" }}>
-                        {signed}
-                      </td>
-                      <td className="px-2 py-2 whitespace-nowrap">{m.asset || "—"}</td>
                       <td className="px-2 py-2 whitespace-nowrap">
                         <button
                           type="button"
@@ -2553,6 +3517,37 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
                           }}
                         >{m.counterpart_deal_ref}</button>
                       </td>
+                      <td className="px-2 py-2 whitespace-nowrap">{typeBadge(m.mapping_type)}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{m.direction || "—"}</td>
+                      <td
+                        className="px-2 py-2 text-right whitespace-nowrap font-mono"
+                        style={{ color: isOutgoing ? "#b91c1c" : "#047857" }}
+                      >
+                        {signed}
+                      </td>
+                      <td className="px-2 py-2 whitespace-nowrap">{m.asset || "—"}</td>
+                      <td className="px-2 py-2 text-right whitespace-nowrap font-mono" style={{ color: "#0d0d0d" }}>
+                        {acc != null ? (
+                          <HoverTip
+                            text={`${fmt(Math.abs(parseFloat(m.amount) || 0))} × ${loan?.interest_rate_pa_pct || 0}% × days(${accrualDate || "—"} − ${String(m.trade_date || "").slice(0, 10)}) / ${dayBasis}`}
+                          >
+                            {fmt(acc)} {interestAsset}
+                          </HoverTip>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right whitespace-nowrap font-mono" style={{ color: "#0d0d0d" }}>
+                        {acc != null && isHedged && hedgedPrice > 0 ? (
+                          <HoverTip
+                            text={`${fmt(acc)} ${interestAsset} × hedged_price ${fmt(hedgedPrice)}`}
+                          >
+                            {fmt(acc * hedgedPrice)} {hedgeProceedsAsset}
+                          </HoverTip>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
                       <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#6a665c" }}>
                         {m.cashflow_type || "—"}
                       </td>
@@ -2563,6 +3558,7 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
             </table>
           )}
         </div>
+        )}
 
         {/* ─── Action footer ─── */}
         {loan && (
@@ -2573,14 +3569,14 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
             <button
               type="button"
               onClick={() => onHistory && onHistory(dealRef)}
-              className="px-3 py-1 text-[11px]"
+              className="px-3 py-1 text-[11px] inline-flex items-center gap-1.5"
               style={{
                 background: "transparent",
                 border: "1px solid #d9d4c7",
                 color: "#1f1f1f",
                 cursor: "pointer",
               }}
-            >📜 Audit History</button>
+            ><History size={12} strokeWidth={1.75} /> Audit History</button>
             <button
               type="button"
               onClick={() => onBookCashflow && onBookCashflow(loan)}
@@ -2621,22 +3617,35 @@ function LoanScheduleModal({ open, dealRef, state, onClose, onAmend, onHistory, 
 // the truncated date columns and the CID on counterparty.
 function HoverTip({ text, children }) {
   const [pos, setPos] = useState(null); // { x, y } in viewport coords, null = hidden
+  const bubbleRef = useRef(null);
+  const [clampedLeft, setClampedLeft] = useState(null);
+  // After the bubble mounts, measure its width and shift left if it would
+  // overflow the viewport's right edge. Stays clamped to a small margin so
+  // long tooltips (e.g. accrual formulas) never escape the visible area.
+  useLayoutEffect(() => {
+    if (!pos || !bubbleRef.current) {
+      setClampedLeft(null);
+      return;
+    }
+    const w = bubbleRef.current.offsetWidth;
+    const vw = window.innerWidth;
+    const MARGIN = 8;
+    let x = pos.x;
+    if (x + w > vw - MARGIN) x = Math.max(MARGIN, vw - w - MARGIN);
+    setClampedLeft(x);
+  }, [pos, text]);
   if (!text) return children;
-  return (
-    <span
-      style={{ display: "inline-block" }}
-      onMouseEnter={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        setPos({ x: r.left, y: r.top });
-      }}
-      onMouseLeave={() => setPos(null)}
-    >
-      {children}
-      {pos && (
+  // Portal the bubble into document.body so it escapes any transformed
+  // ancestor (modals slide-in via translateY would otherwise become the
+  // containing block for a fixed-positioned descendant, collapsing the
+  // bubble to a sliver). Anchored to the viewport directly.
+  const bubble = pos
+    ? createPortal(
         <span
+          ref={bubbleRef}
           style={{
             position: "fixed",
-            left: pos.x,
+            left: clampedLeft != null ? clampedLeft : pos.x,
             top: pos.y - 4,
             transform: "translateY(-100%)",
             background: "#1f1f1f",
@@ -2644,15 +3653,33 @@ function HoverTip({ text, children }) {
             fontSize: 11,
             lineHeight: 1.35,
             padding: "4px 8px",
-            whiteSpace: "nowrap",
+            maxWidth: "min(420px, calc(100vw - 16px))",
+            whiteSpace: "normal",
+            wordBreak: "break-word",
             borderRadius: 3,
             boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
             pointerEvents: "none",
             zIndex: 1000,
             fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+            // Pre-measurement: render invisible to avoid a one-frame flash
+            // at the unclamped position before useLayoutEffect runs.
+            visibility: clampedLeft != null ? "visible" : "hidden",
           }}
-        >{text}</span>
-      )}
+        >{text}</span>,
+        document.body
+      )
+    : null;
+  return (
+    <span
+      style={{ display: "inline-block" }}
+      onMouseEnter={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        setPos({ x: r.left, y: r.top });
+      }}
+      onMouseLeave={() => { setPos(null); setClampedLeft(null); }}
+    >
+      {children}
+      {bubble}
     </span>
   );
 }
@@ -2747,6 +3774,36 @@ function fmtTs(iso, len = 16) {
   return iso ? String(iso).replace("T", " ").slice(0, len) : "—";
 }
 
+// Forward-looking projection of the interest-hedge coverage end date.
+// Same formula as the LoanScheduleModal hedge panel — shared so the modal
+// and the LoanEnquiry grid can't drift.
+//
+// Inputs are read off a trades_loan row (snake_case fields straight from the
+// API). Returns one of:
+//   { status: "NONE"     }   – not hedged / no data / asset mismatch
+//   { status: "INFINITE" }   – hedged but rate is 0 (buffer never depletes)
+//   { status: "PROJECTED", endDate: Date } – endDate computed
+function projectHedgeCoverage(row) {
+  if (!row?.is_hedged) return { status: "NONE" };
+  if (row.hedged_asset && row.interest_asset && row.hedged_asset !== row.interest_asset) {
+    return { status: "NONE" }; // legacy mismatch — can't project
+  }
+  const principal = parseFloat(row.principal_amount) || 0;
+  const ratePct = parseFloat(row.interest_rate_pa_pct);
+  const rate = (isFinite(ratePct) ? ratePct : 0) / 100;
+  const dayBasis = parseInt(row.day_count_basis, 10) || 365;
+  const qty = parseFloat(row.hedged_qty) || 0;
+  const startMs = row.trade_date ? Date.parse(row.trade_date) : NaN;
+  if (!Number.isFinite(startMs) || qty <= 0 || principal <= 0) {
+    return { status: "NONE" };
+  }
+  if (rate <= 0) return { status: "INFINITE" };
+  const dailyAccrual = (principal * rate) / dayBasis;
+  if (dailyAccrual <= 0) return { status: "INFINITE" };
+  const days = qty / dailyAccrual;
+  return { status: "PROJECTED", endDate: new Date(startMs + days * 86400000) };
+}
+
 // Per-row summary of mapped counterparts (the other side of the join).
 // Loan rows expose how many cashflows linked + an aggregate; cashflow
 // rows expose the linked loan ref(s). Returns "" when no mappings.
@@ -2758,7 +3815,7 @@ function summarizeMappings(r) {
     // sign on cashflows is already on amount, so simple sum works.
     const total = m.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
     const sign = total >= 0 ? "+" : "";
-    return `↗ ${m.length} cashflow${m.length === 1 ? "" : "s"} · ${sign}${total.toLocaleString("en-US", { maximumFractionDigits: 6 })}`;
+    return `↗ ${m.length} cashflow${m.length === 1 ? "" : "s"} · ${sign}${total.toLocaleString("en-US", { maximumFractionDigits: 5 })}`;
   }
   // Cashflow side — just list the loan refs.
   if (m.length === 1) return `↗ ${m[0].counterpart_deal_ref}`;
@@ -2770,7 +3827,7 @@ function summarizeDeal(r) {
   if (r.txn_type === "LOAN") {
     const verb = r.direction === "BORROW" ? "BORROWED" : "LENT";
     const principal = Math.abs(parseFloat(r.principal_amount) || 0);
-    const fmtAmt = principal.toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const fmtAmt = principal.toLocaleString("en-US", { maximumFractionDigits: 5 });
     const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
     return join([
       "PTF", r.portfolio_id, verb,
@@ -2820,6 +3877,22 @@ function summarizeDeal(r) {
   ]);
 }
 
+// Status styles reused from the row pills below. TRADE_STATUSES /
+// LOAN_STATUSES are already declared at the top of the file alongside
+// the form-level lifecycle definitions; we just attach palettes here.
+const CASHFLOW_STATUS_STYLES = {
+  PENDING:   { bg: "#fcf6e8", border: "#d6c694", color: "#7a5a00" },
+  CONFIRMED: { bg: "#eef0f6", border: "#c8cde0", color: "#1f63ea" },
+  PROCESSED: { bg: "#eaf2ee", border: "#a3c4ad", color: "#22593c" },
+  SETTLED:   { bg: "#eef5e9", border: "#7ea66a", color: "#1f4a1f" },
+  CANCELLED: { bg: "#fff0eb", border: "#e08a6a", color: "#7a1f00" },
+};
+const LOAN_STATUS_STYLES = {
+  LIVE:      { bg: "#eef5e9", border: "#7ea66a", color: "#1f4a1f" },
+  MATURED:   { bg: "#eef0f6", border: "#c8cde0", color: "#1f63ea" },
+  CANCELLED: { bg: "#fff0eb", border: "#e08a6a", color: "#7a1f00" },
+};
+
 const DEAL_ENQUIRY_INITIAL_FILTERS = {
   trade_date_from: "",
   trade_date_to: "",
@@ -2829,9 +3902,28 @@ const DEAL_ENQUIRY_INITIAL_FILTERS = {
   base_asset: "",
   quote_asset: "",
   deal_ref: "",
+  // Default = all-except-CANCELLED (lifecycle-active rows).
+  statuses: TRADE_STATUSES.filter((s) => s !== "CANCELLED"),
 };
 
-function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
+// Deep-equal compare for INITIAL_FILTERS vs current filters — drives
+// the "Clear" button's enabled state. Array fields use sorted equality
+// so reordered status toggles don't falsely register as a deviation.
+function filtersDifferFromDefault(filters, initial) {
+  for (const k of Object.keys(initial)) {
+    const a = filters[k], b = initial[k];
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return true;
+      const sa = [...a].sort(), sb = [...b].sort();
+      for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return true;
+    } else if (a !== b) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -2839,9 +3931,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [filters, setFilters] = useState(DEAL_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(DEAL_ENQUIRY_INITIAL_FILTERS);
-  const filtersActive = Object.values(filters).some((v) =>
-    Array.isArray(v) ? v.length > 0 : v !== ""
-  );
+  const filtersActive = filtersDifferFromDefault(filters, DEAL_ENQUIRY_INITIAL_FILTERS);
 
   // Cashflow rows expose `asset` / `fee_asset`; once SPOT rows ship they'll
   // expose `base_asset` / `quote_asset`. Filter on whichever the row has.
@@ -2855,12 +3945,15 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     const baseTokens = tokens(filters.base_asset).map((t) => t.toUpperCase());
     const quoteTokens = tokens(filters.quote_asset).map((t) => t.toUpperCase());
     const refTokens = tokens(filters.deal_ref).map((t) => t.toLowerCase());
-    return rows.filter((r) => {
+    const filtered = rows.filter((r) => {
       if (refTokens.length > 0) {
         const cand = String(r.deal_ref || "").toLowerCase();
         if (!refTokens.some((t) => cand.includes(t))) return false;
       }
       if (filters.portfolios.length > 0 && !filters.portfolios.includes(String(r.portfolio_id || ""))) {
+        return false;
+      }
+      if (filters.statuses.length > 0 && !filters.statuses.includes(String(r.status || ""))) {
         return false;
       }
       if (baseTokens.length > 0) {
@@ -2871,15 +3964,32 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         const cand = String(r.quote_asset || r.fee_asset || "").toUpperCase();
         if (!quoteTokens.includes(cand)) return false;
       }
-      const td = String(r.trade_date || "").slice(0, 10);
+      // Compare on full timestamp ("YYYY-MM-DDTHH:MM:SS") since the
+      // Deal Enquiry filter is datetime. Row's stored trade_date is an
+      // ISO string with TZ suffix — slice to 19 chars to strip the TZ
+      // so the lexicographic compare is over the same shape on both
+      // sides. Filter values come from DateTimePicker24 already in the
+      // 19-char canonical form.
+      const td = String(r.trade_date || "").slice(0, 19);
       if (filters.trade_date_from && td && td < filters.trade_date_from) return false;
       if (filters.trade_date_to && td && td > filters.trade_date_to) return false;
       // Loan rows store the maturity in `maturity_date`; cashflow uses
       // `value_date`. Treat them symmetrically for the Value-Date filter.
-      const vd = String(r.value_date || r.maturity_date || "").slice(0, 10);
+      const vd = String(r.value_date || r.maturity_date || "").slice(0, 19);
       if (filters.value_date_from && vd && vd < filters.value_date_from) return false;
       if (filters.value_date_to && vd && vd > filters.value_date_to) return false;
       return true;
+    });
+    // Sort by Updated Date (effective_start) latest → earliest. The DB
+    // already orders by trade_date DESC, but the table now leads with
+    // Updated Date so we re-sort here to match what the user sees.
+    return [...filtered].sort((a, b) => {
+      const ax = String(a.effective_start || "");
+      const bx = String(b.effective_start || "");
+      // String compare works on ISO 8601 timestamps; descending.
+      if (ax < bx) return 1;
+      if (ax > bx) return -1;
+      return 0;
     });
   }, [rows, filters]);
 
@@ -2934,127 +4044,191 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters ─── */}
+      {/* ─── Filters — grid layout: 4 × auto-fill columns at minmax 280px.
+          Date filters span 2 cols so the from/to pair breathes; single-
+          input filters span 1 col. Status chip row pins to a 32px height
+          so it visually aligns with the inputs in its row. ─── */}
       <div
-        className="mb-3 px-3 py-2 flex flex-wrap gap-3 items-end"
+        className="mb-3"
         style={{
           background: BB?.surface || "#f6f3ec",
           border: `1px solid ${BB?.border || "#d9d4c7"}`,
+          padding: "12px 16px 14px",
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {[
-          { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-          { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
-        ].map((f) => (
-          <div key={f.fromKey} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 320 }}>
-            <span>{f.label}</span>
-            <div className="flex items-center gap-1">
-              <Input
-                type="date"
-                value={filters[f.fromKey]}
-                onChange={(e) => setFilter(f.fromKey, e.target.value)}
-              />
-              <span style={{ color: BB?.mute || "#666" }}>→</span>
-              <Input
-                type="date"
-                value={filters[f.toKey]}
-                onChange={(e) => setFilter(f.toKey, e.target.value)}
-              />
-            </div>
+        {/* Header row — title + Clear */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] tracking-[0.22em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            Filters
           </div>
-        ))}
-        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 260 }}>
-          <span>Portfolio</span>
-          <Select
-            value=""
-            onChange={(e) => {
-              const v = e.target.value;
-              if (!v) return;
-              if (filters.portfolios.includes(v)) return;
-              setFilter("portfolios", [...filters.portfolios, v]);
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!filtersActive}
+            className="text-[10px] tracking-[0.22em] uppercase px-3 py-1.5 transition-colors"
+            style={{
+              background: "transparent",
+              color: filtersActive ? (BB?.text || "#1f1f1f") : (BB?.faint || "#a5a097"),
+              border: `1px solid ${filtersActive ? (BB?.border || "#d9d4c7") : "#ece7dd"}`,
+              cursor: filtersActive ? "pointer" : "not-allowed",
+              height: 28,
             }}
-          >
-            <option value="">
-              {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
-            </option>
-            {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
-              <option key={p.number} value={String(p.number)}>
-                {p.number} — {p.name}
+          >× Clear</button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            columnGap: 16,
+            rowGap: 14,
+            alignItems: "start",
+          }}
+        >
+          {/* Trade / Value Date · From → To — full datetime filtering.
+              DateTimePicker24 emits "YYYY-MM-DDTHH:MM:SS"; row trade_date
+              is truncated to 19 chars in the filter logic so direct
+              string comparison works (ISO ordering preserves chronology).
+              Picking just a date defaults time to 00:00:00; set "to"
+              time to 23:59:59 if you want the inclusive end-of-day. */}
+          {[
+            { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+            { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
+          ].map((f) => (
+            <div
+              key={f.fromKey}
+              className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: BB?.mute || "#666", gridColumn: "span 2" }}
+            >
+              <span>{f.label}</span>
+              <div className="flex items-center gap-2">
+                <DateTimePicker24
+                  value={filters[f.fromKey]}
+                  onChange={(v) => setFilter(f.fromKey, v)}
+                />
+                <span style={{ color: BB?.mute || "#666" }}>→</span>
+                <DateTimePicker24
+                  value={filters[f.toKey]}
+                  onChange={(v) => setFilter(f.toKey, v)}
+                />
+              </div>
+            </div>
+          ))}
+
+          {/* Portfolio — span 1. Picker + chip stack. */}
+          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            <span>Portfolio</span>
+            <Select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                if (filters.portfolios.includes(v)) return;
+                setFilter("portfolios", [...filters.portfolios, v]);
+              }}
+            >
+              <option value="">
+                {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
               </option>
-            ))}
-          </Select>
-          {filters.portfolios.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {filters.portfolios.map((num) => {
-                const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
-                const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
-                return (
-                  <span
-                    key={num}
-                    className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
-                    style={{
-                      background: "#ece7dd",
-                      color: BB?.text || "#0d0d0d",
-                      border: `1px solid ${BB?.border || "#d9d4c7"}`,
-                      textTransform: "none",
-                    }}
-                    title={label}
-                  >
-                    {label}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${num}`}
-                      onClick={() =>
-                        setFilter("portfolios", filters.portfolios.filter((x) => x !== num))
-                      }
+              {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
+                <option key={p.number} value={String(p.number)}>
+                  {p.number} — {p.name}
+                </option>
+              ))}
+            </Select>
+            {filters.portfolios.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {filters.portfolios.map((num) => {
+                  const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                  const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                  return (
+                    <span
+                      key={num}
+                      className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
                       style={{
-                        background: "transparent",
-                        border: "none",
-                        cursor: "pointer",
-                        color: BB?.mute || "#6a665c",
-                        fontSize: 12,
-                        lineHeight: 1,
-                        padding: 0,
+                        background: "#ece7dd",
+                        color: BB?.text || "#0d0d0d",
+                        border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                        textTransform: "none",
                       }}
-                    >×</button>
-                  </span>
+                      title={label}
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${num}`}
+                        onClick={() =>
+                          setFilter("portfolios", filters.portfolios.filter((x) => x !== num))
+                        }
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          color: BB?.mute || "#6a665c",
+                          fontSize: 12,
+                          lineHeight: 1,
+                          padding: 0,
+                        }}
+                      >×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Status — chip toggles. Default = all except CANCELLED. */}
+          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", gridColumn: "span 2" }}>
+            <span>Status</span>
+            <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+              {TRADE_STATUSES.map((s) => {
+                const on = filters.statuses.includes(s);
+                const sty = CASHFLOW_STATUS_STYLES[s];
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() =>
+                      setFilter(
+                        "statuses",
+                        on
+                          ? filters.statuses.filter((x) => x !== s)
+                          : [...filters.statuses, s]
+                      )
+                    }
+                    className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                    style={{
+                      background: on ? sty.bg : "transparent",
+                      border: `1px solid ${on ? sty.border : "#d9d4c7"}`,
+                      color: on ? sty.color : "#9a9488",
+                      cursor: "pointer",
+                      transition: "all 120ms ease",
+                    }}
+                    title={on ? `Hide ${s}` : `Show ${s}`}
+                  >{s}</button>
                 );
               })}
             </div>
-          )}
+          </div>
+
+          {/* Text filters — single-column cells. */}
+          {[
+            { key: "base_asset", label: "Base Asset" },
+            { key: "quote_asset", label: "Quote Asset" },
+            { key: "deal_ref", label: "Deal Reference" },
+          ].map((f) => (
+            <label key={f.key} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
+              <span>{f.label}</span>
+              <Input
+                type="text"
+                placeholder="—"
+                value={filters[f.key]}
+                onChange={(e) => setFilter(f.key, e.target.value)}
+              />
+            </label>
+          ))}
         </div>
-        {[
-          { key: "base_asset", label: "Base Asset" },
-          { key: "quote_asset", label: "Quote Asset" },
-          { key: "deal_ref", label: "Deal Reference" },
-        ].map((f) => (
-          <label key={f.key} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 160 }}>
-            <span>{f.label}</span>
-            <Input
-              type="text"
-              placeholder="—"
-              value={filters[f.key]}
-              onChange={(e) => setFilter(f.key, e.target.value)}
-            />
-          </label>
-        ))}
-        <button
-          type="button"
-          onClick={clearFilters}
-          disabled={!filtersActive}
-          className="text-[10px] tracking-[0.22em] uppercase px-3 py-1.5 transition-colors"
-          style={{
-            background: "transparent",
-            color: filtersActive ? (BB?.text || "#1f1f1f") : (BB?.faint || "#a5a097"),
-            border: `1px solid ${filtersActive ? (BB?.border || "#d9d4c7") : "#ece7dd"}`,
-            cursor: filtersActive ? "pointer" : "not-allowed",
-            height: 32,
-            alignSelf: "end",
-          }}
-        >
-          × Clear
-        </button>
       </div>
 
       <div
@@ -3068,7 +4242,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <thead>
             <tr style={{ background: "rgba(0,0,0,0.04)", color: BB?.mute || "#666" }}>
               <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Updated Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Type</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
@@ -3152,7 +4326,7 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     ><History size={12} strokeWidth={1.75} /></button>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <HoverTip text={r.first_effective_start}>{fmtTs(r.first_effective_start)}</HoverTip>
+                    <HoverTip text={r.effective_start}>{fmtTs(r.effective_start)}</HoverTip>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <button
@@ -3185,16 +4359,42 @@ function DealEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       const tipText = (r.mappings || [])
                         .map((m) => m.counterpart_deal_ref)
                         .join(", ");
+                      // Inline link-style mapping reference — subtle
+                      // dotted underline, no box. Click opens the FIRST
+                      // mapped loan in the Loan Schedule modal. Multi-
+                      // mapping cashflows still surface every ref in the
+                      // hover tooltip (and "+ N more" in the label).
+                      const firstRef = (r.mappings || [])[0]?.counterpart_deal_ref;
+                      const clickable =
+                        typeof onMappingClick === "function" && !!firstRef;
                       return (
                         <HoverTip text={tipText}>
-                          <span
-                            className="ml-2 px-1.5 py-0.5 text-[10px]"
+                          <button
+                            type="button"
+                            onClick={() => clickable && onMappingClick(firstRef)}
+                            disabled={!clickable}
+                            className="ml-1.5 text-[11px]"
                             style={{
-                              background: "#eef0f6",
-                              border: "1px solid #c8cde0",
+                              background: "transparent",
+                              border: "none",
+                              padding: 0,
+                              font: "inherit",
                               color: "#1f63ea",
+                              textDecoration: "underline dotted",
+                              textUnderlineOffset: 3,
+                              textDecorationColor: "rgba(31,99,234,0.5)",
+                              cursor: clickable ? "pointer" : "default",
                             }}
-                          >{mapSummary}</span>
+                            onMouseEnter={(e) => {
+                              if (clickable) {
+                                e.currentTarget.style.textDecorationColor = "#1f63ea";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.textDecorationColor = "rgba(31,99,234,0.5)";
+                            }}
+                            title={clickable ? `Open ${firstRef} in Loan Schedule` : undefined}
+                          >{mapSummary}</button>
                         </HoverTip>
                       );
                     })()}
@@ -3266,7 +4466,7 @@ const LOAN_ENQUIRY_INITIAL_FILTERS = {
   maturity_date_to: "",
   portfolios: [],
   principal_asset: "",
-  status: "",
+  statuses: LOAN_STATUSES.filter((s) => s !== "CANCELLED"),
   deal_ref: "",
 };
 
@@ -3278,9 +4478,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
-  const filtersActive = Object.values(filters).some((v) =>
-    Array.isArray(v) ? v.length > 0 : v !== ""
-  );
+  const filtersActive = filtersDifferFromDefault(filters, LOAN_ENQUIRY_INITIAL_FILTERS);
 
   const filteredRows = useMemo(() => {
     const tokens = (s) =>
@@ -3301,7 +4499,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       if (assetTokens.length > 0 && !assetTokens.includes(String(r.principal_asset || "").toUpperCase())) {
         return false;
       }
-      if (filters.status && r.status !== filters.status) return false;
+      if (filters.statuses.length > 0 && !filters.statuses.includes(String(r.status || ""))) {
+        return false;
+      }
       const td = String(r.trade_date || "").slice(0, 10);
       if (filters.trade_date_from && td && td < filters.trade_date_from) return false;
       if (filters.trade_date_to && td && td > filters.trade_date_to) return false;
@@ -3358,110 +4558,168 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters ─── */}
+      {/* ─── Filters — grid layout, same shape as Deal Enquiry. ─── */}
       <div
-        className="mb-3 px-3 py-2 flex flex-wrap gap-3 items-end"
+        className="mb-3"
         style={{
           background: BB?.surface || "#f6f3ec",
           border: `1px solid ${BB?.border || "#d9d4c7"}`,
+          padding: "12px 16px 14px",
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {[
-          { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-          { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
-        ].map((f) => (
-          <div key={f.fromKey} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 320 }}>
-            <span>{f.label}</span>
-            <div className="flex items-center gap-1">
-              <Input
-                type="date"
-                value={filters[f.fromKey]}
-                onChange={(e) => setFilter(f.fromKey, e.target.value)}
-              />
-              <span style={{ color: BB?.mute || "#666" }}>→</span>
-              <Input
-                type="date"
-                value={filters[f.toKey]}
-                onChange={(e) => setFilter(f.toKey, e.target.value)}
-              />
-            </div>
+        {/* Header row — title + Clear */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] tracking-[0.22em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            Filters
           </div>
-        ))}
-        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 260 }}>
-          <span>Portfolio</span>
-          <Select
-            value=""
-            onChange={(e) => {
-              const v = e.target.value;
-              if (!v) return;
-              if (filters.portfolios.includes(v)) return;
-              setFilter("portfolios", [...filters.portfolios, v]);
-            }}
-          >
-            <option value="">
-              {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
-            </option>
-            {PORTFOLIOS.map((p) => (
-              <option key={p.number} value={String(p.number)}>
-                {p.number} · {p.name}
-              </option>
-            ))}
-          </Select>
-          {filters.portfolios.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {filters.portfolios.map((n) => (
-                <span
-                  key={n}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
-                  style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
-                >
-                  {n}
-                  <button
-                    type="button"
-                    onClick={() => setFilter("portfolios", filters.portfolios.filter((x) => x !== n))}
-                    style={{ background: "transparent", border: "none", color: "#1f63ea", cursor: "pointer", padding: 0, fontSize: 11, lineHeight: 1 }}
-                  >×</button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 140 }}>
-          <span>Principal Asset</span>
-          <Input
-            type="text"
-            value={filters.principal_asset}
-            onChange={(e) => setFilter("principal_asset", e.target.value)}
-            placeholder="e.g. ETH, USDT"
-          />
-        </div>
-        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 140 }}>
-          <span>Status</span>
-          <Select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}>
-            <option value="">— any —</option>
-            <option value="LIVE">LIVE</option>
-            <option value="MATURED">MATURED</option>
-            <option value="CANCELLED">CANCELLED</option>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", minWidth: 200 }}>
-          <span>Deal Reference</span>
-          <Input
-            type="text"
-            value={filters.deal_ref}
-            onChange={(e) => setFilter("deal_ref", e.target.value)}
-            placeholder="MLA00000001, MLA00000005…"
-          />
-        </div>
-        {filtersActive && (
           <button
             type="button"
             onClick={clearFilters}
-            className="px-3 py-1 text-[11px]"
-            style={{ background: "transparent", border: `1px solid ${BB?.border || "#d9d4c7"}`, color: BB?.text || "#1f1f1f" }}
-          >Clear filters</button>
-        )}
+            disabled={!filtersActive}
+            className="text-[10px] tracking-[0.22em] uppercase px-3 py-1.5 transition-colors"
+            style={{
+              background: "transparent",
+              color: filtersActive ? (BB?.text || "#1f1f1f") : (BB?.faint || "#a5a097"),
+              border: `1px solid ${filtersActive ? (BB?.border || "#d9d4c7") : "#ece7dd"}`,
+              cursor: filtersActive ? "pointer" : "not-allowed",
+              height: 28,
+            }}
+          >× Clear</button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            columnGap: 16,
+            rowGap: 14,
+            alignItems: "start",
+          }}
+        >
+          {/* Trade / Maturity Date — each spans 2 columns. Date-only,
+              same UI as the rest of the app. */}
+          {[
+            { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+            { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
+          ].map((f) => (
+            <div
+              key={f.fromKey}
+              className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: BB?.mute || "#666", gridColumn: "span 2" }}
+            >
+              <span>{f.label}</span>
+              <div className="flex items-center gap-2">
+                <DatePicker
+                  value={filters[f.fromKey]}
+                  onChange={(v) => setFilter(f.fromKey, v)}
+                />
+                <span style={{ color: BB?.mute || "#666" }}>→</span>
+                <DatePicker
+                  value={filters[f.toKey]}
+                  onChange={(v) => setFilter(f.toKey, v)}
+                />
+              </div>
+            </div>
+          ))}
+
+          {/* Portfolio — picker + chip stack. */}
+          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            <span>Portfolio</span>
+            <Select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                if (filters.portfolios.includes(v)) return;
+                setFilter("portfolios", [...filters.portfolios, v]);
+              }}
+            >
+              <option value="">
+                {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
+              </option>
+              {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
+                <option key={p.number} value={String(p.number)}>
+                  {p.number} · {p.name}
+                </option>
+              ))}
+            </Select>
+            {filters.portfolios.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {filters.portfolios.map((n) => (
+                  <span
+                    key={n}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
+                    style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
+                  >
+                    {n}
+                    <button
+                      type="button"
+                      onClick={() => setFilter("portfolios", filters.portfolios.filter((x) => x !== n))}
+                      style={{ background: "transparent", border: "none", color: "#1f63ea", cursor: "pointer", padding: 0, fontSize: 11, lineHeight: 1 }}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Status — chip toggles. */}
+          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            <span>Status</span>
+            <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+              {LOAN_STATUSES.map((s) => {
+                const on = filters.statuses.includes(s);
+                const sty = LOAN_STATUS_STYLES[s];
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() =>
+                      setFilter(
+                        "statuses",
+                        on
+                          ? filters.statuses.filter((x) => x !== s)
+                          : [...filters.statuses, s]
+                      )
+                    }
+                    className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                    style={{
+                      background: on ? sty.bg : "transparent",
+                      border: `1px solid ${on ? sty.border : "#d9d4c7"}`,
+                      color: on ? sty.color : "#9a9488",
+                      cursor: "pointer",
+                      transition: "all 120ms ease",
+                    }}
+                    title={on ? `Hide ${s}` : `Show ${s}`}
+                  >{s}</button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Principal Asset */}
+          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            <span>Principal Asset</span>
+            <Input
+              type="text"
+              value={filters.principal_asset}
+              onChange={(e) => setFilter("principal_asset", e.target.value)}
+              placeholder="e.g. ETH, USDT"
+            />
+          </div>
+
+          {/* Deal Reference */}
+          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
+            <span>Deal Reference</span>
+            <Input
+              type="text"
+              value={filters.deal_ref}
+              onChange={(e) => setFilter("deal_ref", e.target.value)}
+              placeholder="MLA00000001, MLA00000005…"
+            />
+          </div>
+        </div>
       </div>
 
       {/* ─── Table ─── */}
@@ -3480,6 +4738,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-3 py-2 text-right whitespace-nowrap">Rate</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Start Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Maturity</th>
+              <th className="px-3 py-2 text-center whitespace-nowrap">Interest Hedged</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Hedged Till</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Linked Cashflows</th>
             </tr>
@@ -3487,14 +4747,14 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <tbody>
             {filteredRows.length === 0 && !loading && (
               <tr>
-                <td colSpan={13} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
+                <td colSpan={15} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
                   {rows.length === 0 ? "No loans booked yet." : "No rows match the current filters."}
                 </td>
               </tr>
             )}
             {filteredRows.map((r) => {
               const principalNum = parseFloat(r.principal_amount) || 0;
-              const principalFmt = principalNum.toLocaleString("en-US", { maximumFractionDigits: 18 });
+              const principalFmt = principalNum.toLocaleString("en-US", { maximumFractionDigits: 5 });
               const mapCount = (r.mappings || []).length;
               const mapTotal = (r.mappings || []).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
               return (
@@ -3505,10 +4765,27 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   <td className="px-2 py-2 whitespace-nowrap text-center">
                     <button
                       type="button"
-                      title="View audit history"
+                      title="View audit trail"
                       onClick={() => onHistory(r.deal_ref)}
-                      style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", color: BB?.mute || "#666", fontSize: 14 }}
-                    >📜</button>
+                      className="inline-flex items-center justify-center align-middle transition-colors"
+                      style={{
+                        width: 22, height: 22, borderRadius: 0,
+                        border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                        background: "transparent",
+                        color: BB?.dim || "#6a665c",
+                        cursor: "pointer", lineHeight: 1,
+                      }}
+                      onMouseEnter={(ev) => {
+                        ev.currentTarget.style.background = "#ece7dd";
+                        ev.currentTarget.style.color = BB?.text || "#0d0d0d";
+                        ev.currentTarget.style.borderColor = BB?.text || "#0d0d0d";
+                      }}
+                      onMouseLeave={(ev) => {
+                        ev.currentTarget.style.background = "transparent";
+                        ev.currentTarget.style.color = BB?.dim || "#6a665c";
+                        ev.currentTarget.style.borderColor = BB?.border || "#d9d4c7";
+                      }}
+                    ><History size={12} strokeWidth={1.75} /></button>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <HoverTip text={r.first_effective_start || r.effective_start}>
@@ -3553,6 +4830,34 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       <span style={{ opacity: 0.55 }}>open-term</span>
                     )}
                   </td>
+                  {(() => {
+                    const cov = projectHedgeCoverage(r);
+                    const isY = !!r.is_hedged;
+                    return (
+                      <>
+                        <td className="px-3 py-2 whitespace-nowrap text-center">
+                          {isY ? (
+                            <span style={{ color: "#1f4a1f", fontWeight: 600 }}>Y</span>
+                          ) : (
+                            <span style={{ opacity: 0.4 }}>—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {cov.status === "PROJECTED" ? (
+                            <HoverTip
+                              text={`projected from hedged_qty ${r.hedged_qty} ${r.hedged_asset || r.interest_asset || ""} / daily accrual`}
+                            >
+                              {fmtTs(cov.endDate.toISOString(), 10)}
+                            </HoverTip>
+                          ) : cov.status === "INFINITE" ? (
+                            <span style={{ opacity: 0.7 }} title="Interest rate is 0 — buffer never depletes">∞</span>
+                          ) : (
+                            <span style={{ opacity: 0.4 }}>—</span>
+                          )}
+                        </td>
+                      </>
+                    );
+                  })()}
                   <td className="px-3 py-2 whitespace-nowrap">
                     <span
                       className="px-1.5 py-0.5 text-[10px]"
@@ -3582,7 +4887,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                           className="px-1.5 py-0.5 text-[10px]"
                           style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
                         >
-                          ↗ {mapCount} · {mapTotal >= 0 ? "+" : ""}{mapTotal.toLocaleString("en-US", { maximumFractionDigits: 6 })} {r.principal_asset || ""}
+                          ↗ {mapCount} · {mapTotal >= 0 ? "+" : ""}{mapTotal.toLocaleString("en-US", { maximumFractionDigits: 5 })} {r.principal_asset || ""}
                         </span>
                       </HoverTip>
                     )}
@@ -3660,16 +4965,44 @@ export default function TradeBookingForm() {
   const [refdataError, setRefdataError] = useState(null);
 
   useEffect(() => {
-    // Initial load on mount.
-    (async () => {
+    // Initial load on mount + auto-refresh so PORTFOLIOS / COUNTERPARTIES
+    // stay current as the user keeps the tab open. Lightweight: just
+    // re-pulls the JSON files (no MySQL resync — that's the manual
+    // "↻ Refresh refdata" button's job or the server's hourly tick).
+    let cancelled = false;
+    const refresh = async () => {
+      if (cancelled) return;
       try {
         await fetchRefdataOnce();
-        setRefdataTick((t) => t + 1);
-        setRefdataLastAt(new Date());
+        if (!cancelled) {
+          setRefdataTick((t) => t + 1);
+          setRefdataLastAt(new Date());
+          setRefdataError(null);
+        }
       } catch (e) {
-        setRefdataError(String(e));
+        if (!cancelled) setRefdataError(String(e));
       }
-    })();
+    };
+    refresh(); // initial mount
+    // Refetch when the tab regains focus or returns to visible — covers
+    // "I left the tab open overnight and came back" without forcing a
+    // hard refresh.
+    const onFocus = () => refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    // Periodic background refresh — every 2 minutes while the tab is
+    // open. The server regenerates the JSON files hourly at HH:15 UTC,
+    // so 2-minute polling catches any out-of-band manual refresh too.
+    const interval = setInterval(refresh, 120_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   // Manual "↻ Refresh refdata" button handler: kicks the server to
@@ -3702,13 +5035,17 @@ export default function TradeBookingForm() {
     }
   }, [refdataLoading]);
 
-  // After the initial refdata load completes, seed the form's created_by
-  // if it's still empty (initial() runs before fetchRefdataOnce resolves
-  // so SUPERADMIN_USERS was empty at that point).
+  // Seed form.created_by from SUPERADMIN_USERS once refdata is available.
+  // Fires on each refdataTick bump. initial() runs synchronously at mount
+  // (before fetchRefdataOnce resolves) so SUPERADMIN_USERS was empty at
+  // that point and created_by was left "". The functional setState here
+  // is a no-op when created_by is already truthy. Note: we deliberately
+  // don't add form.created_by to the dep array — form is declared lower
+  // in this component (temporal dead zone), and SHARED_KEYS /
+  // initialSharedForCategory below cover the category-switch case.
   useEffect(() => {
-    if (refdataTick > 0 && SUPERADMIN_USERS.length > 0) {
-      setForm((f) => (f.created_by ? f : { ...f, created_by: SUPERADMIN_USERS[0] }));
-    }
+    if (SUPERADMIN_USERS.length === 0) return;
+    setForm((f) => (f.created_by ? f : { ...f, created_by: SUPERADMIN_USERS[0] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refdataTick]);
 
@@ -3723,6 +5060,11 @@ export default function TradeBookingForm() {
     // Portfolio is the source of truth — entity is derived from it
     // via PORTFOLIOS[].entity. Empty string means "not yet selected".
     portfolio: "",
+    // Display fallbacks captured straight off the loaded row, so the
+    // picker can render the existing deal's portfolio / counterparty
+    // labels without waiting on the async refdata fetch.
+    portfolio_name_row: "",
+    counterparty_id_row: "",
     account_id: "",
     venue_type: "CEX",
     venue: "Binance",
@@ -3870,6 +5212,7 @@ export default function TradeBookingForm() {
     "network", "tx_hash", "gas_fee", "gas_asset",
     "venue_type", "venue", "tx_id",
     "notes",
+    "created_by",
   ];
 
   const initialSharedForCategory = (cat) => ({
@@ -3880,6 +5223,9 @@ export default function TradeBookingForm() {
     portfolio: "",
     status: defaultStatusFor(cat),
     counterparty: "",
+    // Carry the current superadmin default so switching categories
+    // doesn't drop the form's "Created by" back to blank.
+    created_by: SUPERADMIN_USERS[0] || "",
     account_venue_type: "EXCHANGE",
     account_name: "",
     account_id: "",
@@ -4144,9 +5490,12 @@ export default function TradeBookingForm() {
         txn_type: "CASHFLOW",
         cashflow_type: form.cf_type || null,
         direction: form.cf_direction,
-        entity: portfolioEntry ? portfolioEntry.entity : null,
-        portfolio_id: portfolioEntry ? portfolioEntry.number : null,
-        portfolio_name: portfolioEntry ? portfolioEntry.name : null,
+        // Prefer the live PORTFOLIOS lookup; fall back to the row value
+        // captured at amend-load so refdata gaps don't null out entity /
+        // portfolio_id / portfolio_name (which would fail NOT NULL checks).
+        entity: portfolioEntry?.entity || form.entity_row || null,
+        portfolio_id: portfolioEntry ? String(portfolioEntry.number) : (form.portfolio || null),
+        portfolio_name: portfolioEntry?.name || form.portfolio_name_row || null,
         counterparty: form.counterparty || null,
         // Immutable refdata id (CID000001 …) so we keep a stable link to
         // reference_data.counterparty even if the name is later renamed.
@@ -4228,9 +5577,9 @@ export default function TradeBookingForm() {
         txn_type: "LOAN",
         direction: form.loan_direction,
         loan_type: form.loan_type,
-        entity: portfolioEntry ? portfolioEntry.entity : null,
-        portfolio_id: portfolioEntry ? portfolioEntry.number : null,
-        portfolio_name: portfolioEntry ? portfolioEntry.name : null,
+        entity: portfolioEntry?.entity || form.entity_row || null,
+        portfolio_id: portfolioEntry ? String(portfolioEntry.number) : (form.portfolio || null),
+        portfolio_name: portfolioEntry?.name || form.portfolio_name_row || null,
         counterparty_id: formatCID(COUNTERPARTY_IDS[form.counterparty]),
         counterparty: form.counterparty || null,
         principal_asset: form.principal_asset,
@@ -4245,8 +5594,10 @@ export default function TradeBookingForm() {
         collateral_asset: hasCollateral ? form.collateral_asset : null,
         collateral_amount: hasCollateral ? parseFloat(form.collateral_amount) || 0 : null,
         // trades_loan_hedge_consistency CHECK: hedge_* required when is_hedged.
+        // hedged_asset is locked to interest_asset by form UX, so we always
+        // derive it here rather than trust form.hedged_asset state.
         is_hedged: form.is_hedged,
-        hedged_asset: form.is_hedged ? form.hedged_asset : null,
+        hedged_asset: form.is_hedged ? form.interest_asset : null,
         hedged_qty: form.is_hedged ? parseFloat(form.hedged_qty) || 0 : null,
         hedged_price: form.is_hedged ? parseFloat(form.hedged_price) || 0 : null,
         hedge_proceeds_asset: form.is_hedged ? form.hedge_proceeds_asset : null,
@@ -4514,7 +5865,19 @@ export default function TradeBookingForm() {
       external_trade_id: row.external_trade_id || "",
       cf_type: row.cashflow_type,
       cf_direction: row.direction,
-      portfolio: String(row.portfolio_id),
+      // Guard against null/undefined → "null"/"undefined" strings. The
+      // backend returns portfolio_id as a string already, but a missing
+      // value should land as "" (form's default), not a literal "null".
+      portfolio: row.portfolio_id != null ? String(row.portfolio_id) : "",
+      // Capture the display fields straight from the row so the pickers
+      // don't have to wait on the refdata fetch. The refdata is still
+      // the source of truth for new bookings; these fields are only
+      // fallbacks for the picker label when refdata is unavailable.
+      portfolio_name_row: row.portfolio_name || "",
+      // Fallback for the readonly Entity input when PORTFOLIOS refdata
+      // doesn't include this portfolio (or hasn't loaded yet).
+      entity_row: row.entity || "",
+      counterparty_id_row: row.counterparty_id || "",
       counterparty: row.counterparty || "",
       account_name: row.account || "",
       account_venue_type: row.account_type || "",
@@ -4549,7 +5912,12 @@ export default function TradeBookingForm() {
       external_trade_id: row.order_id || "",
       loan_direction: row.direction,
       loan_type: row.loan_type,
-      portfolio: String(row.portfolio_id),
+      portfolio: row.portfolio_id != null ? String(row.portfolio_id) : "",
+      // Fallbacks from the row so pickers can render without waiting
+      // for the refdata fetch to complete.
+      portfolio_name_row: row.portfolio_name || "",
+      entity_row: row.entity || "",
+      counterparty_id_row: row.counterparty_id || "",
       counterparty: row.counterparty || "",
       principal_asset: row.principal_asset,
       principal_amount: row.principal_amount == null ? "" : String(row.principal_amount),
@@ -5145,6 +6513,7 @@ export default function TradeBookingForm() {
               BB={BB}
               onSelect={(row) => loadRowIntoForm(row)}
               onHistory={(dealRef) => openHistory(dealRef)}
+              onMappingClick={(loanDealRef) => openLoanSchedule(loanDealRef)}
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
@@ -5236,10 +6605,9 @@ export default function TradeBookingForm() {
             {form.category === "LOAN" ? (
               <>
                 <Field label="Start Date" required span={3}>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={(form.trade_date || "").slice(0, 10)}
-                    onChange={(e) => setLoanField("trade_date", e.target.value)}
+                    onChange={(v) => setLoanField("trade_date", v)}
                   />
                 </Field>
                 <Field
@@ -5265,10 +6633,9 @@ export default function TradeBookingForm() {
                     ) : null
                   }
                 >
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={(form.value_date || "").slice(0, 10)}
-                    onChange={(e) => setLoanField("value_date", e.target.value)}
+                    onChange={(v) => setLoanField("value_date", v)}
                   />
                 </Field>
                 <Field label="Terms (Days)" span={2}>
@@ -5325,6 +6692,14 @@ export default function TradeBookingForm() {
                 value={form.created_by}
                 onChange={(e) => set("created_by", e.target.value)}
               >
+                {/* If form.created_by has been loaded from a row (or seeded
+                    before refdata) but isn't in the current SUPERADMIN_USERS
+                    list yet, include it as an option so the Select can
+                    actually display the value instead of falling back to
+                    its first option / blank. */}
+                {form.created_by && !SUPERADMIN_USERS.includes(form.created_by) && (
+                  <option value={form.created_by}>{form.created_by}</option>
+                )}
                 {SUPERADMIN_USERS.map((u) => (
                   <option key={u}>{u}</option>
                 ))}
@@ -5443,8 +6818,13 @@ export default function TradeBookingForm() {
             <Field label="Portfolio" required span={6}>
               <PortfolioPicker
                 value={form.portfolio}
-                onChange={(v) => setMany({ portfolio: v, account_name: "" })}
+                onChange={(v) =>
+                  // Clear the row-side fallback once the user picks a new
+                  // portfolio — the refdata lookup is now authoritative.
+                  setMany({ portfolio: v, account_name: "", portfolio_name_row: "" })
+                }
                 options={PORTFOLIOS}
+                fallbackLabel={form.portfolio_name_row}
               />
             </Field>
             <Field label="Entity (auto from portfolio)" span={6}>
@@ -5452,7 +6832,7 @@ export default function TradeBookingForm() {
                 value={
                   PORTFOLIOS.find(
                     (p) => String(p.number) === String(form.portfolio)
-                  )?.entity || ""
+                  )?.entity || form.entity_row || ""
                 }
                 readOnly
                 placeholder="—"
@@ -5472,20 +6852,33 @@ export default function TradeBookingForm() {
               {form.category === "CASHFLOW" && form.cf_type === "INTER PTF FUNDING" ? (
                 <PortfolioPicker
                   value={form.counterparty}
-                  onChange={(v) => setMany({ counterparty: String(v), cf_mirror_account_name: "" })}
+                  onChange={(v) =>
+                    setMany({
+                      counterparty: String(v),
+                      cf_mirror_account_name: "",
+                      counterparty_id_row: "",
+                    })
+                  }
                   options={PORTFOLIOS.filter(
                     (p) => String(p.number) !== String(form.portfolio)
                   )}
+                  fallbackLabel={
+                    // Counterparty on an INTER PTF FUNDING row is a portfolio
+                    // number — try to label it from the refdata lookup name
+                    // first, else stay quiet.
+                    (PORTFOLIOS.find((p) => String(p.number) === String(form.counterparty))?.name) || ""
+                  }
                 />
               ) : (
                 <CounterpartyPicker
                   value={form.counterparty}
-                  onChange={(v) => set("counterparty", v)}
+                  onChange={(v) => setMany({ counterparty: v, counterparty_id_row: "" })}
                   options={
                     form.category === "LOAN"
                       ? COUNTERPARTIES.filter((c) => c.subType === "LENDER")
                       : COUNTERPARTIES
                   }
+                  fallbackLabel={form.counterparty_id_row}
                 />
               )}
             </Field>
@@ -5707,10 +7100,9 @@ export default function TradeBookingForm() {
               </Field>
               {form.fut_contract_type === "DATED" ? (
                 <Field label="Expiry" required span={3}>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={form.fut_expiry}
-                    onChange={(e) => set("fut_expiry", e.target.value)}
+                    onChange={(v) => set("fut_expiry", v)}
                   />
                 </Field>
               ) : (
@@ -6009,7 +7401,17 @@ export default function TradeBookingForm() {
                   <NumberInput
                     placeholder="e.g. 8.5"
                     value={form.interest_rate}
-                    onChange={(v) => set("interest_rate", v)}
+                    onChange={(v) =>
+                      setForm((f) => {
+                        const next = { ...f, interest_rate: v, last_modified_at: isoNow() };
+                        // Hedging only makes sense when interest accrues. If the
+                        // rate is cleared to 0 (or blanked), force is_hedged off
+                        // so the disabled checkbox can't leave stale state.
+                        const n = parseFloat(v);
+                        if (!(isFinite(n) && n > 0)) next.is_hedged = false;
+                        return next;
+                      })
+                    }
                   />
                 </Field>
                 <Field label="Interest Type" span={4}>
@@ -6063,30 +7465,57 @@ export default function TradeBookingForm() {
                 kicker="Optional · ties to a booked SPOT"
                 accent={BB.cyan}
               >
-                <div className="col-span-12 flex items-center gap-2 mb-1">
-                  <input
-                    type="checkbox"
-                    id="is_hedged"
-                    checked={form.is_hedged}
-                    onChange={(e) => set("is_hedged", e.target.checked)}
-                    style={{ accentColor: BB.orange }}
-                  />
-                  <label
-                    htmlFor="is_hedged"
-                    className="text-[11px] cursor-pointer flex items-center gap-1.5 font-mono"
-                    style={{ color: BB.text }}
-                  >
-                    <Link2 size={11} style={{ color: BB.cyan }} />
-                    This loan is hedged with a spot trade
-                  </label>
-                </div>
+                {(() => {
+                  const rateNum = parseFloat(form.interest_rate);
+                  const hedgeAllowed = isFinite(rateNum) && rateNum > 0;
+                  return (
+                    <div className="col-span-12 flex items-center gap-2 mb-1">
+                      <input
+                        type="checkbox"
+                        id="is_hedged"
+                        checked={form.is_hedged}
+                        disabled={!hedgeAllowed}
+                        onChange={(e) => set("is_hedged", e.target.checked)}
+                        style={{
+                          accentColor: BB.orange,
+                          cursor: hedgeAllowed ? "pointer" : "not-allowed",
+                          opacity: hedgeAllowed ? 1 : 0.45,
+                        }}
+                      />
+                      <label
+                        htmlFor="is_hedged"
+                        className="text-[11px] flex items-center gap-1.5 font-mono"
+                        style={{
+                          color: BB.text,
+                          cursor: hedgeAllowed ? "pointer" : "not-allowed",
+                          opacity: hedgeAllowed ? 1 : 0.55,
+                        }}
+                        title={hedgeAllowed ? undefined : "Set an interest rate > 0 to enable hedging"}
+                      >
+                        <Link2 size={11} style={{ color: BB.cyan }} />
+                        This loan is hedged with a spot trade
+                      </label>
+                    </div>
+                  );
+                })()}
                 {form.is_hedged && (
                   <>
                     <Field label="Hedged Asset" span={4}>
-                      <AssetPicker
-                        value={form.hedged_asset}
-                        onChange={(v) => set("hedged_asset", v)}
-                      />
+                      <div
+                        className="text-[12px] font-mono px-2 py-1.5"
+                        style={{
+                          background: BB.surface2,
+                          border: `1px solid ${BB.border}`,
+                          color: BB.text,
+                          opacity: 0.85,
+                        }}
+                        title="Hedged asset is locked to Interest Asset"
+                      >
+                        {form.interest_asset || "—"}
+                        <span style={{ opacity: 0.55, marginLeft: 6 }}>
+                          (= Interest Asset)
+                        </span>
+                      </div>
                     </Field>
                     <Field label="Hedged Qty" required span={4}>
                       <NumberInput
@@ -6436,6 +7865,7 @@ export default function TradeBookingForm() {
               open={Boolean(loanScheduleModal)}
               dealRef={loanScheduleModal?.dealRef}
               state={loanScheduleModal}
+              currentUser={form.created_by}
               onClose={() => setLoanScheduleModal(null)}
               onAmend={(loan) => {
                 // Close schedule, then drop the loan row into the form

@@ -6,8 +6,8 @@
 
 import { createServer } from "http";
 import { spawn } from "child_process";
-import { readFile } from "fs/promises";
-import { resolve, dirname } from "path";
+import { readFile, stat } from "fs/promises";
+import { resolve, dirname, extname, normalize, sep } from "path";
 import { fileURLToPath } from "url";
 import { platform } from "os";
 
@@ -25,6 +25,7 @@ const LOAN_AMEND_SCRIPT   = resolve(__dirname, "scripts", "loan_amend.py");
 const LOAN_RECENT_SCRIPT  = resolve(__dirname, "scripts", "loan_recent.py");
 const LOAN_GET_SCRIPT     = resolve(__dirname, "scripts", "loan_get.py");
 const LOAN_HISTORY_SCRIPT = resolve(__dirname, "scripts", "loan_history.py");
+const LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT = resolve(__dirname, "scripts", "loan_schedule_comment_upsert.py");
 
 // ── Refdata syncs ──────────────────────────────────────────────────────
 // Each entry: { key, script, label } — the key drives state tracking,
@@ -41,6 +42,43 @@ const REFDATA_BY_KEY = new Map(REFDATA_SOURCES.map((s) => [s.key, s]));
 const PUBLIC_DIR     = resolve(__dirname, "public");
 const REFDATA_DIR    = resolve(PUBLIC_DIR, "refdata");
 const TOKENS_JSON    = resolve(PUBLIC_DIR, "tokens.json");
+
+// React production bundle. Present in prod images (built by `npm run build`),
+// absent in local dev (Vite serves the bundle on its own port). The static
+// fallback handler at the end of the request pipeline only activates if
+// dist/index.html exists.
+const DIST_DIR       = resolve(__dirname, "dist");
+const DIST_INDEX     = resolve(DIST_DIR, "index.html");
+
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".mjs":  "application/javascript; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico":  "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".map":  "application/json; charset=utf-8",
+  ".txt":  "text/plain; charset=utf-8",
+};
+
+let distAvailable = null;  // cached after first probe (null | true | false)
+async function isDistAvailable() {
+  if (distAvailable !== null) return distAvailable;
+  try {
+    await stat(DIST_INDEX);
+    distAvailable = true;
+  } catch {
+    distAvailable = false;
+  }
+  return distAvailable;
+}
 
 // Per-source state. Same shape across all 4 so the /api/health endpoint
 // can serialize them uniformly.
@@ -313,6 +351,22 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/loan/schedule-comment — upsert one (deal_ref, period_start)
+  // schedule-row comment. Body: {deal_ref, period_start_date, comment, user_id}.
+  // Must come BEFORE the bare /api/loan/* routes so it doesn't get matched as a deal_ref.
+  if (req.url === "/api/loan/schedule-comment" && req.method === "POST") {
+    const body = await readBody(req);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT, body);
+    const ref = json && json.row && json.row.loan_deal_ref;
+    console.log(`[loan] schedule-comment ${ref || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // POST /api/loan/insert
   if (req.url === "/api/loan/insert" && req.method === "POST") {
     const body = await readBody(req);
@@ -374,6 +428,35 @@ const server = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(json));
     return;
+  }
+
+  // ── Static fallback: serve React bundle from dist/ if it exists ──────
+  // GET-only. Path-traversal-safe: the resolved file must be inside DIST_DIR.
+  // Unknown routes (SPA navigation) get index.html — the React router takes
+  // over client-side. Only runs in prod images (built by `npm run build`).
+  if (req.method === "GET" && (await isDistAvailable())) {
+    const pathname = (req.url || "/").split("?")[0];
+    const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const candidate = normalize(resolve(DIST_DIR, rel));
+    const inside = candidate === DIST_DIR || candidate.startsWith(DIST_DIR + sep);
+    const targetPath = inside ? candidate : DIST_INDEX;
+    try {
+      const data = await readFile(targetPath);
+      const ext = extname(targetPath).toLowerCase();
+      res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
+      res.end(data);
+      return;
+    } catch {
+      // Asset miss → SPA fallback to index.html (let React Router handle).
+      try {
+        const data = await readFile(DIST_INDEX);
+        res.setHeader("Content-Type", MIME[".html"]);
+        res.end(data);
+        return;
+      } catch {
+        // dist/index.html went missing between the probe and now — fall through to 404.
+      }
+    }
   }
 
   res.statusCode = 404;

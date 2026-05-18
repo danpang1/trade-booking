@@ -9,6 +9,7 @@ import sys
 
 import loan_db
 import loan_cashflow_map_db
+import loan_schedule_comments_db
 
 
 def main() -> int:
@@ -32,7 +33,8 @@ def main() -> int:
                 "SELECT t.*, "
                 "       (SELECT MIN(effective_start) FROM trades_loan "
                 "         WHERE deal_ref = t.deal_ref) AS first_effective_start, "
-                f"      {loan_cashflow_map_db.LOAN_MAPPINGS_JSON_AGG} "
+                f"      {loan_cashflow_map_db.LOAN_MAPPINGS_JSON_AGG}, "
+                f"      {loan_schedule_comments_db.LOAN_SCHEDULE_COMMENTS_JSON_AGG} "
                 "  FROM trades_loan t "
                 "  LEFT JOIN loan_cashflow_map m ON m.loan_deal_ref = t.deal_ref "
                 "  LEFT JOIN trades_cashflow cf "
