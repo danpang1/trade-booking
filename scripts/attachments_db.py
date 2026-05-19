@@ -75,7 +75,7 @@ def insert_attachments(
     return rows
 
 
-def get_attachments_for_deal_ref(cur: Any, deal_ref: str) -> list[dict]:
+def get_attachments_for_deal_ref(cur: Any, *, deal_ref: str) -> list[dict]:
     """Return live ('uploaded') attachments for a deal_ref, ordered by upload time."""
     cur.execute(_SELECT_SQL, (deal_ref,))
     rows = cur.fetchall()

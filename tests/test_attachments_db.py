@@ -86,7 +86,7 @@ def test_get_attachments_filters_to_uploaded_status_and_orders_by_time():
             "mime_type", "size_bytes", "status", "uploaded_at", "uploaded_by",
         ],
     )
-    rows = attachments_db.get_attachments_for_deal_ref(cur, "MCF00000042")
+    rows = attachments_db.get_attachments_for_deal_ref(cur, deal_ref="MCF00000042")
     assert len(cur.calls) == 1
     sql, params = cur.calls[0]
     assert "FROM trade_attachments" in sql
