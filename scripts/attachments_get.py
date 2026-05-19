@@ -7,6 +7,11 @@ Output (success):
   {"ok": true, "attachments": [<row JSON>, ...]}
 Output (failure):
   {"ok": false, "error": "...", "detail": "..."}  (with non-zero exit)
+Exit codes:
+  0 — success
+  1 — DB error (unexpected exception)
+  2 — invalid JSON on stdin
+  3 — validation failure (missing/blank deal_ref, or stdin not a JSON object)
 
 Manual smoke:
     echo '{"deal_ref":"MCF00000042"}' | python3 trade-booking/scripts/attachments_get.py
@@ -20,7 +25,7 @@ import attachments_db
 
 
 def main() -> int:
-    raw = sys.stdin.read()
+    raw = sys.stdin.read().strip() or "{}"
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as e:
