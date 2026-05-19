@@ -113,7 +113,7 @@ def main() -> int:
                     cur,
                     deal_ref=rows[0]["deal_ref"],
                     attachments=attachments,
-                    user_id=payload.get("user_id") or "unknown",
+                    user_id=legs[0].get("user_id") or "unknown",
                 )
         print(json.dumps({"ok": True, "rows": rows, "attachments": inserted_atts}))
         return 0
