@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 import sys
 
+import attachments_db
 import cashflow_db
 import loan_cashflow_map_db
 
@@ -86,10 +87,16 @@ def _insert_one(cur, payload: dict) -> dict:
 def main() -> int:
     raw = sys.stdin.read()
     try:
-        payload = json.loads(raw)
+        _raw = json.loads(raw)
     except json.JSONDecodeError as e:
         print(json.dumps({"ok": False, "error": "invalid JSON on stdin", "detail": str(e)}))
         return 2
+    if isinstance(_raw, dict) and "payload" in _raw and isinstance(_raw["payload"], dict):
+        payload = _raw["payload"]
+        attachments = _raw.get("attachments") or []
+    else:
+        payload = _raw
+        attachments = []
     try:
         cashflow_db.validate_payload(payload, mode="insert")
     except cashflow_db.ValidationError as e:
@@ -101,7 +108,14 @@ def main() -> int:
         with conn:
             with conn.cursor() as cur:
                 rows = [_insert_one(cur, leg) for leg in legs]
-        print(json.dumps({"ok": True, "rows": rows}))
+                # Attachments attach only to leg 1's deal_ref; leg 2 (mirror) gets none.
+                inserted_atts = attachments_db.insert_attachments(
+                    cur,
+                    deal_ref=rows[0]["deal_ref"],
+                    attachments=attachments,
+                    user_id=payload.get("user_id") or "unknown",
+                )
+        print(json.dumps({"ok": True, "rows": rows, "attachments": inserted_atts}))
         return 0
     except loan_cashflow_map_db.MappingError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
