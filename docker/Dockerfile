@@ -3,7 +3,7 @@
 # Both runtimes are required because server.js (Node) spawns Python scripts.
 # Refdata sync CronJobs override CMD with `python /opt/app/scripts/<sync>.py`.
 # -----------------------------------------------------------------------------
-FROM public.ecr.aws/docker/library/node:18-slim AS base
+FROM public.ecr.aws/docker/library/node:22-slim AS base
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
