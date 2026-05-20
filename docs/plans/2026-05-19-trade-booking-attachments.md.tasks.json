@@ -1,0 +1,87 @@
+{
+  "planPath": "trade-booking/docs/plans/2026-05-19-trade-booking-attachments.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Apply trade_attachments DDL",
+      "status": "completed",
+      "description": "**Goal:** Create the trade_attachments table + index on UAT Postgres via an idempotent applier script.\n\n**Files:** trade-booking/scripts/apply_schema_attachments.py\n\n**Verify:** psql \"$MO_DB_URL\" -c \"\\d trade_attachments\"\n\n```json:metadata\n{\"files\":[\"trade-booking/scripts/apply_schema_attachments.py\"],\"verifyCommand\":\"psql \\\"$MO_DB_URL\\\" -c \\\"\\\\\\\\d trade_attachments\\\"\",\"acceptanceCriteria\":[\"applier idempotent\",\"12 columns in spec order\",\"trade_attachments_deal_ref_idx index exists\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Python attachments_db helper + pytest tests",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Module with insert_attachments + get_attachments_for_deal_ref, pure-logic, tested with pytest.\n\n**Files:** trade-booking/scripts/attachments_db.py, trade-booking/tests/test_attachments_db.py\n\n**Verify:** python -m pytest trade-booking/tests/test_attachments_db.py -v\n\n```json:metadata\n{\"files\":[\"trade-booking/scripts/attachments_db.py\",\"trade-booking/tests/test_attachments_db.py\"],\"verifyCommand\":\"python -m pytest trade-booking/tests/test_attachments_db.py -v\",\"acceptanceCriteria\":[\"insert one row per file in order\",\"select filters to uploaded status\",\"callers manage transaction\",\"tests green\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Wire insert_attachments into the 4 Python writer scripts",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** cashflow_insert/amend + loan_insert/amend accept optional attachments[] in stdin and insert rows in their existing tx. Back-compat with legacy flat shape.\n\n**Files:** trade-booking/scripts/{cashflow_insert,cashflow_amend,loan_insert,loan_amend}.py\n\n**Verify:** manual smokes per Task 3 Step 4\n\n```json:metadata\n{\"files\":[\"trade-booking/scripts/cashflow_insert.py\",\"trade-booking/scripts/cashflow_amend.py\",\"trade-booking/scripts/loan_insert.py\",\"trade-booking/scripts/loan_amend.py\"],\"verifyCommand\":\"# manual smoke per Step 4\",\"acceptanceCriteria\":[\"both payload shapes accepted\",\"attachments rows inserted in same tx\",\"rollback works\",\"output includes attachments[]\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: attachments_get.py stdin-driven read script",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** Read {deal_ref} on stdin, print {ok,attachments[]}. Empty array for unknown.\n\n**Files:** trade-booking/scripts/attachments_get.py\n\n**Verify:** echo '{\"deal_ref\":\"...\"}' | python trade-booking/scripts/attachments_get.py\n\n```json:metadata\n{\"files\":[\"trade-booking/scripts/attachments_get.py\"],\"verifyCommand\":\"echo '{\\\"deal_ref\\\":\\\"...\\\"}' | python trade-booking/scripts/attachments_get.py\",\"acceptanceCriteria\":[\"empty array on unknown deal_ref\",\"only uploaded rows\",\"validates deal_ref\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Drive client module (server/drive.js) + smoke script",
+      "status": "pending",
+      "description": "**Goal:** googleapis wrapper: ensureFolder, uploadFile, deleteFile, deleteFolder. Idempotent + 404-tolerant. Standalone smoke verifies end-to-end.\n\n**Files:** trade-booking/server/drive.js, trade-booking/scripts/drive_smoke.mjs, trade-booking/package.json, trade-booking/.gitignore\n\n**Verify:** node trade-booking/scripts/drive_smoke.mjs prints OK\n\n```json:metadata\n{\"files\":[\"trade-booking/server/drive.js\",\"trade-booking/scripts/drive_smoke.mjs\",\"trade-booking/package.json\",\"trade-booking/.gitignore\"],\"verifyCommand\":\"node trade-booking/scripts/drive_smoke.mjs\",\"acceptanceCriteria\":[\"googleapis installed\",\"smoke prints OK\",\"ensureFolder idempotent\",\"deletes tolerate 404\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: attachments-validate.js pure-function module + node:test",
+      "status": "pending",
+      "description": "**Goal:** Pure validateFiles. ≤25MB/file, ≤10 files, allowlist {pdf,docx,xlsx,png,jpg,jpeg}. node:test, no new dep.\n\n**Files:** trade-booking/server/attachments-validate.js, trade-booking/server/tests/test-attachments-validate.mjs\n\n**Verify:** node --test trade-booking/server/tests/test-attachments-validate.mjs\n\n```json:metadata\n{\"files\":[\"trade-booking/server/attachments-validate.js\",\"trade-booking/server/tests/test-attachments-validate.mjs\"],\"verifyCommand\":\"node --test trade-booking/server/tests/test-attachments-validate.mjs\",\"acceptanceCriteria\":[\"empty valid\",\"mixed-case ext passes\",\"limits enforced\",\"clear error messages\",\"tests green\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Config wiring + startup validation",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "**Goal:** Wire DRIVE_ROOT_FOLDER_ID + GOOGLE_APPLICATION_CREDENTIALS env vars. server.js exits with clear error if missing/invalid. README documents one-time setup.\n\n**Files:** trade-booking/start.bat, start.sh, helm_values/base.yaml, server.js, README.md\n\n**Verify:** run server with the 3 env conditions; observe exit/start\n\n```json:metadata\n{\"files\":[\"trade-booking/start.bat\",\"trade-booking/start.sh\",\"trade-booking/helm_values/base.yaml\",\"trade-booking/server.js\",\"trade-booking/README.md\"],\"verifyCommand\":\"node trade-booking/server.js\",\"acceptanceCriteria\":[\"fail-fast on missing env\",\"fail-fast on missing keyfile\",\"clean start with valid config\",\"README documents setup\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Multipart-ify 4 POST routes + GET /api/attachments/:deal_ref",
+      "status": "pending",
+      "blockedBy": [3, 4, 5, 6, 7],
+      "description": "**Goal:** server.js with busboy multipart parsing + bookingHandler that validates, ensures Drive folder, uploads, spawns Python, rolls back Drive on Python failure. New GET route for attachments.\n\n**Files:** trade-booking/server.js, trade-booking/package.json\n\n**Verify:** curl smokes per Task 8 Step 6\n\n```json:metadata\n{\"files\":[\"trade-booking/server.js\",\"trade-booking/package.json\"],\"verifyCommand\":\"# curl smokes per Step 6\",\"acceptanceCriteria\":[\"happy path inserts row + uploads file\",\"zero-file works\",\"bad ext rejected\",\"rollback cleans Drive\",\"GET returns rows\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Frontend submit → FormData",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** Replace 4 JSON-body fetches in TradeBookingForm.jsx with multipart FormData. UI behaviour unchanged.\n\n**Files:** trade-booking/src/TradeBookingForm.jsx\n\n**Verify:** browser smoke: book cashflow with 1 PDF, confirm Drive folder + DB row\n\n```json:metadata\n{\"files\":[\"trade-booking/src/TradeBookingForm.jsx\"],\"verifyCommand\":\"# browser smoke\",\"acceptanceCriteria\":[\"multipart submit lands file\",\"zero-file unchanged\",\"error surfaces\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Submitted-record panel renders folder + view links",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** Replace \"queued for Drive upload\" text with folder link + per-file view links. Rewrite aspirational footer text.\n\n**Files:** trade-booking/src/TradeBookingForm.jsx\n\n**Verify:** browser smoke: 2 files, click each; 0 files, no section\n\n```json:metadata\n{\"files\":[\"trade-booking/src/TradeBookingForm.jsx\"],\"verifyCommand\":\"# browser smoke\",\"acceptanceCriteria\":[\"folder link renders + opens\",\"file rows render with View links\",\"empty-attachment case is clean\",\"footer rewritten\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Amend-mode preload of existing attachments",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** Amend mode fetches GET /api/attachments/:deal_ref in parallel, renders existing files read-only with View links. New files append on amend submit; existing not re-uploaded.\n\n**Files:** trade-booking/src/TradeBookingForm.jsx\n\n**Verify:** browser smoke: book MCF-N with PDF, amend with PNG, verify 2 rows + same Drive folder\n\n```json:metadata\n{\"files\":[\"trade-booking/src/TradeBookingForm.jsx\"],\"verifyCommand\":\"# browser smoke\",\"acceptanceCriteria\":[\"existing files read-only\",\"existing not re-uploaded\",\"new files append to same folder\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: End-to-end smoke + spec sign-off",
+      "status": "pending",
+      "blockedBy": [10, 11],
+      "description": "**Goal:** Walk through 4 scenarios in spec §9.4 against UAT.\n\n**Files:** none (verification only)\n\n**Verify:** all 4 scenarios pass\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"# full UI walkthrough\",\"acceptanceCriteria\":[\"scenario 1 passes\",\"scenario 2 passes\",\"scenario 3 passes\",\"scenario 4 passes\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-19T04:00:00Z"
+}
