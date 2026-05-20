@@ -109,7 +109,7 @@ def _valid_insert_payload() -> dict:
         "deal_ref": "MCF-PLACEHOLDER",          # ignored on insert
         "external_trade_id": None,
         "cashflow_type": "FUNDING IN",
-        "direction": "RECEIVE",
+        "direction": "INCOMING",
         "entity": "TK006",
         "portfolio_id": 8006,
         "portfolio_name": "CDA",
@@ -166,7 +166,7 @@ def test_validate_insert_rejects_non_numeric_amount():
 def test_validate_insert_accepts_mirror_leg_array():
     a = _valid_insert_payload()
     b = _valid_insert_payload()
-    b["direction"] = "PAY"
+    b["direction"] = "OUTGOING"
     cashflow_db.validate_payload([a, b], mode="insert")  # no raise
 
 
@@ -215,7 +215,7 @@ def test_payload_to_columns_orders_match_ddl():
     assert vals[cols.index("deal_ref")] == "MCF-42"
     assert vals[cols.index("txn_type")] == "CASHFLOW"
     assert vals[cols.index("cashflow_type")] == "FUNDING IN"
-    assert vals[cols.index("direction")] == "RECEIVE"
+    assert vals[cols.index("direction")] == "INCOMING"
     assert vals[cols.index("portfolio_id")] == "8006"  # stored as TEXT
     assert vals[cols.index("amount")] == "1000000"
     assert vals[cols.index("fee_amount")] == "0"
@@ -252,7 +252,7 @@ def test_row_to_payload_serializes_types_for_json():
         None,                    # external_trade_id
         "CASHFLOW",              # txn_type
         "FUNDING IN",            # cashflow_type
-        "RECEIVE",               # direction
+        "INCOMING",              # direction
         "TK006",                 # entity
         "8006",                  # portfolio_id (TEXT column)
         "CDA",                   # portfolio_name
