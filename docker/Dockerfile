@@ -98,7 +98,11 @@ FROM build AS test
 
 WORKDIR $BUILD_DIR
 
-# Install test-only deps.
+# Install test-only deps. requirements-dev.txt does `-r requirements.txt`
+# so the runtime deps (already installed in this venv from the build
+# stage's requirements-freeze.txt) still need the file present on disk
+# for pip to resolve the reference. Both files are copied.
+COPY ./requirements.txt ./requirements.txt
 COPY ./requirements-dev.txt ./requirements-dev.txt
 RUN . $VENV_DIR/bin/activate \
     && pip install -r requirements-dev.txt
