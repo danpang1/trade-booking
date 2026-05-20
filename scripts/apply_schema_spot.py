@@ -1,0 +1,157 @@
+"""Apply the trades_spot schema + trade_seq_spot sequence to UAT Postgres.
+
+Idempotent: uses CREATE ... IF NOT EXISTS so re-running is safe.
+Reads credentials from the `#MO DB UAT` block in /.env.
+"""
+import os
+from pathlib import Path
+import psycopg2
+
+REPO = Path(__file__).resolve().parents[1]
+ENV = REPO / ".env"
+
+
+def _load_creds() -> dict[str, str]:
+    """Env vars (MO_DB_*) take precedence; .env file parsed as fallback."""
+    env_creds = {
+        k: os.environ[f"MO_DB_{k.upper()}"]
+        for k in ("host", "port", "database", "username", "password")
+        if f"MO_DB_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "database", "username", "password")):
+        env_creds.setdefault("port", "5432")
+        return env_creds
+
+    creds: dict[str, str] = {}
+    in_block = False
+    for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = line.strip()
+        if "MO DB UAT" in s.upper():
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not s or s.startswith("#"):
+            if s.startswith("#") and "MO DB UAT" not in s.upper():
+                break
+            continue
+        if ":" in s:
+            k, _, v = s.partition(":")
+            key = k.strip().lower()
+            if key.startswith("mo_db_"):
+                key = key[len("mo_db_"):]
+            creds[key] = v.strip()
+    return creds
+
+
+DDL = """
+-- ════════════════════════════════════════════════════════════════
+-- trade_seq_spot — monotonic counter for MFX deal-refs.
+-- ════════════════════════════════════════════════════════════════
+CREATE SEQUENCE IF NOT EXISTS trade_seq_spot
+  START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
+
+-- ════════════════════════════════════════════════════════════════
+-- trades_spot — bitemporal spot trades.
+-- Column order matches the form JSON payload key sequence
+-- (see trade-booking/docs/spot-schema-mapping.md) so backend
+-- INSERTs and SELECT * round-trip in the same shape as the form.
+-- ════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS trades_spot (
+  deal_ref            TEXT           NOT NULL,
+  external_trade_id   TEXT,
+  txn_type            TEXT           NOT NULL DEFAULT 'SPOT',
+  direction           TEXT           NOT NULL
+                        CHECK (direction IN ('LONG','SHORT')),
+  entity              TEXT           NOT NULL,
+  portfolio_id        TEXT           NOT NULL,
+  portfolio_name      TEXT           NOT NULL,
+  counterparty        TEXT,
+  counterparty_id     TEXT,
+  account             TEXT,
+  account_type        TEXT,
+  base_asset          TEXT           NOT NULL,
+  base_amount         NUMERIC(36,18) NOT NULL,
+  quote_asset         TEXT           NOT NULL,
+  quote_amount        NUMERIC(36,18) NOT NULL,
+  price               NUMERIC(36,18) NOT NULL,
+  fee_asset           TEXT,
+  fee_amount          NUMERIC(36,18) DEFAULT 0,
+  trade_date          TIMESTAMPTZ    NOT NULL,
+  value_date          TIMESTAMPTZ    NOT NULL,
+  txid_reference      TEXT,
+  effective_start     TIMESTAMPTZ    NOT NULL,
+  effective_end       TIMESTAMPTZ,
+  user_id             TEXT           NOT NULL,
+  status              TEXT           NOT NULL
+                        CHECK (status IN
+                          ('PENDING','CONFIRMED','PROCESSED','SETTLED','CANCELLED')),
+  comment             TEXT,
+  PRIMARY KEY (deal_ref, effective_start),
+  CONSTRAINT trades_spot_base_quote_distinct
+    CHECK (base_asset <> quote_asset)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tspot_live
+  ON trades_spot (deal_ref) WHERE effective_end IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tspot_deal_ref
+  ON trades_spot (deal_ref);
+CREATE INDEX IF NOT EXISTS idx_tspot_portfolio
+  ON trades_spot (portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_tspot_external_trade_id
+  ON trades_spot (external_trade_id) WHERE external_trade_id IS NOT NULL;
+"""
+
+
+def main():
+    c = _load_creds()
+    conn = psycopg2.connect(
+        host=c["host"],
+        port=int(c.get("port", "5432")),
+        dbname=c["database"],
+        user=c["username"],
+        password=c["password"],
+        connect_timeout=15,
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute(DDL)
+    print("applied DDL OK\n")
+
+    # Verify
+    cur.execute("""
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_name = 'trades_spot'
+        ORDER BY ordinal_position
+    """)
+    cols = cur.fetchall()
+    print(f"trades_spot columns: {len(cols)}")
+    for col in cols:
+        print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2]=='YES' else 'NOT NULL':10s} {col[3] or ''}")
+
+    cur.execute(
+        "SELECT sequencename, start_value, last_value, increment_by "
+        "FROM pg_sequences WHERE sequencename='trade_seq_spot'"
+    )
+    seq = cur.fetchone()
+    print(f"\nsequence: {seq}")
+
+    cur.execute("""
+        SELECT indexname FROM pg_indexes
+        WHERE tablename='trades_spot'
+        ORDER BY indexname
+    """)
+    idx = [r[0] for r in cur.fetchall()]
+    print(f"\nindexes: {idx}")
+
+    cur.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='trades_spot'::regclass ORDER BY contype")
+    print("\nconstraints:")
+    for row in cur.fetchall():
+        print(f"  {row[0]}")
+
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()
