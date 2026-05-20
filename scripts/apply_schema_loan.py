@@ -147,6 +147,11 @@ CREATE TABLE IF NOT EXISTS trades_loan (
   status                  TEXT           NOT NULL
                             CHECK (status IN ('LIVE','MATURED','CANCELLED')),
   comment                 TEXT,
+  wht_pct                 NUMERIC(8,4),
+                          -- Optional withholding tax rate (% of accrued
+                          -- interest). NULL = not applicable. Shown in
+                          -- the schedule's WHT column as accrued × wht_pct/100
+                          -- per row. No CHECK constraint — caller validates.
 
   -- Sanity constraints
   CONSTRAINT trades_loan_maturity_after_start
@@ -191,6 +196,13 @@ CREATE INDEX IF NOT EXISTS idx_tloan_maturity_live
   WHERE effective_end IS NULL AND status = 'LIVE';
 CREATE INDEX IF NOT EXISTS idx_tloan_order_id
   ON trades_loan (order_id) WHERE order_id IS NOT NULL;
+
+-- ─── Migrations on existing trades_loan ───────────────────────────
+-- ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent — re-running is
+-- safe. Columns added here always land at the end of the table; keep
+-- DATA_COLUMNS in loan_db.py aligned to this trailing order.
+ALTER TABLE trades_loan
+  ADD COLUMN IF NOT EXISTS wht_pct NUMERIC(8,4);
 """
 
 

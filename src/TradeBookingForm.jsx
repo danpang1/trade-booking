@@ -2671,13 +2671,23 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
   const rate = (parseFloat(loan?.interest_rate_pa_pct) || 0) / 100;
   const principalAmount = parseFloat(loan?.principal_amount) || 0;
   const MS_PER_DAY = 86400000;
+  // Parse a stored trade_date as a UTC date-only timestamp. Trade dates
+  // are stored as "YYYY-MM-DDTHH:MM:SS" without a timezone suffix; the
+  // naive Date.parse treats them as local time, which makes
+  // fmtScheduleDate (UTC components) shift one day earlier in zones
+  // east of UTC. Slicing to the date portion and appending "T00:00:00Z"
+  // forces UTC midnight on the booked day.
+  const parseTradeDateMs = (s) => {
+    if (!s) return NaN;
+    return Date.parse(String(s).slice(0, 10) + "T00:00:00Z");
+  };
   const accrualEndMs = accrualDate ? Date.parse(accrualDate + "T23:59:59Z") : null;
-  const tradeStartMs = loan?.trade_date ? Date.parse(loan.trade_date) : null;
+  const tradeStartMs = loan?.trade_date ? parseTradeDateMs(loan.trade_date) : null;
 
   // Per-row accrual aligned 1:1 with `mappings` indices; null when n/a.
   const perRowAccrued = mappings.map((m) => {
     if (m.mapping_type !== "PRINCIPAL_DISBURSE" || !m.trade_date) return null;
-    const rowMs = Date.parse(m.trade_date);
+    const rowMs = parseTradeDateMs(m.trade_date);
     if (Number.isNaN(rowMs) || accrualEndMs == null) return null;
     const days = Math.max(0, (accrualEndMs - rowMs) / MS_PER_DAY);
     const amt = Math.abs(parseFloat(m.amount) || 0);
@@ -2705,7 +2715,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
     const events = [];
     for (const m of mappings) {
       if (!m.trade_date) continue;
-      const ms = Date.parse(m.trade_date);
+      const ms = parseTradeDateMs(m.trade_date);
       if (Number.isNaN(ms)) continue;
       // dealRef tracked alongside so each schedule row knows the
       // triggering cashflow — used as the stable key for comments.
@@ -2713,6 +2723,11 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
         events.push({ ms, type: "DISBURSE", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
       } else if (m.mapping_type === "PRINCIPAL_REPAY") {
         events.push({ ms, type: "REPAY", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+      } else if (m.mapping_type === "INTEREST") {
+        // INTEREST is a soft period boundary: it terminates the prior
+        // accrual segment on its trade_date and starts a fresh segment
+        // the next day with the same notional. Doesn't change notional.
+        events.push({ ms, type: "INTEREST", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
       }
     }
     // Fallback: no disburse cashflow linked → synthesise from the loan
@@ -2742,31 +2757,27 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
     }
     const collapsedEvents = Array.from(eventsByDayType.values()).sort((a, b) => {
       if (a.ms !== b.ms) return a.ms - b.ms;
-      // Same-day mixed types: DISBURSE before REPAY so notional is sane.
-      return a.type === "DISBURSE" ? -1 : 1;
+      // Same-day mixed types: DISBURSE → REPAY → INTEREST so notional
+      // changes apply before the interest-payment boundary is drawn.
+      const order = { DISBURSE: 0, REPAY: 1, INTEREST: 2 };
+      return (order[a.type] ?? 99) - (order[b.type] ?? 99);
     });
-
-    // Pre-collect INTEREST cashflow events for per-period "Net Paid".
-    const interestEvents = mappings
-      .filter((m) => m.mapping_type === "INTEREST" && m.trade_date)
-      .map((m) => ({ ms: Date.parse(m.trade_date), amt: Math.abs(parseFloat(m.amount) || 0) }))
-      .filter((e) => !Number.isNaN(e.ms));
 
     const periods = [];
     let notional = 0;
     for (let i = 0; i < collapsedEvents.length; i++) {
       const ev = collapsedEvents[i];
       if (ev.type === "DISBURSE") notional += ev.amount;
-      else notional -= ev.amount;
-      // Convention: the event's trade_date IS the maturity of the period
-      // it terminates. The new period (with the updated notional) starts
-      // the day AFTER, so interest is owed on the repay day itself but
-      // the post-repay balance only earns from the next day onward. The
-      // very first event (initial disburse) is the exception — period 1
-      // starts on the disburse day itself.
-      const startMs = i === 0 ? ev.ms : ev.ms + MS_PER_DAY;
+      else if (ev.type === "REPAY") notional -= ev.amount;
+      // INTEREST: notional unchanged (period boundary only)
+      // Convention: each event STARTS its own period on its own
+      // trade_date. The prior period (if any) ends T-1 of this event.
+      // So on the event day itself: the NEW notional / fresh accrual
+      // applies. This means an interest payment on Apr 1 closes the
+      // prior row on Mar 31 and opens a new row starting Apr 1.
+      const startMs = ev.ms;
       const next = collapsedEvents[i + 1];
-      const endMs = next ? next.ms : null; // null = LIVE
+      const endMs = next ? next.ms - MS_PER_DAY : null; // null = LIVE
       if (notional <= 0) continue;
 
       // Days from start to (endMs or accrualEndMs), inclusive.
@@ -2779,12 +2790,11 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
       }
       const accrued = notional * rate * days / dayBasis;
 
-      // Net Paid Interest = sum of INTEREST cashflows in [startMs, endMs or +∞].
-      const periodEndForPaid = endMs != null ? endMs : Number.POSITIVE_INFINITY;
-      const netPaid = interestEvents.reduce(
-        (s, e) => (e.ms >= startMs && e.ms <= periodEndForPaid ? s + e.amt : s),
-        0
-      );
+      // Net Paid Interest = the INTEREST cashflow that closed this
+      // period (the next event after this row, if it's an INTEREST).
+      // Each INTEREST event is its own row-boundary so there is at
+      // most one paying cashflow per row.
+      const netPaid = next && next.type === "INTEREST" ? next.amount : 0;
 
       periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
     }
@@ -3062,6 +3072,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                 ["Counterparty ID", loan.counterparty_id || "—"],
                 ["Principal", `${fmt(loan.principal_amount)} ${loan.principal_asset}`],
                 ["Interest Rate", `${loan.interest_rate_pa_pct || 0}% ${loan.interest_type || ""}`],
+                ["WHT", loan.wht_pct == null || loan.wht_pct === "" ? "—" : `${loan.wht_pct}%`],
                 ["Day Basis", `Actual/${loan.day_count_basis || 365}`],
                 ["Floating Benchmark", loan.interest_type === "FLOATING" ? (loan.floating_benchmark || "—") : "—"],
                 ["Collateral", loan.collateral_asset
@@ -3326,8 +3337,21 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                               </HoverTip>
                             ) : dash}
                           </td>
-                          {/* WHT — placeholder */}
-                          <td className="px-2 py-2 text-right whitespace-nowrap">{dash}</td>
+                          {/* WHT — accrued × wht_pct / 100. Dash when
+                              wht_pct is unset on the loan. */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap">
+                            {(() => {
+                              const whtPct = parseFloat(loan?.wht_pct);
+                              if (!isFinite(whtPct) || whtPct <= 0) return dash;
+                              if (!(p.days > 0) || !(p.accrued > 0)) return dash;
+                              const whtAmt = p.accrued * whtPct / 100;
+                              return (
+                                <HoverTip text={`${fmt(p.accrued)} ${interestAsset} × ${whtPct}%`}>
+                                  {fmt(whtAmt)}
+                                </HoverTip>
+                              );
+                            })()}
+                          </td>
                           {/* Net Paid Interest */}
                           <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {p.netPaid > 0 ? fmt(p.netPaid) : dash}
@@ -5200,6 +5224,9 @@ export default function TradeBookingForm() {
     // crypto default; 360 (Actual/360) for USD money-market style loans.
     day_count_basis: 365,
     floating_benchmark: "",
+    // Optional withholding-tax rate (% of accrued interest). Empty
+    // means not applicable; the schedule's WHT column stays blank.
+    wht_pct: "",
     collateral_asset: "",
     collateral_amount: "",
     is_hedged: false,
@@ -5660,6 +5687,11 @@ export default function TradeBookingForm() {
         day_count_basis: parseInt(form.day_count_basis, 10) || 365,
         floating_benchmark:
           form.interest_type === "FLOATING" ? form.floating_benchmark || null : null,
+        // Optional WHT % — NULL when blank so the column stays
+        // truly absent rather than storing 0.
+        wht_pct: form.wht_pct === "" || form.wht_pct == null
+          ? null
+          : (parseFloat(form.wht_pct) || 0),
         // trades_loan_collateral_pair CHECK: both NULL or both set.
         collateral_asset: hasCollateral ? form.collateral_asset : null,
         collateral_amount: hasCollateral ? parseFloat(form.collateral_amount) || 0 : null,
@@ -6022,6 +6054,7 @@ export default function TradeBookingForm() {
       interest_type: row.interest_type,
       day_count_basis: row.day_count_basis ?? 365,
       floating_benchmark: row.floating_benchmark || "",
+      wht_pct: row.wht_pct == null ? "" : String(row.wht_pct),
       collateral_asset: row.collateral_asset || "",
       collateral_amount: row.collateral_amount == null ? "" : String(row.collateral_amount),
       is_hedged: !!row.is_hedged,
@@ -6269,6 +6302,7 @@ export default function TradeBookingForm() {
       interest_rate: "",
       interest_type: "FIXED",
       floating_benchmark: "",
+      wht_pct: "",
       collateral_asset: "",
       collateral_amount: "",
       is_hedged: false,
@@ -7047,7 +7081,7 @@ export default function TradeBookingForm() {
                   onChange={(v) => setMany({ counterparty: v, counterparty_id_row: "" })}
                   options={
                     form.category === "LOAN"
-                      ? COUNTERPARTIES.filter((c) => c.subType === "LENDER")
+                      ? COUNTERPARTIES.filter((c) => c.type === "LENDER")
                       : COUNTERPARTIES
                   }
                   fallbackLabel={form.counterparty_id_row}
@@ -7586,7 +7620,7 @@ export default function TradeBookingForm() {
                     }
                   />
                 </Field>
-                <Field label="Interest Type" span={4}>
+                <Field label="Interest Type" span={3}>
                   <Select
                     value={form.interest_type}
                     onChange={(e) => set("interest_type", e.target.value)}
@@ -7595,7 +7629,7 @@ export default function TradeBookingForm() {
                     <option>FLOATING</option>
                   </Select>
                 </Field>
-                <Field label="Day Basis" span={4}>
+                <Field label="Day Basis" span={3}>
                   <Select
                     value={String(form.day_count_basis ?? 365)}
                     onChange={(e) => set("day_count_basis", parseInt(e.target.value, 10))}
@@ -7604,8 +7638,15 @@ export default function TradeBookingForm() {
                     <option value="360">360</option>
                   </Select>
                 </Field>
+                <Field label="WHT (%)" span={3}>
+                  <NumberInput
+                    placeholder="e.g. 15"
+                    value={form.wht_pct}
+                    onChange={(v) => set("wht_pct", v)}
+                  />
+                </Field>
                 {form.interest_type === "FLOATING" ? (
-                  <Field label="Floating Benchmark" span={4}>
+                  <Field label="Floating Benchmark" span={3}>
                     <Input
                       placeholder="e.g. SOFR + 200bps"
                       value={form.floating_benchmark}
@@ -7613,7 +7654,7 @@ export default function TradeBookingForm() {
                     />
                   </Field>
                 ) : (
-                  <div className="col-span-4" />
+                  <div className="col-span-3" />
                 )}
 
                 {/* Collateral — loan-specific extras at the bottom */}

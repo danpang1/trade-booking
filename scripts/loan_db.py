@@ -245,6 +245,7 @@ DATA_COLUMNS = (
     "user_id",
     "status",
     "comment",
+    "wht_pct",
 )
 
 
@@ -281,7 +282,7 @@ def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...]
             # field — keeps amend payloads from older clients valid.
             vals.append(365 if v in (None, "") else int(v))
         elif col in ("principal_amount", "collateral_amount", "hedged_qty",
-                     "hedged_price", "hedge_proceeds_amount"):
+                     "hedged_price", "hedge_proceeds_amount", "wht_pct"):
             v = payload.get(col)
             vals.append(None if v in (None, "") else v)
         else:
