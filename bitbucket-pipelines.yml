@@ -1,0 +1,200 @@
+---
+
+clone:
+  depth: 10
+
+image:
+  name: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/platform/pipeline-images:atlassian-default-image-4-0.0.26
+  aws:
+    access-key: $AWS_ACCESS_KEY_ID_CI
+    secret-key: $AWS_SECRET_ACCESS_KEY_CI
+
+options:
+  docker: true
+
+definitions:
+  services:
+    docker:
+      image: public.ecr.aws/docker/library/docker:27-dind
+      memory: 2048
+
+  caches:
+    docker-local: /tmp/cache/buildx
+    npm: node_modules
+
+  steps:
+    - step: &prepareEnv
+        name: Prepare environment variables
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - rm -f setup_env.sh
+          - bash ./.pipelines/generate-env.sh
+        artifacts:
+          - setup_env.sh
+
+    - step: &pythonLint
+        name: Linter execution for python
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - bash ./scripts/lint_python.sh
+
+    - step: &helmLint
+        name: Linter execution for Helm
+        image: alpine/k8s:1.26.1
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - bash ./scripts/lint_helm.sh
+
+    - step: &secretscan
+        name: Gitleaks Scan
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - gitleaks dir . --config /opt/.gitleaks.toml --verbose --redact --exit-code 1
+
+    - step: &dockerBuild
+        name: Build container image
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          - bash ./scripts/package_docker.sh
+        services:
+          - docker
+
+    - step: &dockerBuildAndPublish
+        name: Build and publish container image
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          - bash ./scripts/package_and_publish_docker.sh
+        services:
+          - docker
+        caches:
+          - docker
+          - docker-local
+
+    - step: &dockerTest
+        name: Run pytest inside container
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          # Build the `test` target stage and load it locally.
+          - export IMAGE_BUILD_ARGS="--target test --load"
+          - bash ./scripts/package_docker.sh
+          - docker run --name test "$IMAGE_NAME:$VERSION"
+        services:
+          - docker
+
+    - step: &helmBuild
+        name: Build helm chart
+        image: alpine/k8s:1.26.1
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          - bash ./scripts/package_helm.sh
+
+    - step: &deploy
+        name: Deploy using helm
+        image: alpine/k8s:1.26.1
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          # Use `dry-run` arg here to test pipeline wiring without touching the cluster.
+          # Remove the arg once UAT deploys are working end-to-end.
+          - bash ./.pipelines/deploy.sh dry-run
+
+    - step: &rollback
+        name: Rollback
+        image: alpine/k8s:1.26.1
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          - bash ./.pipelines/rollback.sh
+
+
+pipelines:
+
+  branches:
+
+    uat:
+      - step: *prepareEnv
+
+      - parallel:
+        - step: *pythonLint
+        - step: *helmLint
+        - step: *dockerTest
+
+      - parallel:
+        # Swap to *dockerBuildAndPublish once the ECR push is verified to work.
+        - step: *dockerBuild
+        - step: *helmBuild
+
+      - step:
+          <<: *deploy
+          deployment: staging
+      - step:
+          <<: *rollback
+          trigger: manual
+
+    main:
+      - step: *prepareEnv
+
+      - parallel:
+        - step: *pythonLint
+        - step: *helmLint
+        - step: *secretscan
+        - step: *dockerTest
+
+      - parallel:
+        - step: *dockerBuild
+        - step: *helmBuild
+
+      - step:
+          <<: *deploy
+          deployment: production
+          trigger: manual
+      - step:
+          <<: *rollback
+          trigger: manual
+
+  pull-requests:
+    '**':
+      - step: *prepareEnv
+
+      - parallel:
+        - step: *pythonLint
+        - step: *helmLint
+        - step: *dockerTest
+
+      - parallel:
+        - step: *dockerBuild
+        - step: *helmBuild

@@ -1,0 +1,251 @@
+---
+
+service:
+  enabled: false
+  ports:
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 4000
+
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 4000
+
+ingress:
+  name: default
+  enabled: false
+  external: false
+  host: null
+
+  # Tls secret defaults to the deployment name with the `-tls` suffix.
+  tlsSecret: null
+  # Tls producer defaults to self-signed.
+  tlsProducer: null
+
+  # Cases:
+  #
+  #  * Default with a prefix
+  #      path: /app-prefix(/?|$)(.*)
+  #      useRegex: true
+  #      rewriteTarget: "/app-prefix/$2"
+  #
+  #  * Default with a prefix pointing to existing service
+  #      path: /app-prefix(/?|$)(.*)
+  #      rewriteTarget: "/app-prefix/$2"
+  #      useRegex: true
+  #      servicename: "onchain-eth-main-uat"
+  #
+  #  * NextJs
+  #    NextJs adds a trailing slash by default. Our rewrite rule should not append a trailing slash in the end.
+  #      path: '/$1$2'
+  #      pathType: 'Prefix'
+  #      useRegex: true
+  #      rewriteTarget: '/(t2x-admin/?)($|.*)'
+  #
+  path: "/"
+  pathType: "Prefix"
+  useRegex: false
+  rewriteTarget: ""
+
+  sslRedirect: false
+  # backendProtocol valid values: HTTP, HTTPS, AUTO_HTTP, GRPC, GRPCS and FCGI
+  backendProtocol: ""
+  bodySize: ""
+
+  # E.g.
+  # extraAnnotations:
+  #   nginx.ingress.kubernetes.io/limit-connections: 1000
+  extraAnnotations: null
+
+  authentication:
+    enabled: true
+    ssoOauth2Url: https://oauth2.sso.internal.tokkalabs.com/oauth2/auth
+    ssoOauth2Signin: override-me-later-on
+  service:
+    name:
+    portName: https
+  websockets:
+    enabled: false
+  whitelistSourceRange: []
+
+# We also support multiple ingresses. It is just a list of simple
+# `ingress` elements defined above.
+ingresses: []
+
+observability:
+  liveness:
+    enabled: true
+    livenessPath: null
+    livenessPort: 4000
+    command: []
+
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 60
+      timeoutSeconds: 30
+      failureThreshold: 5
+
+    startup:
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 5
+
+  prometheus:
+    enabled: false
+    portName: "prom-metrics"
+    portNumber: "9090"
+    portProtocol: "TCP"
+    scheme: http
+    path: "/"
+
+image:
+  imagePullSecrets:
+    - name: tokka-ecr
+  repository: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/override-me-later-on
+  version: ""
+  tagPostfix: ""
+
+deployment:
+  enabled: true
+  type: "Deployment"
+  replicas: 1
+  command: []
+  args: []
+  strategy: RollingUpdate
+  rollout:
+    maxUnavailable: 25%
+    maxSurge: 25%
+
+  shareProcessNamespace: false
+
+  initContainers: []
+  secondaryContainers: []
+
+cronjob:
+  name: default
+  enabled: false
+  # Override it if necessary.
+  image: ""
+  command: []
+  args: []
+
+  # Wait 1 hour before terminating the job.
+  activeDeadlineSeconds: 3600
+  concurrencyPolicy: Replace
+  dnsPolicy: ClusterFirst
+  failedJobsHistoryLimit: 1
+  hostNetwork: false
+  restartPolicy: Never
+  schedule: 0 */6 * * *
+  schedulerName: default-scheduler
+  successfulJobsHistoryLimit: 3
+  suspend: false
+  terminationGracePeriodSeconds: 30
+
+  initContainers: []
+  secondaryContainers: []
+
+# We also support multiple ingresses. It is just a list of simple
+# `cronjob` elements defined above.
+cronjobs: []
+
+horizontalPodAutoscaler:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 2
+
+  metrics:
+    cpu:
+      averageUtilization: 80
+    memory:
+      averageUtilization: 80
+
+env:
+  ENVIRONMENT: unknown
+
+  PLATFORM: k8s
+
+# Set environment variables from keys
+# present in k8s configMaps.
+#
+# E.g.:
+# env_configMap:
+#   MONGO_URL_BASE:
+#     name: atlas-mongodb-streaming
+#     key: uri_rw
+env_configMap: {}
+
+env_fields: {}
+
+# Set environment variables from keys
+# present in k8s secrets.
+#
+# E.g.:
+# env_secrets:
+#   MONGO_URL_BASE:
+#     name: atlas-mongodb-streaming
+#     key: uri_rw
+env_secrets: {}
+
+configMap: {}
+
+# E.g.
+# volumes:
+#   - name: certificate
+#     readOnly: true
+#     defaultMode: 416
+#     mountPath: /etc/certificate
+#     emptyDir: {}
+#     secretName: xxx
+#     configMap:
+#       # Leave the name empty so it is automatically populated.
+#       name: xxx
+#     optional: false
+volumes: []
+
+vault:
+  enabled: false
+  service: https://jp-vault.internal.tokkalabs.com
+  serviceAccountName: vault-main-sidecar-auth
+  authPath: ""
+  role: ""
+  namespace: ""
+  agentInject: true
+  agentInjectSecrets:
+    paths: {}
+    templates: {}
+  agentInjectDefaultTemplate: map
+  logLevel: debug
+  requestscpu: 10m
+  limitscpu: 200m
+  tlsSecret: tls-rancher-ingress
+  tlsSkipVerify: "false"
+
+# There are two labels supported
+#  * node-role.kubernetes.io/worker: "true"
+#    This picks the nodes the have the default public IPs of the environment.
+#
+#  * node-role.kubernetes.io/worker-secondary: "true"
+#    This picks the nodes that have different configuration from the default one.
+#    Usually it just refers to less public IPs that the main nodes.
+#
+# Add one or the other one, not both!
+#
+nodeSelector:
+  node-role.kubernetes.io/worker: "true"
+
+resources:
+  requests:
+    memory: 100Mi
+    cpu: 50m
+  limits:
+    memory: 300Mi
+    cpu: 500m
+
+ulimits:
+  nofile:
+    soft:
+    hard:

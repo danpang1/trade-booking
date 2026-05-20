@@ -1,0 +1,122 @@
+---
+# Trade-booking — environment-agnostic defaults.
+# Environment-specific overrides live in base-uat.yaml / base-prod.yaml.
+
+image:
+  repository: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/templates/trade-booking
+
+# Run the Node API as the main process. Python scripts are invoked
+# (a) by server.js via child_process.spawn for API endpoints, and
+# (b) as separate k8s CronJobs (see `cronjobs:` below) for hourly refdata syncs.
+deployment:
+  args: ["node", "server.js"]
+  replicas: 1
+
+# Internal service: cluster-routable on port 80 (HTTP), targeting the
+# Node server's listening port 5181.
+service:
+  enabled: true
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5181
+
+# Ingress: SSO oauth2-protected. The host is set per-environment in
+# base-uat.yaml / base-prod.yaml.
+ingress:
+  name: default
+  enabled: true
+  external: false
+  path: /
+  pathType: Prefix
+  authentication:
+    enabled: true
+
+# Liveness probe hits the existing /api/health endpoint.
+observability:
+  liveness:
+    enabled: true
+    livenessPort: 5181
+    livenessPath: /api/health
+
+# Default env vars baked into all containers (deployment + cronjobs).
+env:
+  APP_NAME: trade-booking
+  APP_PORT: 5181
+  APP_HOST: 0.0.0.0
+  # ENVIRONMENT is overridden per-env in base-uat.yaml / base-prod.yaml.
+
+# Database credentials. Each entry references a k8s Secret that the
+# platform team must create separately (NOT managed by this chart).
+# Naming convention: trade-booking-<block>-<env>.
+env_secrets:
+  # Postgres UAT — used by cashflow_db.py / loan_db.py / apply_schema_*.py.
+  MO_DB_HOST:
+    name: trade-booking-mo-db
+    key: host
+  MO_DB_PORT:
+    name: trade-booking-mo-db
+    key: port
+  MO_DB_DATABASE:
+    name: trade-booking-mo-db
+    key: database
+  MO_DB_USERNAME:
+    name: trade-booking-mo-db
+    key: username
+  MO_DB_PASSWORD:
+    name: trade-booking-mo-db
+    key: password
+  # MySQL read-only — used by sync_counterparties/portfolios/users.
+  SG_RO_MYSQL_HOST:
+    name: trade-booking-sg-ro-mysql
+    key: host
+  SG_RO_MYSQL_USERNAME:
+    name: trade-booking-sg-ro-mysql
+    key: username
+  SG_RO_MYSQL_PASSWORD:
+    name: trade-booking-sg-ro-mysql
+    key: password
+  # MySQL token-price DB — used by snapshot_tokens.py.
+  TOKEN_PRICE_HOST:
+    name: trade-booking-token-price
+    key: host
+  TOKEN_PRICE_USERNAME:
+    name: trade-booking-token-price
+    key: username
+  TOKEN_PRICE_PASSWORD:
+    name: trade-booking-token-price
+    key: password
+
+# Refdata syncs as k8s CronJobs. Each runs as its own scheduled pod,
+# isolated from the main API. Uses the same image; just overrides the
+# command. All inherit env + env_secrets from the chart-level defaults.
+cronjobs:
+  - name: counterparties
+    enabled: true
+    schedule: "15 * * * *"   # hourly at :15
+    command: ["python", "/opt/app/scripts/sync_counterparties.py"]
+    args: []
+  - name: portfolios
+    enabled: true
+    schedule: "20 * * * *"
+    command: ["python", "/opt/app/scripts/sync_portfolios.py"]
+    args: []
+  - name: users
+    enabled: true
+    schedule: "25 * * * *"
+    command: ["python", "/opt/app/scripts/sync_users.py"]
+    args: []
+  - name: tokens
+    enabled: true
+    schedule: "30 * * * *"
+    command: ["python", "/opt/app/scripts/snapshot_tokens.py"]
+    args: []
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 512Mi
+    cpu: 500m

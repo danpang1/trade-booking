@@ -1,0 +1,6 @@
+# Test-only deps. Installed in CI's pythonLint/dockerTest steps,
+# not baked into the production image.
+-r requirements.txt
+pytest>=8.0,<10
+pytest-mock>=3.10,<4
+flake8>=6.0,<8

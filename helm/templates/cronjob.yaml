@@ -1,0 +1,282 @@
+{{- range $i, $v := .Values.cronjobs | default (list .Values.cronjob) }}
+
+{{- $cronjobDefault := deepCopy $.Values.cronjob -}}
+{{- $cronjobRunning := deepCopy $v -}}
+{{- $cronjobMerged := mergeOverwrite $cronjobDefault $cronjobRunning }}
+
+{{- if $cronjobMerged.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+
+metadata:
+  {{- if gt (len $cronjobMerged.name) 0 }}
+  name: {{ include "project-helm.fullname" $ }}-{{ $cronjobMerged.name }}-cronjob
+  {{- else }}
+  name: {{ include "project-helm.fullname" $ }}
+  {{- end }}
+  namespace: {{ $.Release.Namespace }}
+
+  labels:
+    {{- include "project-helm.labels" $ | nindent 4 }}
+
+spec:
+
+  concurrencyPolicy: {{ $cronjobMerged.concurrencyPolicy }}
+  failedJobsHistoryLimit: {{ $cronjobMerged.failedJobsHistoryLimit }}
+  schedule: {{ $cronjobMerged.schedule | quote }}
+  successfulJobsHistoryLimit: {{ $cronjobMerged.successfulJobsHistoryLimit }}
+  suspend: {{ $cronjobMerged.suspend }}
+
+  jobTemplate:
+
+    metadata:
+      labels:
+        {{- include "project-helm.labels" $ | nindent 8 }}
+
+    spec:
+
+      activeDeadlineSeconds: {{ $cronjobMerged.activeDeadlineSeconds }}
+
+      template:
+        metadata:
+
+        spec:
+
+          {{- with $.Values.image.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with $.Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with $.Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          dnsPolicy: {{ $cronjobMerged.dnsPolicy }}
+          hostNetwork: {{ $cronjobMerged.hostNetwork }}
+          restartPolicy: {{ $cronjobMerged.restartPolicy }}
+          schedulerName: {{ $cronjobMerged.schedulerName }}
+          terminationGracePeriodSeconds: {{ $cronjobMerged.terminationGracePeriodSeconds }}
+
+          initContainers:
+            {{- if $.Values.ulimits.nofile.hard }}
+            - name: increase-ulimits-nofile-hard
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion  }}{{ $.Values.image.tagPostfix }}"
+              command: ["sh", "-c", "ulimit -n {{ $.Values.ulimits.nofile.hard }}"]
+              securityContext:
+                privileged: True
+                capabilities:
+                  add:
+                    - IPC_LOCK
+                    - SYS_RESOURCE
+            {{- end }}
+            {{- if $.Values.ulimits.nofile.soft }}
+            - name: increase-ulimits-nofile-soft
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+              command: ["sh", "-c", "ulimit -S -n {{ $.Values.ulimits.nofile.soft }}"]
+              securityContext:
+                privileged: True
+                capabilities:
+                  add:
+                    - IPC_LOCK
+                    - SYS_RESOURCE
+            {{- end }}
+
+            {{- range $iInit, $vInit := $cronjobMerged.initContainers }}
+            - name: {{ $vInit.name }}-container
+              {{- if and $vInit.image $vInit.image.repository }}
+              image: "{{ $vInit.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+              {{- else }}
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion  }}{{ $.Values.image.tagPostfix }}"
+              {{- end }}
+
+              {{- if $vInit.command }}
+              command: {{- $vInit.command | toYaml | nindent 16 }}
+              {{- end }}
+              {{- if gt (len $vInit.args) 0 }}
+              args: {{- $vInit.args | toYaml | nindent 16 }}
+              {{- end }}
+
+              securityContext:
+                capabilities:
+                  {{- if and $vInit.securityContext (gt (len $vInit.securityContext.capabilities.add) 0) }}
+                  add: {{ $vInit.securityContext.capabilities.add }}
+                  {{- end }}
+
+              env:
+                {{- include "project-helm.CommonEnvironmentVariables" $ | nindent 16 }}
+
+                {{- range $kEnv, $vEnv := $.Values.env }}
+                - name: {{ $kEnv }}
+                  value: {{ if $vEnv }}{{ $vEnv | quote }}{{ else }}""{{ end }}
+                {{- end }}
+
+                {{- range $k, $v := $.Values.env_configMap }}
+                - name: {{ $k }}
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ $v.name | quote }}
+                      key: {{ $v.key | quote }}
+                {{- end }}
+
+                {{- range $kEnv, $vEnv := $.Values.env_secrets }}
+                - name: {{ $kEnv }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $vEnv.name | quote }}
+                      key: {{ $vEnv.key | quote }}
+                {{- end }}
+
+              {{- if gt (len $.Values.volumes) 0 }}
+              volumeMounts:
+                {{- range $vVolumes := $.Values.volumes }}
+                - name: {{ $vVolumes.name }}
+                  mountPath: {{ $vVolumes.mountPath }}
+                  readOnly: {{ ne $vVolumes.readOnly false }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+
+          containers:
+            - name: main-container
+
+              {{- if gt (len $cronjobMerged.image) 0 }}
+              image: "{{ $cronjobMerged.image }}"
+              {{- else }}
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+              {{- end }}
+
+              {{- if gt (len $cronjobMerged.command ) 0 }}
+              command: {{- $cronjobMerged.command | toYaml | nindent 16 }}
+              {{- end }}
+              {{- if gt (len $cronjobMerged.args) 0 }}
+              args: {{- $cronjobMerged.args | toYaml | nindent 16 }}
+              {{- end }}
+
+              terminationMessagePath: /dev/termination-log
+              terminationMessagePolicy: File
+
+              resources:
+                {{- toYaml $.Values.resources | nindent 16 }}
+
+              env:
+                {{- include "project-helm.CommonEnvironmentVariables" $ | nindent 16 }}
+
+                {{- range $kEnv, $vEnv := $.Values.env }}
+                - name: {{ $kEnv }}
+                  value: {{ if $vEnv }}{{ $vEnv | quote }}{{ else }}""{{ end }}
+                {{- end }}
+
+                {{- range $k, $v := $.Values.env_configMap }}
+                - name: {{ $k }}
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ $v.name | quote }}
+                      key: {{ $v.key | quote }}
+                {{- end }}
+
+                {{- range $kEnv, $vEnv := $.Values.env_secrets }}
+                - name: {{ $kEnv }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $vEnv.name | quote }}
+                      key: {{ $vEnv.key | quote }}
+                {{- end }}
+
+              {{- if gt (len $.Values.volumes) 0 }}
+              volumeMounts:
+                {{- range $vVolumes := $.Values.volumes }}
+                - name: {{ $vVolumes.name }}
+                  mountPath: {{ $vVolumes.mountPath }}
+                  readOnly: {{ ne $vVolumes.readOnly false }}
+                {{- end }}
+              {{- end }}
+
+            {{- range $iSecond, $vSecond := $cronjobMerged.secondaryContainers }}
+            - name: {{ $vSecond.name }}-container
+              {{- if and $vSecond.image $vSecond.image.repository }}
+              image: "{{ $vSecond.image.repository }}:{{ $.Values.image.version | default .Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+              {{- else }}
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default .Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+              {{- end }}
+
+              {{- if gt (len $vSecond.command) 0 }}
+              command: {{- $vSecond.command | toYaml | nindent 16 }}
+              {{- end }}
+              {{- if gt (len $vSecond.args) 0 }}
+              args: {{- $vSecond.args | toYaml | nindent 16 }}
+              {{- end }}
+
+              securityContext:
+                capabilities:
+                  {{- if gt (len $vSecond.securityContext.capabilities.add) 0 }}
+                  add: {{ $vSecond.securityContext.capabilities.add }}
+                  {{- end }}
+
+              env:
+                {{- range $kEnv, $vEnv := $.Values.env }}
+                - name: {{ $kEnv }}
+                  value: {{ if $vEnv }}{{ $vEnv | quote }}{{ else }}""{{ end }}
+                {{- end }}
+
+                {{- range $k, $v := $.Values.env_configMap }}
+                - name: {{ $k }}
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ $v.name | quote }}
+                      key: {{ $v.key | quote }}
+                {{- end }}
+
+                {{- range $kEnv, $vEnv := $.Values.env_secrets }}
+                - name: {{ $kEnv }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $vEnv.name | quote }}
+                      key: {{ $vEnv.key | quote }}
+                {{- end }}
+
+              {{- if gt (len $.Values.volumes) 0 }}
+              volumeMounts:
+                {{- range $vVolumes := $.Values.volumes }}
+                - name: {{ $vVolumes.name }}
+                  mountPath: {{ $vVolumes.mountPath }}
+                  readOnly: {{ ne $vVolumes.readOnly false }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+
+          {{- if gt (len $.Values.volumes) 0 }}
+          volumes:
+            {{- range $vVolumes := $.Values.volumes }}
+            - name: {{ $vVolumes.name }}
+              {{- if $vVolumes.emptyDir }}
+              emptyDir: {{- $vVolumes.emptyDir | toYaml | nindent 14 }}
+              {{- else if $vVolumes.secretName }}
+              secret:
+                defaultMode: {{ $vVolumes.defaultMode | default 416 }}
+                secretName: {{ $vVolumes.secretName }}
+                optional: {{ ne $vVolumes.optional false }}
+              {{- else if $vVolumes.configMap }}
+              configMap:
+                name: {{ $vVolumes.configMap.name | default (printf "%s-configmap" (include "project-helm.fullname" $)) }}
+                {{- if and ($vVolumes.configMap.items) (gt (len $vVolumes.configMap.items) 0) }}
+                items: {{- $vVolumes.configMap.items | toYaml | nindent 14 }}
+                {{- end }}
+                defaultMode: {{ $vVolumes.defaultMode | default 416 }}
+                        {{- else if $vVolumes.persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ $vVolumes.persistentVolumeClaim.claimName | default (printf "%s-pvc" (include "project-helm.fullname" $)) }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+{{- end }}
+
+{{- end }}

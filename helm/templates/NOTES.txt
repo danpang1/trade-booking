@@ -1,0 +1,5 @@
+Created {{ .Chart.Name }}
+    Name               : {{ include "project-helm.fullname" $ | quote }}
+    Namespace          : {{ .Release.Namespace }}
+    Chart Version      : {{ .Chart.Version }}
+    App Version        : {{ .Chart.AppVersion }}

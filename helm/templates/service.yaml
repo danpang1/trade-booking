@@ -1,0 +1,39 @@
+---
+{{- if .Values.service.enabled }}
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: {{ include "project-helm.fullname" $ }}-service
+  namespace: {{ .Release.Namespace }}
+
+  labels:
+    {{- include "project-helm.labels" $ | nindent 4 }}
+
+spec:
+  {{- if .Values.service.type }}
+  type: {{ .Values.service.type }}
+  {{- end }}
+  
+  selector:
+    {{- include "project-helm.selectorLabels" $ | nindent 4 }}
+
+  ports:
+    {{- range $v := .Values.service.ports }}
+    - name: {{ $v.name }}
+      protocol: {{ $v.protocol }}
+      port: {{ $v.port }}
+      targetPort: {{ $v.targetPort }}
+      {{- if $v.nodePort }}
+      nodePort: {{ $v.nodePort }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.observability.prometheus.enabled | default false }}
+    - name: {{ .Values.observability.prometheus.portName | default .Values.observability.prometheus.portNumber }}
+      protocol: {{ .Values.observability.prometheus.portProtocol | default "TCP" }}
+      port: {{ .Values.observability.prometheus.portNumber }}
+      targetPort: {{ .Values.observability.prometheus.portNumber }}
+    {{- end }}
+
+{{- end }}

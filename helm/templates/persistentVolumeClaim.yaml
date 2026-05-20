@@ -1,0 +1,24 @@
+---
+{{- if and .Values.persistentVolumeClaim (.Values.persistentVolumeClaim.enabled | default false) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  name: {{ .Values.persistentVolumeClaim.name | default (printf "%s-pvc" (include "project-helm.fullname" .)) }}
+  namespace: {{ .Release.Namespace }}
+
+  labels:
+    {{- include "project-helm.labels" $ | nindent 4 }}
+
+spec:
+  accessModes:
+    - {{ .Values.persistentVolumeClaim.accessMode | default "ReadWriteOnce" }}
+  
+  {{- if .Values.persistentVolumeClaim.storageClass }}
+  storageClassName: {{ .Values.persistentVolumeClaim.storageClass }}
+  {{- end }}
+  
+  resources:
+    requests:
+      storage: {{ .Values.persistentVolumeClaim.size | default "1Gi" }}
+{{- end }}

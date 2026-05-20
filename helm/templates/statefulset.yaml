@@ -1,0 +1,362 @@
+---
+{{- if and .Values.deployment.enabled (eq .Values.deployment.type "StatefulSet") }}
+apiVersion: apps/v1
+kind: StatefulSet
+
+metadata:
+  name: {{ include "project-helm.fullname" $ }}
+  namespace: {{ .Release.Namespace }}
+
+  labels:
+    {{- include "project-helm.labels" $ | nindent 4 }}
+
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+
+  serviceName: {{ include "project-helm.fullname" $ }}-service
+
+  selector:
+    matchLabels:
+      {{- include "project-helm.selectorLabels" $ | nindent 6 }}
+
+  updateStrategy:
+    type: {{ .Values.deployment.strategy }}
+
+  template:
+    metadata:
+      labels:
+        {{- include "project-helm.labels" $ | nindent 8 }}
+
+      annotations:
+        {{- if gt (len .Values.configMap) 0 }}
+        # Perform a deployment when configMap values change.
+        # https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
+        #
+        checksum/config: {{ include (print $.Template.BasePath "/configMap.yaml") . | sha256sum }}
+        {{- end }}
+
+        {{- if .Values.vault.enabled }}
+        vault.hashicorp.com/agent-inject: {{ .Values.vault.agentInject | quote }}
+
+        {{- range $k, $v := .Values.vault.agentInjectSecrets.paths }}
+        vault.hashicorp.com/agent-inject-secret-{{ $k }}: {{ $v | quote }}
+        {{- end }}
+
+        {{- range $k, $v := .Values.vault.agentInjectSecrets.templates }}
+        vault.hashicorp.com/agent-inject-template-{{ $k }}: |
+          {{- $v | nindent 10 }}
+        {{- end }}
+
+        vault.hashicorp.com/agent-inject-default-template: {{ .Values.vault.agentInjectDefaultTemplate }}
+
+        vault.hashicorp.com/role: {{ .Values.vault.role }}
+        vault.hashicorp.com/auth-path: {{ .Values.vault.authPath }}
+        vault.hashicorp.com/namespace: {{ .Values.vault.namespace }}
+
+        vault.hashicorp.com/log-level: {{ .Values.vault.logLevel }}
+
+        {{- if gt (len .Values.vault.service) 0 }}
+        vault.hashicorp.com/service: {{ .Values.vault.service }}
+        {{- end }}
+        vault.hashicorp.com/tls-secret: {{ .Values.vault.tlsSecret }}
+        vault.hashicorp.com/tls-skip-verify: "{{ .Values.vault.tlsSkipVerify }}"
+        {{- end }}
+
+    spec:
+      {{- if and .Values.vault.enabled (gt (len .Values.vault.serviceAccountName) 0) }}
+      serviceAccountName: {{ .Values.vault.serviceAccountName }}
+      {{- end }}
+
+      {{- with .Values.image.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      topologySpreadConstraints:
+        # Spread service instances as much as possible across all nodes,
+        # but not block their deployment. This is needed so we do not hit any
+        # rate limit per IP and to limit the impact from a node downtime.
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "project-helm.fullname" $ }}
+
+      initContainers:
+        {{- if .Values.ulimits.nofile.hard }}
+        - name: increase-ulimits-nofile-hard
+          image: "{{ .Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ .Values.image.tagPostfix }}"
+          command: ["sh", "-c", "ulimit -n {{ .Values.ulimits.nofile.hard }}"]
+          securityContext:
+            privileged: True
+            capabilities:
+              add:
+                - IPC_LOCK
+                - SYS_RESOURCE
+        {{- end }}
+        {{- if .Values.ulimits.nofile.soft }}
+        - name: increase-ulimits-nofile-soft
+          image: "{{ .Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ .Values.image.tagPostfix }}"
+          command: ["sh", "-c", "ulimit -S -n {{ .Values.ulimits.nofile.soft }}"]
+          securityContext:
+            privileged: True
+            capabilities:
+              add:
+                - IPC_LOCK
+                - SYS_RESOURCE
+        {{- end }}
+
+        {{- range $i, $v := .Values.deployment.initContainers }}
+        - name: {{ $v.name }}-container
+          {{- if and $v.image $v.image.repository }}
+          image: "{{ $v.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+          {{- else }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+          {{- end }}
+
+          {{- if $v.command }}
+          command: {{- $v.command | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if gt (len $v.args) 0 }}
+          args: {{- $v.args | toYaml | nindent 12 }}
+          {{- end }}
+
+          securityContext:
+            capabilities:
+              {{- if and $v.securityContext (gt (len $v.securityContext.capabilities.add) 0) }}
+              add: {{ $v.securityContext.capabilities.add }}
+              {{- end }}
+
+          env:
+            {{- include "project-helm.CommonEnvironmentVariables" $ | nindent 12 }}
+
+            {{- range $k, $v := $.Values.env }}
+            - name: {{ $k }}
+              value: {{ if $v }}{{ $v | quote }}{{ else }}""{{ end }}
+            {{- end }}
+
+            {{- range $k, $v := $.Values.env_configMap }}
+            - name: {{ $k }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $v.name | quote }}
+                  key: {{ $v.key | quote }}
+            {{- end }}
+
+            {{- range $k, $v := $.Values.env_secrets }}
+            - name: {{ $k }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.name | quote }}
+                  key: {{ $v.key | quote }}
+            {{- end }}
+
+          {{- if gt (len $.Values.volumes) 0 }}
+          volumeMounts:
+            {{- range $v := $.Values.volumes }}
+            - name: {{ $v.name }}
+              mountPath: {{ $v.mountPath }}
+              readOnly: {{ ne $v.readOnly false }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+
+      {{- if .Values.deployment.shareProcessNamespace }}
+      shareProcessNamespace: true
+      {{- end }}
+
+      containers:
+        - name: main-container
+          image: "{{ .Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ .Values.image.tagPostfix }}"
+
+          {{- if gt (len .Values.deployment.command) 0 }}
+          command: {{- .Values.deployment.command | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if gt (len .Values.deployment.args) 0 }}
+          args: {{- .Values.deployment.args | toYaml | nindent 12 }}
+          {{- end }}
+
+          # Quoting https://github.com/garethr/kubernetes-json-schema/blob/master/v1.14.0-standalone/deployment.json
+          # List of ports to expose from the container. Exposing a port here gives the system additional information
+          # about the network connections a container uses, but is primarily informational. Not specifying a port
+          # here DOES NOT prevent that port from being exposed. Any port which is listening on the default \"0.0.0.0\"
+          # address inside a container will be accessible from the network. Cannot be updated."
+          ports:
+            {{- if .Values.service.enabled }}
+            {{- range $v := .Values.service.ports }}
+            - name: {{ $v.name }}
+              protocol: {{ $v.protocol }}
+              containerPort: {{ $v.targetPort }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.observability.prometheus.enabled }}
+            - name: {{ .Values.observability.prometheus.portName }}
+              containerPort: {{ .Values.observability.prometheus.portNumber }}
+            {{- end }}
+
+          {{ if .Values.observability.liveness.enabled -}}
+          livenessProbe:
+            {{- if gt (len .Values.observability.liveness.command) 0 }}
+            exec:
+              command: {{- .Values.observability.liveness.command | toYaml | nindent 16 }}
+            {{- else if .Values.observability.liveness.livenessPath }}
+            httpGet:
+              path: {{ .Values.observability.liveness.livenessPath }}
+              port: {{ .Values.observability.liveness.livenessPort }}
+            {{- else if .Values.observability.liveness.livenessPort }}
+            tcpSocket:
+              port: {{ .Values.observability.liveness.livenessPort }}
+            {{- end }}
+            initialDelaySeconds: {{ .Values.observability.liveness.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.observability.liveness.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.observability.liveness.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.observability.liveness.liveness.failureThreshold }}
+
+          startupProbe:
+            {{- if gt (len .Values.observability.liveness.command) 0 }}
+            exec:
+              command: {{- .Values.observability.liveness.command | toYaml | nindent 16 }}
+            {{- else if .Values.observability.liveness.livenessPath }}
+            httpGet:
+              path: {{ .Values.observability.liveness.livenessPath }}
+              port: {{ .Values.observability.liveness.livenessPort }}
+            {{- else if .Values.observability.liveness.livenessPort }}
+            tcpSocket:
+              port: {{ .Values.observability.liveness.livenessPort }}
+            {{- end }}
+            initialDelaySeconds: {{ .Values.observability.liveness.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.observability.liveness.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.observability.liveness.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.observability.liveness.startup.failureThreshold }}
+          {{- end }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          env:
+            {{- include "project-helm.CommonEnvironmentVariables" $ | nindent 12 }}
+
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ if $v }}{{ $v | quote }}{{ else }}""{{ end }}
+            {{- end }}
+
+            {{- range $k, $v := $.Values.env_configMap }}
+            - name: {{ $k }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $v.name | quote }}
+                  key: {{ $v.key | quote }}
+            {{- end }}
+
+            {{- range $k, $v := .Values.env_secrets }}
+            - name: {{ $k }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.name | quote }}
+                  key: {{ $v.key | quote }}
+            {{- end }}
+
+          {{- if gt (len .Values.volumes) 0 }}
+          volumeMounts:
+            {{- range $v := .Values.volumes }}
+            - name: {{ $v.name }}
+              mountPath: {{ $v.mountPath }}
+              readOnly: {{ ne $v.readOnly false }}
+            {{- end }}
+          {{- end }}
+
+        {{- range $i, $v := .Values.deployment.secondaryContainers }}
+        - name: {{ $v.name }}-container
+          {{- if and $v.image $v.image.repository }}
+          image: "{{ $v.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+          {{- else }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.version | default $.Chart.AppVersion }}{{ $.Values.image.tagPostfix }}"
+          {{- end }}
+
+          {{- if gt (len $v.command) 0 }}
+          command: {{- $v.command | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if gt (len $v.args) 0 }}
+          args: {{- $v.args | toYaml | nindent 12 }}
+          {{- end }}
+
+          securityContext:
+            capabilities:
+              {{- if gt (len $v.securityContext.capabilities.add) 0 }}
+              add: {{ $v.securityContext.capabilities.add }}
+              {{- end }}
+
+          env:
+            {{- include "project-helm.CommonEnvironmentVariables" $ | nindent 12 }}
+
+            {{- range $k, $v := $.Values.env }}
+            - name: {{ $k }}
+              value: {{ if $v }}{{ $v | quote }}{{ else }}""{{ end }}
+            {{- end }}
+
+            {{- range $k, $v := $.Values.env_configMap }}
+            - name: {{ $k }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $v.name | quote }}
+                  key: {{ $v.key | quote }}
+            {{- end }}
+
+            {{- range $k, $v := $.Values.env_secrets }}
+            - name: {{ $k }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.name | quote }}
+                  key: {{ $v.key | quote }}
+            {{- end }}
+
+          {{- if gt (len $.Values.volumes) 0 }}
+          volumeMounts:
+            {{- range $v := $.Values.volumes }}
+            - name: {{ $v.name }}
+              mountPath: {{ $v.mountPath }}
+              readOnly: {{ ne $v.readOnly false }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+
+
+      {{- if gt (len .Values.volumes) 0 }}
+      volumes:
+        {{- range $v := .Values.volumes }}
+        - name: {{ $v.name }}
+          {{- if $v.emptyDir }}
+          emptyDir: {{- $v.emptyDir | toYaml | nindent 12 }}
+          {{- else if $v.secretName }}
+          secret:
+            defaultMode: {{ $v.defaultMode | default 416 }}
+            secretName: {{ $v.secretName }}
+            optional: {{ ne $v.optional false }}
+          {{- else if $v.configMap }}
+          configMap:
+            name: {{ $v.configMap.name | default (printf "%s-configmap" (include "project-helm.fullname" $)) }}
+            {{- if and ($v.configMap.items) (gt (len $v.configMap.items) 0) }}
+            items: {{- $v.configMap.items | toYaml | nindent 14 }}
+            {{- end }}
+            defaultMode: {{ $v.defaultMode | default 416 }}
+          {{- else if $v.persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ $v.persistentVolumeClaim.claimName | default (printf "%s-pvc" (include "project-helm.fullname" $)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+{{- end }}

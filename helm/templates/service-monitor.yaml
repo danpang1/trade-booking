@@ -1,0 +1,42 @@
+---
+{{- if and .Values.observability.prometheus.enabled .Values.service.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+
+metadata:
+  name: {{ include "project-helm.fullname" $ }}-service-monitor
+  namespace: {{ .Release.Namespace }}
+
+  labels:
+    {{- include "project-helm.labels" $ | nindent 4 }}
+
+spec:
+  jobLabel: {{ include "project-helm.fullname" $ }}-service-monitor
+
+  endpoints:
+    - scheme: "{{ .Values.observability.prometheus.scheme }}"
+
+      {{- if gt (len .Values.observability.prometheus.portName) 0 }}
+      port: {{ .Values.observability.prometheus.portName }}
+      {{- else }}
+      targetPort: {{ .Values.observability.prometheus.portNumber }}
+      {{- end }}
+
+      path: "{{ .Values.observability.prometheus.path }}"
+
+      honorLabels: true
+      interval: 1m
+      scrapeTimeout: 30s
+
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "project-helm.name" . }}
+
+  targetLabels:
+    {{- include "project-helm.labelsList" $ | nindent 4 }}
+
+{{- end }}

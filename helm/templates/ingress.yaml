@@ -1,0 +1,83 @@
+{{- range $i, $v := .Values.ingresses | default (list .Values.ingress) }}
+
+{{- $ingressDefault := deepCopy $.Values.ingress -}}
+{{- $ingressRunning := deepCopy $v -}}
+{{- $ingressMerged := mergeOverwrite $ingressDefault $ingressRunning }}
+
+{{- if $ingressMerged.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  name: {{ include "project-helm.fullname" $ }}-{{ $ingressMerged.name }}-ingress
+  namespace: {{ $.Release.Namespace }}
+
+  labels:
+    {{- include "project-helm.labels" $ | nindent 4 }}
+
+  annotations:
+    kubernetes.io/ingress.class: nginx
+
+    nginx.ingress.kubernetes.io/use-regex: "{{ $ingressMerged.useRegex }}"
+    {{ if $ingressMerged.rewriteTarget -}}
+    nginx.ingress.kubernetes.io/rewrite-target: {{ $ingressMerged.rewriteTarget }}
+    {{- end }}
+
+    nginx.ingress.kubernetes.io/ssl-redirect: "{{ $ingressMerged.sslRedirect }}"
+
+    {{ if gt (len $ingressMerged.backendProtocol) 0 -}}
+    nginx.ingress.kubernetes.io/backend-protocol: "{{ $ingressMerged.backendProtocol }}"
+    {{- end }}
+
+    {{ if gt (len $ingressMerged.whitelistSourceRange) 0 -}}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ join ", " $ingressMerged.whitelistSourceRange }}
+    {{- end }}
+
+    {{ if ($ingressMerged.authentication).enabled -}}
+    nginx.ingress.kubernetes.io/auth-response-headers: Authorization
+    nginx.ingress.kubernetes.io/auth-signin: {{ ($ingressMerged.authentication).ssoOauth2Signin }}
+    nginx.ingress.kubernetes.io/auth-url: {{ ($ingressMerged.authentication).ssoOauth2Url }}
+
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    {{- end }}
+
+    {{ if ($ingressMerged.websockets).enabled -}}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    {{- end }}
+
+    {{ if $ingressMerged.bodySize -}}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ $ingressMerged.bodySize | quote }}
+    {{- end }}
+
+    {{ if $ingressMerged.extraAnnotations -}}
+    {{ toYaml $ingressMerged.extraAnnotations | nindent 4 }}
+    {{- end }}
+
+spec:
+
+  rules:
+    - http:
+        paths:
+          - pathType: {{ $ingressMerged.pathType }}
+            path: {{ $ingressMerged.path }}
+            backend:
+              service:
+                name: {{ ($ingressMerged.service).name | default (printf "%s-service" (include "project-helm.fullname" $)) }}
+                port:
+                  name: {{ ($ingressMerged.service).portName }}
+
+      {{- if $ingressMerged.host }}
+      host: {{ $ingressMerged.host | quote }}
+      {{- end }}
+
+  {{- if $ingressMerged.host }}
+  tls:
+    - hosts:
+      - {{ $ingressMerged.host | quote }}
+      secretName: {{ $ingressMerged.tlsSecret | default (printf "%s-%s-tls" (include "project-helm.fullname" $) ($ingressMerged.name)) }}
+  {{- end }}
+{{- end }}
+
+{{- end }}
