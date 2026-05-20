@@ -74,6 +74,7 @@ def _connect(database: str = "reference_data"):
         read_timeout=60,
     )
 
+
 conn = _connect("reference_data")
 cur = conn.cursor()
 cur.execute("""

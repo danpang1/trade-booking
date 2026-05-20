@@ -206,7 +206,10 @@ setup_env.sh
 .env.local
 .env.*.local
 # Trade-booking specifics: not needed at runtime.
-tests/
+# NOTE: tests/ is NOT ignored — the multi-stage Dockerfile's `test`
+# target COPYs ./tests for in-container pytest. The production stage
+# never COPYs tests, so they don't leak into the runtime image despite
+# being part of the build context.
 docs/
 *.bat
 start.bat
