@@ -1160,18 +1160,20 @@ const DatePicker = ({ value, onChange, placeholder = "dd/mm/yyyy", min, max, all
   );
 };
 
-const Field = ({ label, required, children, span = 1, hint }) => (
+const Field = ({ label, required, children, span = 1, hint, headerExtra }) => (
   <div style={{ gridColumn: `span ${span}` }}>
     <div className="flex items-baseline justify-between">
       <Label required={required}>{label}</Label>
-      {hint && (
+      {headerExtra ? (
+        <div className="mb-1 mr-12">{headerExtra}</div>
+      ) : hint ? (
         <span
           className="text-[9px] tracking-[0.2em] uppercase font-mono mb-1"
           style={{ color: BB.orange }}
         >
           {hint}
         </span>
-      )}
+      ) : null}
     </div>
     {children}
   </div>
@@ -2201,6 +2203,15 @@ function ModalShell({ open, onClose, children }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
+  // ESC closes the modal. Listener only attached while open so it
+  // doesn't intercept Escape when the form isn't on screen.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div
@@ -2275,6 +2286,13 @@ const AUDIT_DIFF_FIELDS_LOAN = [
   "trade_date", "maturity_date",
   "status", "user_id", "comment", "order_id",
 ];
+const AUDIT_DIFF_FIELDS_SPOT = [
+  "direction", "counterparty", "account", "account_type",
+  "base_asset", "base_amount", "quote_asset", "quote_amount", "price",
+  "fee_asset", "fee_amount",
+  "trade_date", "value_date", "txid_reference",
+  "status", "user_id", "comment", "external_trade_id",
+];
 const AUDIT_FIELD_LABELS = {
   // shared
   direction: "Direction", counterparty: "Counterparty", account: "Account",
@@ -2295,6 +2313,10 @@ const AUDIT_FIELD_LABELS = {
   hedged_price: "Hedged Price", hedge_proceeds_asset: "Hedge Proceeds Asset",
   hedge_proceeds_amount: "Hedge Proceeds Amount",
   maturity_date: "Maturity Date", order_id: "Order ID",
+  // spot
+  base_asset: "Base Asset", base_amount: "Base Amount",
+  quote_asset: "Quote Asset", quote_amount: "Quote Amount",
+  price: "Price",
   // Map-table links
   mappings: "Linked Loans",
 };
@@ -2308,13 +2330,28 @@ function HistoryModal({ open, dealRef, state, onClose }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
+  // ESC closes the modal.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const rows = state?.rows || [];
-  // Pick diff fields per product. Loan rows expose principal/interest/etc
-  // that cashflow doesn't, and vice-versa.
-  const product = rows[0]?.txn_type === "LOAN" ? "LOAN" : "CASHFLOW";
-  const diffFields = product === "LOAN" ? AUDIT_DIFF_FIELDS_LOAN : AUDIT_DIFF_FIELDS_CASHFLOW;
+  // Pick diff fields per product. Each product has its own set of
+  // audited columns (loan principal/interest, spot base/quote/price,
+  // cashflow amount/asset).
+  const product =
+    rows[0]?.txn_type === "LOAN" ? "LOAN"
+    : rows[0]?.txn_type === "SPOT" ? "SPOT"
+    : "CASHFLOW";
+  const diffFields =
+    product === "LOAN" ? AUDIT_DIFF_FIELDS_LOAN
+    : product === "SPOT" ? AUDIT_DIFF_FIELDS_SPOT
+    : AUDIT_DIFF_FIELDS_CASHFLOW;
   // Build per-version diff: for each row (except the first), compute which
   // diffFields changed vs the prior row.
   const diffs = rows.map((row, i) => {
@@ -2421,6 +2458,15 @@ function HistoryModal({ open, dealRef, state, onClose }) {
                             <code>{row.direction}</code>{" · "}
                             <code>{row.principal_amount} {row.principal_asset}</code>{" @ "}
                             <code>{row.interest_rate_pa_pct}% {row.interest_type}</code>{" · status "}
+                            <code>{row.status}</code>
+                            {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                          </>
+                        ) : row.txn_type === "SPOT" ? (
+                          <>
+                            <code>{row.direction}</code>{" · "}
+                            <code>{row.base_amount} {row.base_asset}</code>{" @ "}
+                            <code>{row.price}</code>{" · "}
+                            <code>{row.quote_amount} {row.quote_asset}</code>{" · status "}
                             <code>{row.status}</code>
                             {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
                           </>
@@ -3836,6 +3882,25 @@ function summarizeDeal(r) {
       r.counterparty ? `from ${String(r.counterparty).toUpperCase()}` : "",
     ]);
   }
+  if (r.txn_type === "SPOT") {
+    const baseAmt = Math.abs(parseFloat(r.base_amount) || 0);
+    const fmtBase = baseAmt.toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const baseAsset = (r.base_asset || "").toUpperCase();
+    const priceNum = Math.abs(parseFloat(r.price) || 0);
+    const fmtPrice = priceNum.toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const quoteAsset = (r.quote_asset || "").toUpperCase();
+    const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
+    const head = join([
+      "PTF", r.portfolio_id, r.direction,
+      fmtBase, baseAsset,
+      "@", fmtPrice, quoteAsset,
+    ]);
+    const feeAmt = parseFloat(r.fee_amount) || 0;
+    const feeAsset = (r.fee_asset || "").toUpperCase();
+    if (feeAmt === 0 || !feeAsset) return head;
+    const fmtFee = Math.abs(feeAmt).toLocaleString("en-US", { maximumFractionDigits: 18 });
+    return `${head}, fee ${fmtFee} ${feeAsset}`;
+  }
   if (r.txn_type !== "CASHFLOW") return r?.deal_ref || "";
   const shortPtfName = (n) => (n ? String(n).split(" - ").pop().trim().toUpperCase() : "");
   const lookupPtfName = (num) =>
@@ -3997,13 +4062,17 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
     setLoading(true);
     setError(null);
     try {
-      // Loans live in their own LoanEnquiry view now — Deal Enquiry only
-      // surfaces cashflow rows. The `mappings` array on each cashflow
-      // still shows linked loans inline (chip in the Details column).
-      const r = await fetch("http://localhost:5181/api/cashflow/recent?limit=20");
-      const j = await r.json();
-      if (!j.ok) throw new Error(j.error || "cashflow fetch failed");
-      setRows(j.rows || []);
+      // Loans live in their own LoanEnquiry view; Deal Enquiry merges
+      // cashflow + spot rows (re-sorted by effective_start desc in
+      // filteredRows). The `mappings` array on each cashflow still
+      // shows linked loans inline (chip in the Details column).
+      const [cfRes, spotRes] = await Promise.all([
+        fetch("http://localhost:5181/api/cashflow/recent?limit=20").then((r) => r.json()),
+        fetch("http://localhost:5181/api/spot/recent?limit=20").then((r) => r.json()),
+      ]);
+      if (!cfRes.ok) throw new Error(cfRes.error || "cashflow fetch failed");
+      if (!spotRes.ok) throw new Error(spotRes.error || "spot fetch failed");
+      setRows([...(cfRes.rows || []), ...(spotRes.rows || [])]);
       setLastFetchedAt(new Date());
     } catch (e) {
       setError(String(e));
@@ -4282,7 +4351,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               <tr>
                 <td colSpan={14} className="px-3 py-6 text-center opacity-60">
                   {rows.length === 0
-                    ? "No live cashflow bookings yet."
+                    ? "No live cashflow or spot bookings yet."
                     : filtersActive
                     ? "No rows match the current filters."
                     : "No rows."}
@@ -4399,7 +4468,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       );
                     })()}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type || r.loan_type || "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type || r.loan_type || (r.txn_type === "SPOT" ? r.direction : "") || "—"}</td>
                   {/* CSV export should still emit asset/amount/fee_asset/fee_amount
                       as four separate columns per the audit schema, even though
                       the table only renders the fee pair. Loan rows have no
@@ -5074,6 +5143,7 @@ export default function TradeBookingForm() {
     notes: "",
     // SPOT
     spot_direction: "LONG",
+    spot_internal: false,
     base_asset: "BTC",
     base_amount: "",
     quote_asset: "USDT",
@@ -5622,9 +5692,49 @@ export default function TradeBookingForm() {
       return loanRecord;
     }
 
-    // ─── SPOT / FUTURE: legacy base+payload split ───────────────────────
-    // Their target tables haven't been designed yet, so the JSON keeps a
-    // form-driven shape until schemas are nailed down.
+    // ─── SPOT: flat, schema-aligned for future trades_spot ──────────────
+    // Key order is the proposed trades_spot column order (see
+    // trade-booking/docs/spot-schema-mapping.md). The target table doesn't
+    // exist yet — when it lands, mirror this ordering in
+    // apply_schema_spot.py and keep this branch and the DDL in sync.
+    if (form.category === "SPOT") {
+      const spotRecord = {
+        deal_ref: form.trade_id,
+        external_trade_id: form.external_trade_id || null,
+        txn_type: "SPOT",
+        direction: form.spot_direction,
+        entity: portfolioEntry?.entity || form.entity_row || null,
+        portfolio_id: portfolioEntry ? String(portfolioEntry.number) : (form.portfolio || null),
+        portfolio_name: portfolioEntry?.name || form.portfolio_name_row || null,
+        counterparty: form.counterparty || null,
+        counterparty_id: formatCID(COUNTERPARTY_IDS[form.counterparty]),
+        account: form.account_name || null,
+        account_type: form.account_venue_type,
+        base_asset: form.base_asset,
+        base_amount: parseFloat(form.base_amount) || 0,
+        quote_asset: form.quote_asset,
+        quote_amount: parseFloat(form.quote_amount) || 0,
+        price: parseFloat(form.price) || 0,
+        fee_asset: form.fee_asset,
+        fee_amount: parseFloat(form.fee_amount) || 0,
+        trade_date: form.trade_date,
+        value_date: form.value_date,
+        txid_reference: form.tx_hash || null,
+        effective_start: null,
+        effective_end: null,
+        user_id: form.created_by || null,
+        status: form.status,
+        comment: form.notes || null,
+        _meta: {
+          attachments: form.attachments.map(({ _file, ...rest }) => rest),
+        },
+      };
+      return spotRecord;
+    }
+
+    // ─── FUTURE: legacy base+payload split ──────────────────────────────
+    // Target table hasn't been designed yet, so the JSON keeps a
+    // form-driven shape until the schema is nailed down.
     const base = {
       trade_id: form.trade_id,
       external_trade_id: form.external_trade_id || null,
@@ -5647,22 +5757,7 @@ export default function TradeBookingForm() {
     };
 
     let payload = {};
-    if (form.category === "SPOT") {
-      payload = {
-        direction: form.spot_direction,
-        base_asset: form.base_asset,
-        base_amount: parseFloat(form.base_amount) || 0,
-        quote_asset: form.quote_asset,
-        quote_amount: parseFloat(form.quote_amount) || 0,
-        price: parseFloat(form.price) || 0,
-        fee_asset: form.fee_asset,
-        fee_amount: parseFloat(form.fee_amount) || 0,
-        account_venue_type: form.account_venue_type,
-        account_name: form.account_name || null,
-        tx_hash: form.tx_hash || null,
-        counterparty: form.counterparty || null,
-      };
-    } else if (form.category === "FUTURE") {
+    if (form.category === "FUTURE") {
       const qty = parseFloat(form.fut_quantity) || 0;
       const px = parseFloat(form.fut_price) || 0;
       const size = parseFloat(form.fut_contract_size) || 1;
@@ -5839,7 +5934,8 @@ export default function TradeBookingForm() {
 
   async function openHistory(dealRef) {
     setHistoryModal({ dealRef, rows: [], loading: true, error: null });
-    const base = productFromDealRef(dealRef) === "LOAN" ? "loan" : "cashflow";
+    const product = productFromDealRef(dealRef);
+    const base = product === "LOAN" ? "loan" : product === "SPOT" ? "spot" : "cashflow";
     let res;
     try {
       res = await fetch(`http://localhost:5181/api/${base}/${encodeURIComponent(dealRef)}/history`);
@@ -5950,10 +6046,51 @@ export default function TradeBookingForm() {
     };
   }
 
+  // Inverse of outputRecord for category="SPOT". Maps a backend
+  // trades_spot row back into form-state keys.
+  function spotPayloadToFormState(row) {
+    // If the stored counterparty matches a portfolio number, this was
+    // booked as an internal SPOT — restore the Internal checkbox so the
+    // counterparty picker re-renders as a PortfolioPicker.
+    const isInternal = !!(
+      row.counterparty &&
+      PORTFOLIOS.some((p) => String(p.number) === String(row.counterparty))
+    );
+    return {
+      category: "SPOT",
+      trade_id: row.deal_ref,
+      external_trade_id: row.external_trade_id || "",
+      spot_direction: row.direction,
+      spot_internal: isInternal,
+      portfolio: row.portfolio_id != null ? String(row.portfolio_id) : "",
+      portfolio_name_row: row.portfolio_name || "",
+      entity_row: row.entity || "",
+      counterparty_id_row: row.counterparty_id || "",
+      counterparty: row.counterparty || "",
+      account_name: row.account || "",
+      account_venue_type: row.account_type || "",
+      base_asset: row.base_asset,
+      base_amount: row.base_amount == null ? "" : String(row.base_amount),
+      quote_asset: row.quote_asset,
+      quote_amount: row.quote_amount == null ? "" : String(row.quote_amount),
+      price: row.price == null ? "" : String(row.price),
+      fee_asset: row.fee_asset || "",
+      fee_amount: row.fee_amount == null ? "0" : String(row.fee_amount),
+      trade_date: row.trade_date,
+      value_date: row.value_date,
+      tx_hash: row.txid_reference || "",
+      created_by: row.user_id,
+      status: row.status,
+      notes: row.comment || "",
+    };
+  }
+
   // Deal-ref prefix routes to the right product backend.
-  // MCF → cashflow (trade_seq_cashflow), MLA → loan (trade_seq_loan).
+  // MCF → cashflow (trade_seq_cashflow), MLA → loan (trade_seq_loan),
+  // MFX → spot (trade_seq_spot).
   function productFromDealRef(dealRef) {
     if (typeof dealRef === "string" && dealRef.startsWith("MLA")) return "LOAN";
+    if (typeof dealRef === "string" && dealRef.startsWith("MFX")) return "SPOT";
     return "CASHFLOW";
   }
 
@@ -5969,8 +6106,15 @@ export default function TradeBookingForm() {
     if (!amendingDealRef) {
       formSnapshotRef.current = { form, categoryCache };
     }
-    const product = row.txn_type === "LOAN" ? "LOAN" : "CASHFLOW";
-    setMany(product === "LOAN" ? loanPayloadToFormState(row) : payloadToFormState(row));
+    const product =
+      row.txn_type === "LOAN" ? "LOAN"
+      : row.txn_type === "SPOT" ? "SPOT"
+      : "CASHFLOW";
+    setMany(
+      product === "LOAN" ? loanPayloadToFormState(row)
+      : product === "SPOT" ? spotPayloadToFormState(row)
+      : payloadToFormState(row)
+    );
     setAmendingDealRef(row.deal_ref);
     // Don't change view — if the user is on Deal Enquiry, the form opens
     // as a modal (see ModalShell wrapper); if they're already on
@@ -5982,7 +6126,7 @@ export default function TradeBookingForm() {
   async function loadIntoForm(dealRef) {
     setFeedback(null);
     const product = productFromDealRef(dealRef);
-    const base = product === "LOAN" ? "loan" : "cashflow";
+    const base = product === "LOAN" ? "loan" : product === "SPOT" ? "spot" : "cashflow";
     let res;
     try {
       res = await fetch(`http://localhost:5181/api/${base}/${encodeURIComponent(dealRef)}`);
@@ -5999,9 +6143,9 @@ export default function TradeBookingForm() {
   }
 
   const handleSubmit = async () => {
-    if (form.category !== "CASHFLOW" && form.category !== "LOAN") {
-      // SPOT/FUTURE: not wired to backend yet — keep the existing JSON
-      // preview behavior so those forms still work.
+    if (form.category !== "CASHFLOW" && form.category !== "LOAN" && form.category !== "SPOT") {
+      // FUTURE: not wired to backend yet — keep the existing JSON
+      // preview behavior so that form still works.
       if (!canSubmit) return;
       setSubmittedRecord(outputRecord);
       return;
@@ -6010,7 +6154,10 @@ export default function TradeBookingForm() {
     if (isSubmitting) return;  // bail on duplicate clicks while in-flight
     setIsSubmitting(true);
     setFeedback(null);
-    const base = form.category === "LOAN" ? "loan" : "cashflow";
+    const base =
+      form.category === "LOAN" ? "loan"
+      : form.category === "SPOT" ? "spot"
+      : "cashflow";
     const endpoint = amendingDealRef
       ? `http://localhost:5181/api/${base}/amend`
       : `http://localhost:5181/api/${base}/insert`;
@@ -6060,6 +6207,7 @@ export default function TradeBookingForm() {
   const RESET_SLICES = {
     SPOT: {
       spot_direction: "LONG",
+      spot_internal: false,
       base_asset: "BTC",
       base_amount: "",
       quote_asset: "USDT",
@@ -6848,8 +6996,31 @@ export default function TradeBookingForm() {
               label="Counterparty"
               required={form.category === "LOAN"}
               span={6}
+              headerExtra={
+                form.category === "SPOT" ? (
+                  <label
+                    className="text-[10px] cursor-pointer flex items-center gap-1.5 font-mono"
+                    style={{ color: BB.text }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.spot_internal}
+                      onChange={(e) =>
+                        setMany({
+                          spot_internal: e.target.checked,
+                          counterparty: "",
+                          counterparty_id_row: "",
+                        })
+                      }
+                      style={{ accentColor: BB.orange }}
+                    />
+                    Internal
+                  </label>
+                ) : null
+              }
             >
-              {form.category === "CASHFLOW" && form.cf_type === "INTER PTF FUNDING" ? (
+              {(form.category === "CASHFLOW" && form.cf_type === "INTER PTF FUNDING") ||
+               (form.category === "SPOT" && form.spot_internal) ? (
                 <PortfolioPicker
                   value={form.counterparty}
                   onChange={(v) =>
@@ -6863,9 +7034,10 @@ export default function TradeBookingForm() {
                     (p) => String(p.number) !== String(form.portfolio)
                   )}
                   fallbackLabel={
-                    // Counterparty on an INTER PTF FUNDING row is a portfolio
-                    // number — try to label it from the refdata lookup name
-                    // first, else stay quiet.
+                    // Counterparty on an internal-counterparty row (INTER PTF
+                    // FUNDING cashflow or internal SPOT) is a portfolio number —
+                    // try to label it from the refdata lookup name first, else
+                    // stay quiet.
                     (PORTFOLIOS.find((p) => String(p.number) === String(form.counterparty))?.name) || ""
                   }
                 />

@@ -4,27 +4,40 @@ Pure logic (validation, (de)serialization) lives here for unit testing.
 DB-touching scripts call into here for creds + connection.
 """
 from __future__ import annotations
+import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
 
 def load_creds() -> dict[str, str]:
-    """Parse the #MO DB UAT block from <repo>/.env.
+    """Load Postgres UAT creds, env vars taking precedence over .env file.
 
-    Same convention as apply_schema_cashflow.py — block starts at the
-    `# MO DB UAT` marker and ends at the next `#` comment that isn't the
-    marker or at EOF.
+    Env vars (used in k8s): MO_DB_HOST, MO_DB_PORT, MO_DB_DATABASE,
+    MO_DB_USERNAME, MO_DB_PASSWORD. If all five (or four — port defaults
+    to 5432) are present, the .env file is not read at all.
 
-    Keys are lowercased and any `mo_db_` prefix is stripped, so both
-    ``MO_DB_HOST: ...`` (production format) and ``host: ...`` (unprefixed)
-    produce the same normalized dict.
+    .env fallback (used in local dev): parses the `# MO DB UAT` block.
+    Block starts at the marker, ends at the next `#` comment that isn't the
+    marker or at EOF. Keys are lowercased and any `mo_db_` prefix is stripped,
+    so both ``MO_DB_HOST: ...`` and ``host: ...`` produce the same dict.
     """
+    env_creds = {
+        k: os.environ[f"MO_DB_{k.upper()}"]
+        for k in ("host", "port", "database", "username", "password")
+        if f"MO_DB_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "database", "username", "password")):
+        env_creds.setdefault("port", "5432")
+        return env_creds
+
     if not ENV.exists():
-        raise FileNotFoundError(f".env not found at {ENV}")
+        raise FileNotFoundError(
+            f".env not found at {ENV} and MO_DB_* env vars are incomplete"
+        )
 
     creds: dict[str, str] = {}
     in_block = False

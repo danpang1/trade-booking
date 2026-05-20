@@ -24,14 +24,25 @@ What does NOT live here:
 All of those cashflow events carry a loan_deal_ref column (added by a
 separate migration to trades_cashflow) pointing back to this row's deal_ref.
 """
+import os
 from pathlib import Path
 import psycopg2
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
 
 def _load_creds() -> dict[str, str]:
+    """Env vars (MO_DB_*) take precedence; .env file parsed as fallback."""
+    env_creds = {
+        k: os.environ[f"MO_DB_{k.upper()}"]
+        for k in ("host", "port", "database", "username", "password")
+        if f"MO_DB_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "database", "username", "password")):
+        env_creds.setdefault("port", "5432")
+        return env_creds
+
     creds: dict[str, str] = {}
     in_block = False
     for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():

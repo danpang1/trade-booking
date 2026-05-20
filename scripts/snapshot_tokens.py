@@ -15,17 +15,64 @@ ordered by id ascending (earliest canonical row).
 Each entry: { symbol, name }.
 """
 import json
-import sys
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-_PNL_DIR = Path(__file__).resolve().parents[2] / "scripts" / "pnl"
-sys.path.insert(0, str(_PNL_DIR))
-from mysql_rates import _connect
+import pymysql
 
 ROOT = Path(__file__).resolve().parents[1]
+ENV_PATH = ROOT / ".env"
 JS_OUT = ROOT / "src" / "data" / "tokens.js"
 JSON_OUT = ROOT / "public" / "tokens.json"
+
+
+def _load_credentials() -> dict[str, str]:
+    """Env vars (TOKEN_PRICE_*) take precedence; .env file parsed as fallback."""
+    env_creds = {
+        k: os.environ[f"TOKEN_PRICE_{k.upper()}"]
+        for k in ("host", "username", "password")
+        if f"TOKEN_PRICE_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "username", "password")):
+        return env_creds
+
+    if not ENV_PATH.exists():
+        raise FileNotFoundError(
+            f".env not found at {ENV_PATH} and TOKEN_PRICE_* env vars are incomplete"
+        )
+    creds: dict[str, str] = {}
+    in_block = False
+    for line in ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = line.strip()
+        if "MYSQL TOKEN PRICE DB" in s.upper():
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not s or s.startswith("#"):
+            if s.startswith("#") and "MYSQL" not in s.upper():
+                break
+            continue
+        if ":" in s:
+            k, _, v = s.partition(":")
+            creds[k.strip().lower()] = v.strip()
+    missing = [k for k in ("username", "password", "host") if k not in creds]
+    if missing:
+        raise RuntimeError(f"MySQL creds missing keys: {missing}")
+    return creds
+
+
+def _connect(database: str = "reference_data"):
+    c = _load_credentials()
+    return pymysql.connect(
+        host=c["host"],
+        user=c["username"],
+        password=c["password"],
+        database=database,
+        connect_timeout=15,
+        read_timeout=60,
+    )
 
 conn = _connect("reference_data")
 cur = conn.cursor()

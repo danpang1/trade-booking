@@ -11,19 +11,30 @@ constant.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pymysql
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
-OUT = REPO / "trade-booking" / "public" / "refdata" / "portfolios.json"
+OUT = REPO / "public" / "refdata" / "portfolios.json"
 
 
 def _load_mysql_creds() -> dict[str, str]:
-    """Read the sg-ro-mysql block from .env."""
+    """Env vars (SG_RO_MYSQL_*) take precedence; .env file parsed as fallback."""
+    env_creds = {
+        k: os.environ[f"SG_RO_MYSQL_{k.upper()}"]
+        for k in ("host", "username", "password")
+        if f"SG_RO_MYSQL_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "username", "password")):
+        return env_creds
+
     if not ENV.exists():
-        raise FileNotFoundError(f".env not found at {ENV}")
+        raise FileNotFoundError(
+            f".env not found at {ENV} and SG_RO_MYSQL_* env vars are incomplete"
+        )
 
     lines = ENV.read_text(encoding="utf-8", errors="replace").splitlines()
     creds: dict[str, str] = {}
@@ -76,7 +87,7 @@ def main() -> None:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {len(rows)} portfolios → {OUT}")
+    print(f"wrote {len(rows)} portfolios -> {OUT}")
 
 
 if __name__ == "__main__":

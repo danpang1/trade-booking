@@ -7,20 +7,32 @@ required-fields tuple, and CHECK-constraint mirrors don't pollute the
 cashflow path.
 """
 from __future__ import annotations
+import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
 
 def load_creds() -> dict[str, str]:
-    """Parse the #MO DB UAT block from <repo>/.env. Same convention as
-    cashflow_db.load_creds — kept duplicate (not imported) so loan_*
+    """Load Postgres UAT creds. Env vars (MO_DB_*) take precedence; .env is
+    parsed as fallback. Kept duplicate of cashflow_db.load_creds so loan_*
     scripts have no implicit dependency on the cashflow module."""
+    env_creds = {
+        k: os.environ[f"MO_DB_{k.upper()}"]
+        for k in ("host", "port", "database", "username", "password")
+        if f"MO_DB_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "database", "username", "password")):
+        env_creds.setdefault("port", "5432")
+        return env_creds
+
     if not ENV.exists():
-        raise FileNotFoundError(f".env not found at {ENV}")
+        raise FileNotFoundError(
+            f".env not found at {ENV} and MO_DB_* env vars are incomplete"
+        )
 
     creds: dict[str, str] = {}
     in_block = False

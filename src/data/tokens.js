@@ -181,6 +181,7 @@ export const TOKENS = [
   { symbol: "cbBTC", name: "COINBASE WRAPPED BTC" },
   { symbol: "cbETH", name: "COINBASE WRAPPED STAKED ETH" },
   { symbol: "CBTC", name: "CITREA BITCOIN" },
+  { symbol: "CC", name: "CANTON" },
   { symbol: "CEGON", name: "CONSTELLATION ENERGY TOKENIZED STOCK (ONDO)" },
   { symbol: "CEGX", name: "CONSTELLATION ENERGY CORPORATION (XSTOCK)" },
   { symbol: "CELL", name: "CELLFRAME TOKEN" },

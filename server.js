@@ -26,6 +26,11 @@ const LOAN_RECENT_SCRIPT  = resolve(__dirname, "scripts", "loan_recent.py");
 const LOAN_GET_SCRIPT     = resolve(__dirname, "scripts", "loan_get.py");
 const LOAN_HISTORY_SCRIPT = resolve(__dirname, "scripts", "loan_history.py");
 const LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT = resolve(__dirname, "scripts", "loan_schedule_comment_upsert.py");
+const SPOT_INSERT_SCRIPT  = resolve(__dirname, "scripts", "spot_insert.py");
+const SPOT_AMEND_SCRIPT   = resolve(__dirname, "scripts", "spot_amend.py");
+const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
+const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
+const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 
 // ── Refdata syncs ──────────────────────────────────────────────────────
 // Each entry: { key, script, label } — the key drives state tracking,
@@ -430,6 +435,69 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/spot/insert
+  if (req.url === "/api/spot/insert" && req.method === "POST") {
+    const body = await readBody(req);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(SPOT_INSERT_SCRIPT, body);
+    const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
+    console.log(`[spot] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // POST /api/spot/amend
+  if (req.url === "/api/spot/amend" && req.method === "POST") {
+    const body = await readBody(req);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(SPOT_AMEND_SCRIPT, body);
+    const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
+    console.log(`[spot] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/spot/recent?limit=N
+  if (req.method === "GET" && req.url.startsWith("/api/spot/recent")) {
+    const url = new URL(req.url, "http://localhost");
+    const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+    const stdin = JSON.stringify({ limit: Number.isNaN(limit) ? 20 : limit });
+    const { code, json } = await spawnPython(SPOT_RECENT_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/spot/:deal_ref/history  (must come BEFORE the bare :deal_ref route)
+  if (req.method === "GET" && /^\/api\/spot\/[^/]+\/history$/.test(req.url)) {
+    const segments = req.url.split("/");
+    const dealRef = decodeURIComponent(segments[segments.length - 2]);
+    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const { code, json } = await spawnPython(SPOT_HISTORY_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/spot/:deal_ref  (must come AFTER /api/spot/recent so the more-specific route matches first)
+  if (req.method === "GET" && /^\/api\/spot\/[^/]+$/.test(req.url)) {
+    const dealRef = decodeURIComponent(req.url.split("/").pop());
+    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const { code, json } = await spawnPython(SPOT_GET_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // ── Static fallback: serve React bundle from dist/ if it exists ──────
   // GET-only. Path-traversal-safe: the resolved file must be inside DIST_DIR.
   // Unknown routes (SPA navigation) get index.html — the React router takes
@@ -480,5 +548,10 @@ server.listen(PORT, () => {
   console.log(`[server]   GET  /api/loan/recent          — list N recent live rows`);
   console.log(`[server]   GET  /api/loan/:deal_ref       — fetch one live row`);
   console.log(`[server]   GET  /api/loan/:deal_ref/history — all SCD2 versions`);
+  console.log(`[server]   POST /api/spot/insert          — book new spot row`);
+  console.log(`[server]   POST /api/spot/amend           — amend an existing spot`);
+  console.log(`[server]   GET  /api/spot/recent          — list N recent live rows`);
+  console.log(`[server]   GET  /api/spot/:deal_ref       — fetch one live row`);
+  console.log(`[server]   GET  /api/spot/:deal_ref/history — all SCD2 versions`);
   scheduleHourlyRefdataSync();
 });

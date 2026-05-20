@@ -690,6 +690,12 @@
     "subType": "SMART CONTRACTS"
   },
   {
+    "id": 73,
+    "name": "PAXOS GLOBAL PTE LTD (PAXOS)",
+    "type": "TRADING VENUE",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
     "id": 180,
     "name": "PAYWARD, INC.",
     "type": "LENDER",

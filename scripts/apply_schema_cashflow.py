@@ -3,14 +3,25 @@
 Idempotent: uses CREATE ... IF NOT EXISTS so re-running is safe.
 Reads credentials from the `#MO DB UAT` block in /.env.
 """
+import os
 from pathlib import Path
 import psycopg2
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
 
 def _load_creds() -> dict[str, str]:
+    """Env vars (MO_DB_*) take precedence; .env file parsed as fallback."""
+    env_creds = {
+        k: os.environ[f"MO_DB_{k.upper()}"]
+        for k in ("host", "port", "database", "username", "password")
+        if f"MO_DB_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "database", "username", "password")):
+        env_creds.setdefault("port", "5432")
+        return env_creds
+
     creds: dict[str, str] = {}
     in_block = False
     for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -26,7 +37,10 @@ def _load_creds() -> dict[str, str]:
             continue
         if ":" in s:
             k, _, v = s.partition(":")
-            creds[k.strip().lower()] = v.strip()
+            key = k.strip().lower()
+            if key.startswith("mo_db_"):
+                key = key[len("mo_db_"):]
+            creds[key] = v.strip()
     return creds
 
 
