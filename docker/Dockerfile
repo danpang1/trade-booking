@@ -107,7 +107,12 @@ COPY ./requirements-dev.txt ./requirements-dev.txt
 RUN . $VENV_DIR/bin/activate \
     && pip install -r requirements-dev.txt
 
-# Bring tests into the test image (excluded from production).
+# Bring scripts/ + tests/ into the test image. tests/ does
+# `sys.path.insert(0, REPO / "scripts")` to import script modules,
+# so both directories must be present at /var/build.
+# Production stage doesn't COPY tests/, so they don't leak into the
+# runtime image.
+COPY ./scripts ./scripts
 COPY ./tests ./tests
 
 CMD ["python", "-m", "pytest", "tests/", "-vv"]
