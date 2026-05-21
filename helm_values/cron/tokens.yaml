@@ -1,0 +1,13 @@
+---
+# Trade-booking refdata sync — tokens.
+# Release: cron-tokens-<env>. Renders one CronJob, no Deployment.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: tokens
+    enabled: true
+    schedule: "30 * * * *"
+    command: ["python", "/opt/app/scripts/snapshot_tokens.py"]
+    args: []

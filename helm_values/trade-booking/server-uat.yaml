@@ -1,0 +1,5 @@
+---
+# Trade-booking server — UAT overrides.
+
+ingress:
+  host: test-jp-trade-booking.internal.tokkalabs.com

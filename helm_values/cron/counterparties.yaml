@@ -1,0 +1,13 @@
+---
+# Trade-booking refdata sync — counterparties.
+# Release: cron-counterparties-<env>. Renders one CronJob, no Deployment.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: counterparties
+    enabled: true
+    schedule: "15 * * * *"   # hourly at :15
+    command: ["python", "/opt/app/scripts/sync_counterparties.py"]
+    args: []

@@ -1,0 +1,13 @@
+---
+# Trade-booking refdata sync — portfolios.
+# Release: cron-portfolios-<env>. Renders one CronJob, no Deployment.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: portfolios
+    enabled: true
+    schedule: "20 * * * *"
+    command: ["python", "/opt/app/scripts/sync_portfolios.py"]
+    args: []

@@ -1,10 +1,6 @@
-
-# UAT environment overrides.
-# UAT shares the same image artifact as prod (built once on main).
-# Differences live below: ingress host and env-level config only.
-
-ingress:
-  host: test-jp-trade-booking.internal.tokkalabs.com
+---
+# Shared UAT overrides applied to every release of this service.
+# Instance-specific tweaks live in helm_values/{deployment,cron}/uat.yaml.
 
 env:
   ENVIRONMENT: uat

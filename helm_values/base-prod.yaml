@@ -1,11 +1,6 @@
 ---
-# Production environment overrides.
-
-deployment:
-  replicas: 2  # HA pair in prod
-
-ingress:
-  host: sg-trade-booking.internal.tokkalabs.com
+# Shared prod overrides applied to every release of this service.
+# Instance-specific tweaks live in helm_values/{deployment,cron}/prod.yaml.
 
 env:
   ENVIRONMENT: prod
