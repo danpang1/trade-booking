@@ -14,3 +14,13 @@ __pycache__/
 
 # Workbooks used locally for sample/reference data; do not commit.
 *.xlsx
+
+# Smoke-test scratch files (curl cookie jars, body files, stderr dumps).
+# These get created in the repo root when running curl/Bash smoke tests
+# and must never be committed.
+cookies.txt
+*.cookies.txt
+*.err
+login.json
+resp.txt
+r.txt
