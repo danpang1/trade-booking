@@ -18,8 +18,11 @@ ENV LANG=C.UTF-8 \
 
 ENV PATH="$VENV_DIR/bin:$PATH"
 
-# Python runtime + libpq for psycopg2-binary. ca-certificates so TLS to MySQL/PG works.
+# Pull Debian security updates on top of node:22-slim (the upstream tag lags
+# behind Debian point releases, so Trivy will flag libgnutls30 et al. otherwise).
+# Then install Python runtime + ca-certificates for TLS to MySQL/PG.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
        python3 python3-venv python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
