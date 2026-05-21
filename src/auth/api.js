@@ -2,21 +2,11 @@
 // • Always sends/receives the session cookie via credentials:'include'.
 // • On 401 (except login itself), dispatches "auth:expired" so <App>
 //   can route back to the login page with a "session expired" banner.
-
-const HOSTS = ["", "http://localhost:5181"];
-
-async function tryHosts(path, opts) {
-  let lastErr;
-  for (const h of HOSTS) {
-    try {
-      return await fetch(h + path, { credentials: "include", ...opts });
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr;
-}
+// • Calls are always same-origin: Vite proxies /api → localhost:5181 in dev;
+//   the Helm ingress routes /api to the right backend in UAT/prod.
 
 export async function api(path, opts = {}) {
-  const r = await tryHosts(path, opts);
+  const r = await fetch(path, { credentials: "include", ...opts });
   if (r.status === 401 && path !== "/api/auth/login") {
     window.dispatchEvent(new CustomEvent("auth:expired"));
   }

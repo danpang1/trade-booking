@@ -51,18 +51,13 @@ let SUPERADMIN_USERS = [];
 let USER_PROFILES = {};
 
 async function fetchRefdataOnce() {
-  // Try same-origin first (Vite dev proxy or production same-origin),
-  // then the explicit API port. Same pattern as the tokens fetch.
-  const hosts = ["", "http://localhost:5181"];
+  // Same-origin fetch: Vite proxies in dev, ingress routes in UAT/prod.
   const fetchJson = async (path) => {
-    for (const h of hosts) {
-      try {
-        const r = await fetch(h + path, { cache: "no-cache" });
-        if (!r.ok) continue;
-        return await r.json();
-      } catch { /* try next */ }
-    }
-    return null;
+    try {
+      const r = await fetch(path, { cache: "no-cache" });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
   };
 
   const [counterparties, portfolios, users] = await Promise.all([
@@ -5013,25 +5008,18 @@ export default function TradeBookingForm() {
 
   // Fetch the live token list from server.js (refreshed hourly). On failure
   // we silently keep the bundled TOKENS seed so the form still works offline.
-  // server.js is on a separate port (5181) — we try same-origin first (in
-  // case it's proxied), then fall back to the explicit API URL.
+  // Same-origin: Vite proxies /tokens.json in dev, ingress routes in UAT/prod.
   const [liveTokens, setLiveTokens] = useState(TOKENS);
   useEffect(() => {
-    const urls = ["/tokens.json", "http://localhost:5181/tokens.json"];
     (async () => {
-      for (const u of urls) {
-        try {
-          const r = await fetch(u, { cache: "no-cache" });
-          if (!r.ok) continue;
-          const j = await r.json();
-          if (Array.isArray(j?.tokens) && j.tokens.length > 0) {
-            setLiveTokens(j.tokens);
-            return;
-          }
-        } catch {
-          /* try next url */
+      try {
+        const r = await fetch("/tokens.json", { cache: "no-cache" });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (Array.isArray(j?.tokens) && j.tokens.length > 0) {
+          setLiveTokens(j.tokens);
         }
-      }
+      } catch { /* keep bundled TOKENS seed */ }
     })();
   }, []);
 
@@ -5295,7 +5283,17 @@ export default function TradeBookingForm() {
 
   const [submittedRecord, setSubmittedRecord] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [env, setEnv] = useState("PROD");
+  // ENV is derived from window.location.hostname, not user-toggleable:
+  //   localhost / 127.0.0.1            → UAT  (dev mirrors UAT backend)
+  //   hostname contains 'test' or 'uat' → UAT
+  //   everything else                  → PROD
+  const env = (() => {
+    if (typeof window === "undefined") return "PROD";
+    const h = window.location.hostname.toLowerCase();
+    if (h === "localhost" || h === "127.0.0.1") return "UAT";
+    if (h.includes("test") || h.includes("uat")) return "UAT";
+    return "PROD";
+  })();
   const [view, setView] = useState("DEAL_ENQUIRY");
   const [createDealOpen, setCreateDealOpen] = useState(false);
   // Per-category snapshot of shared fields. When you switch from SPOT to
@@ -6493,14 +6491,12 @@ export default function TradeBookingForm() {
           </span>
         </div>
 
-        {/* RIGHT — env toggle (stacked: label on top, indicator + value below) + UTC date/time */}
+        {/* RIGHT — env indicator (derived from hostname) + UTC date/time */}
         <div className="flex items-center gap-5 text-[10px] tracking-[0.22em] uppercase font-mono">
-          {/* ENV toggle — vertical: ENV label on top, ● PROD below */}
-          <button
-            type="button"
-            onClick={() => setEnv((e) => (e === "PROD" ? "UAT" : "PROD"))}
-            className="flex flex-col items-start gap-0.5 transition-opacity hover:opacity-80 leading-none"
-            title="Click to switch environment"
+          {/* ENV indicator — vertical: ENV label on top, ● PROD/UAT below */}
+          <div
+            className="flex flex-col items-start gap-0.5 leading-none"
+            title={`Environment derived from hostname: ${typeof window !== "undefined" ? window.location.hostname : ""}`}
           >
             <span style={{ color: "#6a665c" }}>ENV</span>
             <span className="flex items-center gap-1.5">
@@ -6524,7 +6520,7 @@ export default function TradeBookingForm() {
                 {env}
               </span>
             </span>
-          </button>
+          </div>
 
           <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
 
