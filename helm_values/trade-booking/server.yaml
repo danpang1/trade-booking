@@ -21,6 +21,8 @@ ingress:
   external: false
   path: /
   pathType: Prefix
+  service:
+    portName: http
   authentication:
     enabled: true
 
