@@ -6727,7 +6727,7 @@ export default function TradeBookingForm() {
                 <button
                   type="button"
                   onClick={logout}
-                  title="Sign out"
+                  title="Log out"
                   className="w-full text-[9px] tracking-[0.2em] uppercase font-mono py-2 mt-3 transition-colors"
                   style={{
                     color: BB.mute,
@@ -6744,7 +6744,7 @@ export default function TradeBookingForm() {
                     e.currentTarget.style.borderColor = BB.border;
                   }}
                 >
-                  SIGN OUT
+                  LOG OUT
                 </button>
               </div>
             );
