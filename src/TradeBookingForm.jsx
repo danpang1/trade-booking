@@ -6696,28 +6696,6 @@ export default function TradeBookingForm() {
                 className="px-5 py-4"
                 style={{ borderTop: `1px solid ${BB.border}` }}
               >
-                <button
-                  type="button"
-                  onClick={logout}
-                  title="Sign out"
-                  className="w-full text-[9px] tracking-[0.2em] uppercase font-mono py-2 mb-3 transition-colors"
-                  style={{
-                    color: BB.mute,
-                    background: "transparent",
-                    border: `1px solid ${BB.border}`,
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = BB.text;
-                    e.currentTarget.style.borderColor = BB.text;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = BB.mute;
-                    e.currentTarget.style.borderColor = BB.border;
-                  }}
-                >
-                  SIGN OUT
-                </button>
                 <div className="flex items-center gap-3">
                   <div
                     aria-hidden
@@ -6746,6 +6724,28 @@ export default function TradeBookingForm() {
                     </div>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={logout}
+                  title="Sign out"
+                  className="w-full text-[9px] tracking-[0.2em] uppercase font-mono py-2 mt-3 transition-colors"
+                  style={{
+                    color: BB.mute,
+                    background: "transparent",
+                    border: `1px solid ${BB.border}`,
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = BB.text;
+                    e.currentTarget.style.borderColor = BB.text;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = BB.mute;
+                    e.currentTarget.style.borderColor = BB.border;
+                  }}
+                >
+                  SIGN OUT
+                </button>
               </div>
             );
           })()}
