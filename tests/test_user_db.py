@@ -4,8 +4,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import pytest
-import user_db
+import pytest  # noqa: E402  (must follow sys.path.insert above)
+import user_db  # noqa: E402
 
 
 def test_hash_then_verify_round_trip():
@@ -69,6 +69,7 @@ def test_count_admins_returns_integer_from_cursor():
     class _StubCur:
         def execute(self, sql, *args):
             captured["sql"] = sql
+
         def fetchone(self):
             return (3,)  # the DB says there are 3 admins
 
@@ -81,7 +82,8 @@ def test_row_to_public_never_leaks_password_hash():
     """Locks in PUBLIC_COLUMNS whitelist: even if a SELECT returns password_hash,
     row_to_public must drop it. This is the single security invariant of user_db."""
     class _StubCol:
-        def __init__(self, name): self.name = name
+        def __init__(self, name):
+            self.name = name
 
     class _StubCur:
         description = [_StubCol(n) for n in

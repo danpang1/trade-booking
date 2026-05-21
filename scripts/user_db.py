@@ -15,9 +15,9 @@ import cashflow_db  # reuse Postgres creds + connect
 # ── Pure logic ────────────────────────────────────────────────────
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,64}$")
-EMAIL_RE    = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-ROLES       = ("admin", "user")
-MIN_PW_LEN  = 8
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+ROLES = ("admin", "user")
+MIN_PW_LEN = 8
 
 
 class ValidationError(ValueError):

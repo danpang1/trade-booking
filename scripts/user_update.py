@@ -29,9 +29,11 @@ def main() -> int:
     vals: list = []
     try:
         if "email" in payload:
-            sets.append("email = %s");  vals.append(user_db.validate_email(payload["email"]))
+            sets.append("email = %s")
+            vals.append(user_db.validate_email(payload["email"]))
         if "role" in payload:
-            sets.append("role = %s");   vals.append(user_db.validate_role(payload["role"]))
+            sets.append("role = %s")
+            vals.append(user_db.validate_role(payload["role"]))
         if "password" in payload:
             sets.append("password_hash = %s")
             vals.append(user_db.hash_password(user_db.validate_password(payload["password"])))
@@ -43,7 +45,8 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "nothing to update"}))
         return 3
     sets.append("updated_at = NOW()")
-    sets.append("updated_by = %s"); vals.append(payload.get("_acting_user"))
+    sets.append("updated_by = %s")
+    vals.append(payload.get("_acting_user"))
 
     conn = user_db.connect()
     try:

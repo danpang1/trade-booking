@@ -22,10 +22,10 @@ import user_db
 
 def _insert(payload: dict, acting_user: str | None) -> dict:
     username = user_db.validate_username(payload.get("username", ""))
-    email    = user_db.validate_email(payload.get("email", ""))
-    role     = user_db.validate_role(payload.get("role", ""))
+    email = user_db.validate_email(payload.get("email", ""))
+    role = user_db.validate_role(payload.get("role", ""))
     password = user_db.validate_password(payload.get("password", ""))
-    pw_hash  = user_db.hash_password(password)
+    pw_hash = user_db.hash_password(password)
 
     conn = user_db.connect()
     try:
