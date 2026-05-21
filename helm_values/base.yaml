@@ -1,57 +1,34 @@
 ---
-# Trade-booking — environment-agnostic defaults.
-# Environment-specific overrides live in base-uat.yaml / base-prod.yaml.
+# Trade-booking — values SHARED by every release of this service.
+#
+# Layout:
+#   helm_values/base.yaml              <-- you are here (shared by all instances)
+#   helm_values/base-<env>.yaml        (shared env-level overrides)
+#   helm_values/deployment/base.yaml   (Node API Deployment + Service + Ingress)
+#   helm_values/deployment/<env>.yaml  (per-env tweaks for the deployment)
+#   helm_values/cron/base.yaml         (refdata sync CronJobs)
+#
+# `instance` is the third arg to scripts/run_helm.sh and selects which
+# release shape to deploy (instance=deployment or instance=cron). See
+# scripts/utils.sh for the value-file precedence order.
 
 image:
-  repository: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/templates/trade-booking
+  repository: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/middle-office/trade-booking
 
-# Run the Node API as the main process. Python scripts are invoked
-# (a) by server.js via child_process.spawn for API endpoints, and
-# (b) as separate k8s CronJobs (see `cronjobs:` below) for hourly refdata syncs.
-deployment:
-  args: ["node", "server.js"]
-  replicas: 1
-
-# Internal service: cluster-routable on port 80 (HTTP), targeting the
-# Node server's listening port 5181.
-service:
-  enabled: true
-  ports:
-    - name: http
-      protocol: TCP
-      port: 80
-      targetPort: 5181
-
-# Ingress: SSO oauth2-protected. The host is set per-environment in
-# base-uat.yaml / base-prod.yaml.
-ingress:
-  name: default
-  enabled: true
-  external: false
-  path: /
-  pathType: Prefix
-  authentication:
-    enabled: true
-
-# Liveness probe hits the existing /api/health endpoint.
-observability:
-  liveness:
-    enabled: true
-    livenessPort: 5181
-    livenessPath: /api/health
-
-# Default env vars baked into all containers (deployment + cronjobs).
+# Env vars baked into every container (deployment + cronjobs both inherit).
 env:
   APP_NAME: trade-booking
   APP_PORT: 5181
   APP_HOST: 0.0.0.0
-  # ENVIRONMENT is overridden per-env in base-uat.yaml / base-prod.yaml.
+  # ENVIRONMENT is set per-env in base-<env>.yaml.
 
-# Database credentials. Each entry references a k8s Secret that the
-# platform team must create separately (NOT managed by this chart).
-# Naming convention: trade-booking-<block>-<env>.
+# DB credentials. All keys live in a single k8s Secret named
+# `trade-booking-mo-db` (created out-of-band by the platform team).
+# Both release shapes inherit the full set so the cron scripts (which
+# read T2X_RO_MYSQL_*) and the API (which reads MO_DB_*) can resolve
+# their respective creds from the same chart-level defaults.
 env_secrets:
-  # Postgres UAT — used by cashflow_db.py / loan_db.py / apply_schema_*.py.
+  # Postgres MO DB — used by cashflow_db.py / loan_db.py / apply_schema_*.py.
   MO_DB_HOST:
     name: trade-booking-mo-db
     key: host
@@ -67,51 +44,20 @@ env_secrets:
   MO_DB_PASSWORD:
     name: trade-booking-mo-db
     key: password
-  # MySQL read-only — used by sync_counterparties/portfolios/users.
-  SG_RO_MYSQL_HOST:
-    name: trade-booking-sg-ro-mysql
-    key: host
-  SG_RO_MYSQL_USERNAME:
-    name: trade-booking-sg-ro-mysql
-    key: username
-  SG_RO_MYSQL_PASSWORD:
-    name: trade-booking-sg-ro-mysql
-    key: password
-  # MySQL token-price DB — used by snapshot_tokens.py.
-  TOKEN_PRICE_HOST:
-    name: trade-booking-token-price
-    key: host
-  TOKEN_PRICE_USERNAME:
-    name: trade-booking-token-price
-    key: username
-  TOKEN_PRICE_PASSWORD:
-    name: trade-booking-token-price
-    key: password
-
-# Refdata syncs as k8s CronJobs. Each runs as its own scheduled pod,
-# isolated from the main API. Uses the same image; just overrides the
-# command. All inherit env + env_secrets from the chart-level defaults.
-cronjobs:
-  - name: counterparties
-    enabled: true
-    schedule: "15 * * * *"   # hourly at :15
-    command: ["python", "/opt/app/scripts/sync_counterparties.py"]
-    args: []
-  - name: portfolios
-    enabled: true
-    schedule: "20 * * * *"
-    command: ["python", "/opt/app/scripts/sync_portfolios.py"]
-    args: []
-  - name: users
-    enabled: true
-    schedule: "25 * * * *"
-    command: ["python", "/opt/app/scripts/sync_users.py"]
-    args: []
-  - name: tokens
-    enabled: true
-    schedule: "30 * * * *"
-    command: ["python", "/opt/app/scripts/snapshot_tokens.py"]
-    args: []
+  # MySQL t2x read-only DB — used by sync_counterparties.py,
+  # sync_portfolios.py, sync_users.py and snapshot_tokens.py.
+  # Keys are namespaced inside the shared `trade-booking-mo-db` Secret to
+  # avoid colliding with the Postgres MO_DB_* keys (which use `host`,
+  # `port`, etc.).
+  T2X_RO_MYSQL_HOST:
+    name: trade-booking-mo-db
+    key: t2x_ro_mysql_host
+  T2X_RO_MYSQL_USERNAME:
+    name: trade-booking-mo-db
+    key: t2x_ro_mysql_username
+  T2X_RO_MYSQL_PASSWORD:
+    name: trade-booking-mo-db
+    key: t2x_ro_mysql_password
 
 resources:
   requests:

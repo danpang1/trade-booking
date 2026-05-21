@@ -55,11 +55,12 @@ Label name list
 {{- end }}
 
 {{/*
-Common environment variables
+Common environment variables.
+APP_NAME is intentionally NOT emitted here; it is set explicitly per service
+via .Values.env (see helm_values/base.yaml) so the application sees the bare
+service name rather than the release name.
 */}}
 {{- define "project-helm.CommonEnvironmentVariables" -}}
-- name: APP_NAME
-  value: {{ include "project-helm.name" . | quote }}
 - name: TOTAL_INSTANCES_COUNT
   value: {{ .Values.deployment.replicas | quote }}
 {{- end }}

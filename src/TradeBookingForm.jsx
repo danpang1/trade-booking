@@ -41,7 +41,7 @@ const TokensContext = createContext(TOKENS);
 // so pickers see the new lists.
 //
 // Refresh in browser     : "↻ Refresh refdata" button in the header
-// Refresh on the server  : POST /api/refdata/refresh   (sg-ro-mysql → JSON)
+// Refresh on the server  : POST /api/refdata/refresh   (t2x-ro-mysql → JSON)
 // Auto-refresh           : hourly HH:15 UTC tick in server.js
 // ═════════════════════════════════════════════════════════════
 let PORTFOLIOS = [];

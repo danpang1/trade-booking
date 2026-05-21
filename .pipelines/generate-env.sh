@@ -15,7 +15,7 @@ APP_NAME="trade-booking"
 
 ENVIRONMENT=""
 ENVIRONMENTS=""
-IMAGE_NAME="templates/trade-booking"
+IMAGE_NAME="middle-office/trade-booking"
 
 # Leave it empty if you want the default "docker build" command to be used.
 IMAGE_PLATFORMS="linux/amd64"
@@ -23,15 +23,13 @@ IMAGE_PLATFORMS="linux/amd64"
 #IMAGE_PLATFORMS="linux/amd64"
 DOCKER_BUILDX_LOCAL_CACHE_ENABLE=false
 DOCKER_BUILDX_LOCAL_CACHE="/tmp/cache/buildx"
-# Remote ECR cache + ECR login are disabled until we actually push
-# images. Re-enable when switching the pipeline from *dockerBuild
-# (local build only) to *dockerBuildAndPublish (build + push to ECR)
-# AND the AWS_ACCESS_KEY_ID_CI / AWS_SECRET_ACCESS_KEY_CI / AWS_ECR_URL_NEA
-# Bitbucket repo variables are populated. Leaving them on caused
-# buildx to fail importing a non-existent cache image and to treat the
-# unset $AWS_ECR_URL_NEA placeholder as a literal hostname.
-DOCKER_BUILDX_REMOTE_CACHE_ENABLE=false
-DOCKER_LOGIN_FORCE=false
+# Remote ECR cache + ECR login. Required when the pipeline runs
+# *dockerBuildAndPublish so package_and_publish_docker.sh actually
+# logs into ECR before pushing (see login_in_docker_registry()).
+# Requires AWS_ACCESS_KEY_ID_CI / AWS_SECRET_ACCESS_KEY_CI / AWS_ECR_URL_NEA
+# Bitbucket repo variables to be populated.
+DOCKER_BUILDX_REMOTE_CACHE_ENABLE=true
+DOCKER_LOGIN_FORCE=true
 
 KUBE_CLUSTER_NAME=""
 KUBE_CLUSTER_CONFIG=""
@@ -46,8 +44,8 @@ if [[ "$BITBUCKET_BRANCH" == "master" || "$BITBUCKET_BRANCH" == "main" ]]; then
 
   # Single cluster setup
   ENVIRONMENT="prod"
-  KUBE_CLUSTER_NAME="jp-rancher"
-  KUBE_CLUSTER_CONFIG=$RANCHER_KUBE_CONFIG_JP_CLUSTER
+  KUBE_CLUSTER_NAME="sg-rancher"
+  KUBE_CLUSTER_CONFIG=$RANCHER_KUBE_CONFIG_SG_CLUSTER
 
   # For multi cluster deployment use the following setup.
   # ENVIRONMENT=""

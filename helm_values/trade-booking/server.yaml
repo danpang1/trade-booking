@@ -1,0 +1,33 @@
+---
+# Trade-booking Node API server.
+# Release: trade-booking-server-<env>.
+# Renders a Deployment + Service + Ingress, no CronJobs.
+
+deployment:
+  args: ["node", "server.js"]
+  replicas: 1
+
+service:
+  enabled: true
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5181
+
+ingress:
+  name: default
+  enabled: true
+  external: false
+  path: /
+  pathType: Prefix
+  service:
+    portName: http
+  authentication:
+    enabled: true
+
+observability:
+  liveness:
+    enabled: true
+    livenessPort: 5181
+    livenessPath: /api/health

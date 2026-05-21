@@ -24,23 +24,23 @@ OUT = REPO / "public" / "refdata" / "users.json"
 
 
 def _load_mysql_creds() -> dict[str, str]:
-    """Env vars (SG_RO_MYSQL_*) take precedence; .env file parsed as fallback."""
+    """Env vars (T2X_RO_MYSQL_*) take precedence; .env file parsed as fallback."""
     env_creds = {
-        k: os.environ[f"SG_RO_MYSQL_{k.upper()}"]
+        k: os.environ[f"T2X_RO_MYSQL_{k.upper()}"]
         for k in ("host", "username", "password")
-        if f"SG_RO_MYSQL_{k.upper()}" in os.environ
+        if f"T2X_RO_MYSQL_{k.upper()}" in os.environ
     }
     if all(k in env_creds for k in ("host", "username", "password")):
         return env_creds
 
     if not ENV.exists():
         raise FileNotFoundError(
-            f".env not found at {ENV} and SG_RO_MYSQL_* env vars are incomplete"
+            f".env not found at {ENV} and T2X_RO_MYSQL_* env vars are incomplete"
         )
     lines = ENV.read_text(encoding="utf-8", errors="replace").splitlines()
     creds: dict[str, str] = {}
     for i, ln in enumerate(lines):
-        if "sg-ro-mysql" in ln.lower():
+        if "t2x-ro-mysql" in ln.lower():
             for j in range(max(0, i - 5), min(len(lines), i + 3)):
                 s = lines[j].strip()
                 if not s or s.startswith("#"):
@@ -50,7 +50,7 @@ def _load_mysql_creds() -> dict[str, str]:
                     creds[k.strip().lower()] = v.strip()
             break
     if not all(k in creds for k in ("username", "password", "host")):
-        raise RuntimeError("sg-ro-mysql credentials missing in .env")
+        raise RuntimeError("t2x-ro-mysql credentials missing in .env")
     return creds
 
 

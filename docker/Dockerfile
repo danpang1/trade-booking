@@ -18,8 +18,11 @@ ENV LANG=C.UTF-8 \
 
 ENV PATH="$VENV_DIR/bin:$PATH"
 
-# Python runtime + libpq for psycopg2-binary. ca-certificates so TLS to MySQL/PG works.
+# Pull Debian security updates on top of node:22-slim (the upstream tag lags
+# behind Debian point releases, so Trivy will flag libgnutls30 et al. otherwise).
+# Then install Python runtime + ca-certificates for TLS to MySQL/PG.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
        python3 python3-venv python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -55,9 +58,39 @@ RUN npm run build
 
 
 # -----------------------------------------------------------------------------
+# Test stage: build target=test in CI to run pytest inside the container.
+# Kept BEFORE the production stage so that `docker build` without an explicit
+# --target defaults to `production` (the last stage in the file).
+# -----------------------------------------------------------------------------
+FROM build AS test
+
+WORKDIR $BUILD_DIR
+
+# Install test-only deps. requirements-dev.txt does `-r requirements.txt`
+# so the runtime deps (already installed in this venv from the build
+# stage's requirements-freeze.txt) still need the file present on disk
+# for pip to resolve the reference. Both files are copied.
+COPY ./requirements.txt ./requirements.txt
+COPY ./requirements-dev.txt ./requirements-dev.txt
+RUN . $VENV_DIR/bin/activate \
+    && pip install -r requirements-dev.txt
+
+# Bring scripts/ + tests/ into the test image. tests/ does
+# `sys.path.insert(0, REPO / "scripts")` to import script modules,
+# so both directories must be present at /var/build.
+# Production stage doesn't COPY tests/, so they don't leak into the
+# runtime image.
+COPY ./scripts ./scripts
+COPY ./tests ./tests
+
+CMD ["python", "-m", "pytest", "tests/", "-vv"]
+
+
+# -----------------------------------------------------------------------------
 # Production stage: minimal runtime layer.
 # Contains: node_modules, Python venv, server.js, scripts/, public/, dist/.
 # No source maps, no tests, no docs.
+# MUST be the last stage so it is the default `docker build` target.
 # -----------------------------------------------------------------------------
 FROM base AS production
 
@@ -89,30 +122,3 @@ EXPOSE 5181
 
 ENTRYPOINT ["/opt/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
-
-
-# -----------------------------------------------------------------------------
-# Test stage: build target=test in CI to run pytest inside the container.
-# -----------------------------------------------------------------------------
-FROM build AS test
-
-WORKDIR $BUILD_DIR
-
-# Install test-only deps. requirements-dev.txt does `-r requirements.txt`
-# so the runtime deps (already installed in this venv from the build
-# stage's requirements-freeze.txt) still need the file present on disk
-# for pip to resolve the reference. Both files are copied.
-COPY ./requirements.txt ./requirements.txt
-COPY ./requirements-dev.txt ./requirements-dev.txt
-RUN . $VENV_DIR/bin/activate \
-    && pip install -r requirements-dev.txt
-
-# Bring scripts/ + tests/ into the test image. tests/ does
-# `sys.path.insert(0, REPO / "scripts")` to import script modules,
-# so both directories must be present at /var/build.
-# Production stage doesn't COPY tests/, so they don't leak into the
-# runtime image.
-COPY ./scripts ./scripts
-COPY ./tests ./tests
-
-CMD ["python", "-m", "pytest", "tests/", "-vv"]

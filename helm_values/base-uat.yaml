@@ -1,14 +1,6 @@
 ---
-# UAT environment overrides.
-
-image:
-  tagPostfix: "-uat"
-
-ingress:
-  host: test.trade-booking.apps.intra.tokkalabs.com
-  authentication:
-    ssoOauth2Signin: https://oauth2.sso.intra.tokkalabs.com/oauth2/start?rd=https%3A%2F%2Ftest.trade-booking.apps.intra.tokkalabs.com%2F
+# Shared UAT overrides applied to every release of this service.
+# Instance-specific tweaks live in helm_values/{deployment,cron}/uat.yaml.
 
 env:
   ENVIRONMENT: uat
-  APP_ORIGINS_HOSTS: "https://test.trade-booking.apps.intra.tokkalabs.com"
