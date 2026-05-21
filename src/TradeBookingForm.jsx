@@ -23,6 +23,8 @@ import {
 } from "./data/accounts.js";
 import { NETWORKS } from "./data/networks.js";
 import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
+import { useAuth } from "./auth/AuthContext.jsx";
+import { api } from "./auth/api.js";
 
 // Live token list — initialized from the bundled snapshot, replaced after
 // fetch('/tokens.json') resolves (refreshed hourly by server.js). AssetPicker
@@ -2598,30 +2600,27 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
       comment,
       user_id: currentUser || "unknown",
     };
-    const hosts = ["", "http://localhost:5181"];
     let lastErr = "";
-    for (const h of hosts) {
-      try {
-        const r = await fetch(h + "/api/loan/schedule-comment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+    try {
+      const r = await api("/api/loan/schedule-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok) {
+        savedCommentsRef.current[triggerDealRef] = comment;
+        setRowSaveErrors((prev) => {
+          if (!(triggerDealRef in prev)) return prev;
+          const next = { ...prev };
+          delete next[triggerDealRef];
+          return next;
         });
-        if (r.ok) {
-          savedCommentsRef.current[triggerDealRef] = comment;
-          setRowSaveErrors((prev) => {
-            if (!(triggerDealRef in prev)) return prev;
-            const next = { ...prev };
-            delete next[triggerDealRef];
-            return next;
-          });
-          return;
-        }
-        const text = await r.text().catch(() => "");
-        lastErr = `HTTP ${r.status}${text ? `: ${text.slice(0, 200)}` : ""}`;
-      } catch (e) {
-        lastErr = String(e);
+        return;
       }
+      const text = await r.text().catch(() => "");
+      lastErr = `HTTP ${r.status}${text ? `: ${text.slice(0, 200)}` : ""}`;
+    } catch (e) {
+      lastErr = String(e);
     }
     console.error(`[schedule-comment] save failed for ${dealRef}/${triggerDealRef}: ${lastErr}`);
     setRowSaveErrors((prev) => ({ ...prev, [triggerDealRef]: lastErr || "save failed" }));
@@ -4091,8 +4090,8 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       // filteredRows). The `mappings` array on each cashflow still
       // shows linked loans inline (chip in the Details column).
       const [cfRes, spotRes] = await Promise.all([
-        fetch("http://localhost:5181/api/cashflow/recent?limit=20").then((r) => r.json()),
-        fetch("http://localhost:5181/api/spot/recent?limit=20").then((r) => r.json()),
+        api("/api/cashflow/recent?limit=20").then((r) => r.json()),
+        api("/api/spot/recent?limit=20").then((r) => r.json()),
       ]);
       if (!cfRes.ok) throw new Error(cfRes.error || "cashflow fetch failed");
       if (!spotRes.ok) throw new Error(spotRes.error || "spot fetch failed");
@@ -4609,7 +4608,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("http://localhost:5181/api/loan/recent?limit=200");
+      const r = await api("/api/loan/recent?limit=200");
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || "fetch failed");
       setRows(j.rows || []);
@@ -5006,6 +5005,8 @@ function useClock() {
 }
 
 export default function TradeBookingForm() {
+  const { user, logout } = useAuth();
+  const [appView, setAppView] = useState("booking"); // "booking" | "users"
   const fileInputRef = useRef(null);
   const clock = useClock();
 
@@ -5040,7 +5041,7 @@ export default function TradeBookingForm() {
   const [liveLoans, setLiveLoans] = useState([]);
   const refreshLiveLoans = useCallback(async () => {
     try {
-      const r = await fetch("http://localhost:5181/api/loan/recent?limit=200", { cache: "no-cache" });
+      const r = await api("/api/loan/recent?limit=200", { cache: "no-cache" });
       const j = await r.json();
       if (j.ok && Array.isArray(j.rows)) setLiveLoans(j.rows);
     } catch { /* server might be down — picker just shows empty */ }
@@ -5104,14 +5105,11 @@ export default function TradeBookingForm() {
     if (refdataLoading) return;
     setRefdataLoading(true);
     setRefdataError(null);
-    const hosts = ["", "http://localhost:5181"];
     let serverOk = false;
-    for (const h of hosts) {
-      try {
-        const r = await fetch(h + "/api/refdata/refresh", { method: "POST" });
-        if (r.ok) { serverOk = true; break; }
-      } catch { /* try next */ }
-    }
+    try {
+      const r = await api("/api/refdata/refresh", { method: "POST" });
+      if (r.ok) serverOk = true;
+    } catch { /* server unreachable */ }
     if (!serverOk) {
       setRefdataError("server refresh failed — check trade-booking server is running");
       setRefdataLoading(false);
@@ -5141,6 +5139,16 @@ export default function TradeBookingForm() {
     setForm((f) => (f.created_by ? f : { ...f, created_by: SUPERADMIN_USERS[0] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refdataTick]);
+
+  // Keep form.created_by in sync with the session user so existing submit
+  // handlers that read form.created_by continue to work correctly.
+  // The server stamps user_id from the session anyway, but this keeps
+  // the field accurate for any client-side reads.
+  useEffect(() => {
+    if (user?.username) {
+      setForm((f) => ({ ...f, created_by: user.username }));
+    }
+  }, [user?.username]);
 
   const initial = () => ({
     trade_id: genTradeId("SPOT"),
@@ -5909,7 +5917,7 @@ export default function TradeBookingForm() {
     setLoanScheduleModal({ dealRef, loan: null, loading: true, error: null });
     let res;
     try {
-      res = await fetch(`http://localhost:5181/api/loan/${encodeURIComponent(dealRef)}`);
+      res = await api(`/api/loan/${encodeURIComponent(dealRef)}`);
     } catch (e) {
       setLoanScheduleModal({ dealRef, loan: null, loading: false, error: String(e) });
       return;
@@ -5970,7 +5978,7 @@ export default function TradeBookingForm() {
     const base = product === "LOAN" ? "loan" : product === "SPOT" ? "spot" : "cashflow";
     let res;
     try {
-      res = await fetch(`http://localhost:5181/api/${base}/${encodeURIComponent(dealRef)}/history`);
+      res = await api(`/api/${base}/${encodeURIComponent(dealRef)}/history`);
     } catch (e) {
       setHistoryModal({ dealRef, rows: [], loading: false, error: String(e) });
       return;
@@ -6162,7 +6170,7 @@ export default function TradeBookingForm() {
     const base = product === "LOAN" ? "loan" : product === "SPOT" ? "spot" : "cashflow";
     let res;
     try {
-      res = await fetch(`http://localhost:5181/api/${base}/${encodeURIComponent(dealRef)}`);
+      res = await api(`/api/${base}/${encodeURIComponent(dealRef)}`);
     } catch (e) {
       setFeedback({ kind: "error", message: "Server unreachable", detail: String(e) });
       return;
@@ -6192,12 +6200,12 @@ export default function TradeBookingForm() {
       : form.category === "SPOT" ? "spot"
       : "cashflow";
     const endpoint = amendingDealRef
-      ? `http://localhost:5181/api/${base}/amend`
-      : `http://localhost:5181/api/${base}/insert`;
+      ? `/api/${base}/amend`
+      : `/api/${base}/insert`;
     try {
       let res;
       try {
-        res = await fetch(endpoint, {
+        res = await api(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(outputRecord),
@@ -6447,6 +6455,19 @@ export default function TradeBookingForm() {
     return { __html: html };
   };
 
+  if (appView === "users" && user?.role === "admin") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#000", color: "#e5e5e5", padding: 32, fontFamily: "'JetBrains Mono', monospace" }}>
+        {/* Header with toggle back */}
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
+          <div style={{ fontSize: 13, letterSpacing: 2, color: "#7d7d7d" }}>USER ADMIN — placeholder for Task 8</div>
+          <button onClick={() => setAppView("booking")} style={{ background: "transparent", color: "#e5e5e5", border: "1px solid #1f1f1f", padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer" }}>BACK</button>
+        </div>
+        <div style={{ color: "#7d7d7d" }}>User-admin UI lands in Task 8.</div>
+      </div>
+    );
+  }
+
   return (
     <TokensContext.Provider value={liveTokens}>
     <div
@@ -6573,6 +6594,41 @@ export default function TradeBookingForm() {
               {clock.toISOString().slice(11, 19)}
             </span>
             <span style={{ color: "#6a665c" }}>UTC</span>
+          </div>
+
+          <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
+
+          {/* USER / LOGOUT cluster */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+            {user?.role === "admin" && (
+              <button
+                type="button"
+                onClick={() => setAppView(appView === "users" ? "booking" : "users")}
+                style={{
+                  background: "transparent", color: "#e5e5e5",
+                  border: "1px solid #1f1f1f", padding: "4px 10px",
+                  fontFamily: "inherit", fontSize: 11, letterSpacing: 1,
+                  cursor: "pointer",
+                }}
+              >
+                {appView === "users" ? "BOOKING" : "USERS"}
+              </button>
+            )}
+            <span style={{ color: "#7d7d7d" }}>{user?.username}</span>
+            <span style={{ color: "#7d7d7d" }}>·</span>
+            <span style={{ color: "#FA8C16" }}>{user?.role}</span>
+            <button
+              type="button"
+              onClick={logout}
+              style={{
+                background: "transparent", color: "#e5e5e5",
+                border: "1px solid #1f1f1f", padding: "4px 10px",
+                fontFamily: "inherit", fontSize: 11, letterSpacing: 1,
+                cursor: "pointer",
+              }}
+            >
+              LOGOUT
+            </button>
           </div>
         </div>
       </header>
@@ -6870,22 +6926,10 @@ export default function TradeBookingForm() {
               </>
             )}
             <Field label="Created by" required span={4}>
-              <Select
-                value={form.created_by}
-                onChange={(e) => set("created_by", e.target.value)}
-              >
-                {/* If form.created_by has been loaded from a row (or seeded
-                    before refdata) but isn't in the current SUPERADMIN_USERS
-                    list yet, include it as an option so the Select can
-                    actually display the value instead of falling back to
-                    its first option / blank. */}
-                {form.created_by && !SUPERADMIN_USERS.includes(form.created_by) && (
-                  <option value={form.created_by}>{form.created_by}</option>
-                )}
-                {SUPERADMIN_USERS.map((u) => (
-                  <option key={u}>{u}</option>
-                ))}
-              </Select>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
+                <span style={{ fontSize: 11, color: "#7d7d7d", letterSpacing: 1 }}>BOOKED BY</span>
+                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "'JetBrains Mono', monospace" }}>{user?.username || "—"}</span>
+              </div>
             </Field>
             {form.category === "CASHFLOW" && (
               <>
