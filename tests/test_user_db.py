@@ -56,3 +56,25 @@ def test_validate_password_min_length():
     user_db.validate_password("12345678")
     with pytest.raises(user_db.ValidationError):
         user_db.validate_password("short")
+
+
+def test_row_to_public_never_leaks_password_hash():
+    """Locks in PUBLIC_COLUMNS whitelist: even if a SELECT returns password_hash,
+    row_to_public must drop it. This is the single security invariant of user_db."""
+    class _StubCol:
+        def __init__(self, name): self.name = name
+
+    class _StubCur:
+        description = [_StubCol(n) for n in
+                       ("id", "username", "email", "role",
+                        "password_hash", "created_at", "updated_at")]
+
+    row = (1, "peter", "peter@x.com", "admin",
+           "$2b$12$THIS_IS_THE_SECRET_HASH_AND_MUST_NOT_LEAK..............",
+           None, None)
+    out = user_db.row_to_public(_StubCur(), row)
+
+    assert "password_hash" not in out
+    assert out["username"] == "peter"
+    assert out["role"] == "admin"
+    assert set(out.keys()) == set(user_db.PUBLIC_COLUMNS)
