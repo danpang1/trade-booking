@@ -15,7 +15,7 @@ APP_NAME="trade-booking"
 
 ENVIRONMENT=""
 ENVIRONMENTS=""
-IMAGE_NAME="templates/trade-booking"
+IMAGE_NAME="middle-office/trade-booking"
 
 # Leave it empty if you want the default "docker build" command to be used.
 IMAGE_PLATFORMS="linux/amd64"
