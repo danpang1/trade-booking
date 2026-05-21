@@ -58,6 +58,25 @@ def test_validate_password_min_length():
         user_db.validate_password("short")
 
 
+def test_count_admins_returns_integer_from_cursor():
+    """Locks in the SQL string + return type. count_admins is the single
+    load-bearing function for both the last-admin demote guard
+    (user_update.py) and the last-admin delete guard (user_delete.py).
+    If this function ever stops returning an int, both guards silently
+    fail open."""
+    captured = {}
+
+    class _StubCur:
+        def execute(self, sql, *args):
+            captured["sql"] = sql
+        def fetchone(self):
+            return (3,)  # the DB says there are 3 admins
+
+    assert user_db.count_admins(_StubCur()) == 3
+    assert "role='admin'" in captured["sql"]
+    assert "SELECT COUNT(*)" in captured["sql"].upper()
+
+
 def test_row_to_public_never_leaks_password_hash():
     """Locks in PUBLIC_COLUMNS whitelist: even if a SELECT returns password_hash,
     row_to_public must drop it. This is the single security invariant of user_db."""
