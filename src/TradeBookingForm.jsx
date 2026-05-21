@@ -6588,40 +6588,9 @@ export default function TradeBookingForm() {
             <span style={{ color: "#6a665c" }}>UTC</span>
           </div>
 
-          <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
-
-          {/* USER / LOGOUT cluster */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
-            {user?.role === "admin" && (
-              <button
-                type="button"
-                onClick={() => setAppView(appView === "users" ? "booking" : "users")}
-                style={{
-                  background: "transparent", color: "#e5e5e5",
-                  border: "1px solid #1f1f1f", padding: "4px 10px",
-                  fontFamily: "inherit", fontSize: 11, letterSpacing: 1,
-                  cursor: "pointer",
-                }}
-              >
-                {appView === "users" ? "BOOKING" : "USERS"}
-              </button>
-            )}
-            <span style={{ color: "#7d7d7d" }}>{user?.username}</span>
-            <span style={{ color: "#7d7d7d" }}>·</span>
-            <span style={{ color: "#FA8C16" }}>{user?.role}</span>
-            <button
-              type="button"
-              onClick={logout}
-              style={{
-                background: "transparent", color: "#e5e5e5",
-                border: "1px solid #1f1f1f", padding: "4px 10px",
-                fontFamily: "inherit", fontSize: 11, letterSpacing: 1,
-                cursor: "pointer",
-              }}
-            >
-              LOGOUT
-            </button>
-          </div>
+          {/* USER / LOGOUT cluster moved to the left sidebar (profile footer
+              + admin Users nav). Identity surfaces in one place to keep the
+              top banner reserved for refdata-sync state + UTC clock. */}
         </div>
       </header>
 
@@ -6689,6 +6658,21 @@ export default function TradeBookingForm() {
               active={view === "PENDING_BOOKINGS"}
               onClick={() => setView("PENDING_BOOKINGS")}
             />
+
+            {user?.role === "admin" && (
+              <>
+                {/* Separator before the admin-only section */}
+                <div
+                  className="mx-5 my-2"
+                  style={{ borderTop: `1px dashed #d9d4c7` }}
+                />
+                <NavTabRow
+                  label="Users"
+                  active={appView === "users"}
+                  onClick={() => setAppView("users")}
+                />
+              </>
+            )}
           </div>
 
           {/* ─── User profile footer (clock lives in the top banner) ─── */}
@@ -6725,7 +6709,7 @@ export default function TradeBookingForm() {
                   >
                     {initial}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div
                       className="text-[12px] font-medium leading-tight truncate"
                       style={{ color: BB.text }}
@@ -6739,6 +6723,28 @@ export default function TradeBookingForm() {
                       {profile.role}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    title="Sign out"
+                    className="text-[9px] tracking-[0.2em] uppercase font-mono px-2 py-1 transition-colors"
+                    style={{
+                      color: BB.mute,
+                      background: "transparent",
+                      border: `1px solid ${BB.border}`,
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = BB.text;
+                      e.currentTarget.style.borderColor = BB.text;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = BB.mute;
+                      e.currentTarget.style.borderColor = BB.border;
+                    }}
+                  >
+                    SIGN OUT
+                  </button>
                 </div>
               </div>
             );
