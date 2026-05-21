@@ -22,11 +22,11 @@ env:
   APP_HOST: 0.0.0.0
   # ENVIRONMENT is set per-env in base-<env>.yaml.
 
-# DB credentials. Each entry references a k8s Secret created out-of-band by
-# the platform team. Naming convention: trade-booking-<block>-<env>.
-# Both releases inherit the full set so the cronjob scripts (which need
-# SG_RO_MYSQL_* and TOKEN_PRICE_*) and the API (which uses MO_DB_*) can
-# resolve their respective creds from the same chart-level defaults.
+# DB credentials. All keys live in a single k8s Secret named
+# `trade-booking-mo-db` (created out-of-band by the platform team).
+# Both release shapes inherit the full set so the cron scripts (which
+# read T2X_RO_MYSQL_*) and the API (which reads MO_DB_*) can resolve
+# their respective creds from the same chart-level defaults.
 env_secrets:
   # Postgres MO DB — used by cashflow_db.py / loan_db.py / apply_schema_*.py.
   MO_DB_HOST:
@@ -44,26 +44,20 @@ env_secrets:
   MO_DB_PASSWORD:
     name: trade-booking-mo-db
     key: password
-  # MySQL read-only — used by sync_counterparties/portfolios/users.
-  SG_RO_MYSQL_HOST:
-    name: trade-booking-sg-ro-mysql
-    key: host
-  SG_RO_MYSQL_USERNAME:
-    name: trade-booking-sg-ro-mysql
-    key: username
-  SG_RO_MYSQL_PASSWORD:
-    name: trade-booking-sg-ro-mysql
-    key: password
-  # MySQL token-price DB — used by snapshot_tokens.py.
-  TOKEN_PRICE_HOST:
-    name: trade-booking-token-price
-    key: host
-  TOKEN_PRICE_USERNAME:
-    name: trade-booking-token-price
-    key: username
-  TOKEN_PRICE_PASSWORD:
-    name: trade-booking-token-price
-    key: password
+  # MySQL t2x read-only DB — used by sync_counterparties.py,
+  # sync_portfolios.py, sync_users.py and snapshot_tokens.py.
+  # Keys are namespaced inside the shared `trade-booking-mo-db` Secret to
+  # avoid colliding with the Postgres MO_DB_* keys (which use `host`,
+  # `port`, etc.).
+  T2X_RO_MYSQL_HOST:
+    name: trade-booking-mo-db
+    key: t2x_ro_mysql_host
+  T2X_RO_MYSQL_USERNAME:
+    name: trade-booking-mo-db
+    key: t2x_ro_mysql_username
+  T2X_RO_MYSQL_PASSWORD:
+    name: trade-booking-mo-db
+    key: t2x_ro_mysql_password
 
 resources:
   requests:
