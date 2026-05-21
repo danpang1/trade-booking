@@ -230,7 +230,12 @@ function parseCookies(req) {
   for (const part of header.split(";")) {
     const [k, ...rest] = part.trim().split("=");
     if (!k) continue;
-    out[k] = decodeURIComponent(rest.join("="));
+    const raw = rest.join("=");
+    // decodeURIComponent throws URIError on malformed %-encoding. Browser-set
+    // cookies are always valid (we encode in setSessionCookie), but a crafted
+    // Cookie header from a non-browser client could otherwise crash the worker.
+    try { out[k] = decodeURIComponent(raw); }
+    catch { out[k] = raw; }
   }
   return out;
 }
