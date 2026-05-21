@@ -6,8 +6,6 @@ deployment:
 
 ingress:
   host: sg-trade-booking.internal.tokkalabs.com
-  authentication:
-    ssoOauth2Signin: https://oauth2.sso.intra.tokkalabs.com/oauth2/start?rd=https%3A%2F%2Fprod.trade-booking.apps.intra.tokkalabs.com%2F
 
 env:
   ENVIRONMENT: prod
