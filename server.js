@@ -32,6 +32,13 @@ const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 
+const AUTH_LOGIN_SCRIPT   = resolve(__dirname, "scripts", "auth_login.py");
+const AUTH_LOGOUT_SCRIPT  = resolve(__dirname, "scripts", "auth_logout.py");
+const AUTH_WHOAMI_SCRIPT  = resolve(__dirname, "scripts", "auth_whoami.py");
+
+const SESSION_COOKIE = "sid";
+const SESSION_MAX_AGE_SEC = 8 * 60 * 60;
+
 // ── Refdata syncs ──────────────────────────────────────────────────────
 // Each entry: { key, script, label } — the key drives state tracking,
 // route lookup (/refdata/<key>.json), and the response body of
@@ -212,19 +219,77 @@ function httpStatusFor(exitCode, json) {
   if (json && json.code === "not_found") return 404;
   if (exitCode === 3) return 400;  // validation
   if (exitCode === 4) return 404;  // not_found (fallback if code missing)
+  if (exitCode === 6) return 401;  // auth failure
   return 500;
+}
+
+// ── Cookie + session helpers ──────────────────────────────────────
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  const out = {};
+  for (const part of header.split(";")) {
+    const [k, ...rest] = part.trim().split("=");
+    if (!k) continue;
+    out[k] = decodeURIComponent(rest.join("="));
+  }
+  return out;
+}
+
+function setSessionCookie(res, sid) {
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=${encodeURIComponent(sid)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SEC}`
+  );
+}
+
+function clearSessionCookie(res) {
+  res.setHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+  );
+}
+
+// Resolve the cookie to a session-user via auth_whoami.py.
+// Returns null if no cookie / unknown sid / expired.
+async function resolveSession(req) {
+  const sid = parseCookies(req)[SESSION_COOKIE];
+  if (!sid) return null;
+  const result = await spawnPython(AUTH_WHOAMI_SCRIPT, JSON.stringify({ sid }));
+  if (result.code !== 0 || !result.json || result.json.ok !== true) return null;
+  return { sid, ...result.json.user };
 }
 
 // ── HTTP server: serves /tokens.json (for non-Vite hosts) + /api/health ──
 const server = createServer(async (req, res) => {
-  // CORS for the Vite dev server on a different port
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  // CORS for the Vite dev server on a different port.
+  // credentials:'include' requires echoing the request origin (browsers
+  // refuse '*' with credentials) AND Access-Control-Allow-Credentials: true.
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
     return;
+  }
+
+  // ── Auth gate ─────────────────────────────────────────────────────
+  // Public paths: only /api/auth/login is exempt. Everything else under
+  // /api/* requires a valid session cookie. Static assets (no /api/
+  // prefix) fall through unchanged.
+  const isApi = (req.url || "").startsWith("/api/");
+  const isLogin = req.url === "/api/auth/login";
+  if (isApi && !isLogin) {
+    const sessionUser = await resolveSession(req);
+    if (!sessionUser) {
+      res.statusCode = 401;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: false, error: "not authenticated" }));
+      return;
+    }
+    req.sessionUser = sessionUser;  // {sid, id, username, email, role}
   }
 
   if (req.url === "/api/health") {
@@ -256,6 +321,45 @@ const server = createServer(async (req, res) => {
     runSyncOnce("tokens", "manual-refresh");
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ status: "scheduled" }));
+    return;
+  }
+
+  // ── Auth: login ───────────────────────────────────────────────────
+  if (req.url === "/api/auth/login" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = await spawnPython(AUTH_LOGIN_SCRIPT, body);
+    const status = httpStatusFor(result.code, result.json);
+    if (status === 200 && result.json && result.json.sid) {
+      setSessionCookie(res, result.json.sid);
+      // Don't leak the sid in the response body — it's now in the cookie.
+      const { sid, ...rest } = result.json;
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(rest));
+      return;
+    }
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Auth: logout ──────────────────────────────────────────────────
+  if (req.url === "/api/auth/logout" && req.method === "POST") {
+    const sid = req.sessionUser.sid;
+    await spawnPython(AUTH_LOGOUT_SCRIPT, JSON.stringify({ sid }));
+    clearSessionCookie(res);
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  // ── Auth: whoami ──────────────────────────────────────────────────
+  if (req.url === "/api/auth/me" && req.method === "GET") {
+    const { username, email, role } = req.sessionUser;
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true, user: { username, email, role } }));
     return;
   }
 
