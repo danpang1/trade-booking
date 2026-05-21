@@ -1,57 +1,0 @@
-[counterparties:err] Traceback (most recent call last):
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_counterparties.py", line 105, in <module>
-[counterparties:err]     main()
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_counterparties.py", line 67, in main
-    creds = _load_mysql_creds()
-            ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_counterparties.py", line 59, in _load_mysql_creds
-[counterparties:err]     raise RuntimeError(
-RuntimeError: sg-ro-mysql credentials missing in .env (need username, password, host)
-[portfolios:err] Traceback (most recent call last):
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_portfolios.py", line 94, in <module>
-[portfolios:err]     main()
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_portfolios.py", line 57, in main
-[portfolios:err]     creds = _load_mysql_creds()
-            ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_portfolios.py", line 52, in _load_mysql_creds
-    raise RuntimeError("sg-ro-mysql credentials missing in .env")
-RuntimeError: sg-ro-mysql credentials missing in .env
-[counterparties] startup-backfill: exit 1:     creds = _load_mysql_creds() |             ^^^^^^^^^^^^^^^^^^^ |   File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_counterparties.py", line 59, in _load_mysql_creds |     raise RuntimeError( | RuntimeError: sg-ro-mysql credentials missing in .env (need username, password, host)
-[portfolios] startup-backfill: exit 1:     creds = _load_mysql_creds() |             ^^^^^^^^^^^^^^^^^^^ |   File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_portfolios.py", line 52, in _load_mysql_creds |     raise RuntimeError("sg-ro-mysql credentials missing in .env") | RuntimeError: sg-ro-mysql credentials missing in .env
-[users:err] Traceback (most recent call last):
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_users.py", line 97, in <module>
-[users:err]     main()
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_users.py", line 63, in main
-[users:err]     creds = _load_mysql_creds()
-            ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_users.py", line 53, in _load_mysql_creds
-    raise RuntimeError("sg-ro-mysql credentials missing in .env")
-[users:err] RuntimeError: sg-ro-mysql credentials missing in .env
-[users] startup-backfill: exit 1:     creds = _load_mysql_creds() |             ^^^^^^^^^^^^^^^^^^^ |   File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\sync_users.py", line 53, in _load_mysql_creds |     raise RuntimeError("sg-ro-mysql credentials missing in .env") | RuntimeError: sg-ro-mysql credentials missing in .env
-[tokens:err] Traceback (most recent call last):
-  File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\site-packages\pymysql\connections.py", line 644, in connect
-[tokens:err]     sock = socket.create_connection(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\socket.py", line 826, in create_connection
-[tokens:err]     for res in getaddrinfo(host, port, 0, SOCK_STREAM):
-[tokens:err]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\socket.py", line 961, in getaddrinfo
-[tokens:err]     for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-socket.gaierror: [Errno 11001] getaddrinfo failed
-
-[tokens:err] During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\snapshot_tokens.py", line 78, in <module>
-[tokens:err]     conn = _connect("reference_data")
-[tokens:err]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking\scripts\snapshot_tokens.py", line 68, in _connect
-    return pymysql.connect(
-           ^^^^^^^^^^^^^^^^
-  File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\site-packages\pymysql\connections.py", line 358, in __init__
-[tokens:err]     self.connect()
-  File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\site-packages\pymysql\connections.py", line 711, in connect
-[tokens:err]     raise exc
-pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'sg-ro-mysql.internal.tokkalabs.com' ([Errno 11001] getaddrinfo failed)")
-[tokens] startup-backfill: exit 1:   File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\site-packages\pymysql\connections.py", line 358, in __init__ |     self.connect() |   File "C:\Users\peter\AppData\Local\Programs\Python\Python311\Lib\site-packages\pymysql\connections.py", line 711, in connect |     raise exc | pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'sg-ro-mysql.internal.tokkalabs.com' ([Errno 11001] getaddrinfo failed)")
