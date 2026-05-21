@@ -1,14 +1,10 @@
 
 # UAT environment overrides.
-
-image:
-  tagPostfix: "-uat"
+# UAT shares the same image artifact as prod (built once on main).
+# Differences live below: ingress host and env-level config only.
 
 ingress:
   host: test-jp-trade-booking.internal.tokkalabs.com
-  authentication:
-    ssoOauth2Signin: https://oauth2.sso.intra.tokkalabs.com/oauth2/start?rd=https%3A%2F%2Ftest.trade-booking.apps.intra.tokkalabs.com%2F
 
 env:
   ENVIRONMENT: uat
-  APP_ORIGINS_HOSTS: "https://test.trade-booking.apps.intra.tokkalabs.com"

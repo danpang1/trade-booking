@@ -119,14 +119,18 @@ definitions:
     - step: &deployUat
         name: Deploy to UAT
         image: alpine/k8s:1.26.1
+        trigger: manual
         runs-on:
           - 'self.hosted'
           - 'linux'
           - 'jp.k8'
         script:
           - source setup_env.sh
-          # Pin this step to the UAT cluster regardless of which branch it runs on.
-          # KUBE_CLUSTER_NAME must match the context inside the kubeconfig used by prepare-kubectl.sh.
+          # Pin this step to UAT regardless of which branch it runs on.
+          #   ENVIRONMENT -> selects deploy_k8s-uat.sh + helm_values/base-uat.yaml.
+          #   KUBE_CLUSTER_NAME -> kubeconfig context used by prepare-kubectl.sh.
+          #   KUBE_CLUSTER_CONFIG -> base64 kubeconfig for the UAT cluster.
+          - export ENVIRONMENT="uat"
           - export KUBE_CLUSTER_NAME="test-rancher"
           - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_TEST_JP_CLUSTER"
           - bash ./.pipelines/deploy.sh
@@ -141,43 +145,48 @@ definitions:
           - 'jp.k8'
         script:
           - source setup_env.sh
+          # Pin this step to prod regardless of which branch it runs on.
+          - export ENVIRONMENT="prod"
+          - export KUBE_CLUSTER_NAME="jp-rancher"
+          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_JP_CLUSTER"
           # Use `dry-run` arg here to test pipeline wiring without touching the cluster.
           # Remove the arg once prod deploys are verified end-to-end.
           - bash ./.pipelines/deploy.sh dry-run
 
-    - step: &rollback
-        name: Rollback
+    - step: &rollbackUat
+        name: Rollback UAT
         image: alpine/k8s:1.26.1
+        trigger: manual
         runs-on:
           - 'self.hosted'
           - 'linux'
           - 'jp.k8'
         script:
           - source setup_env.sh
+          - export ENVIRONMENT="uat"
+          - export KUBE_CLUSTER_NAME="test-rancher"
+          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_TEST_JP_CLUSTER"
+          - bash ./.pipelines/rollback.sh
+
+    - step: &rollbackProd
+        name: Rollback production
+        image: alpine/k8s:1.26.1
+        trigger: manual
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          - export ENVIRONMENT="prod"
+          - export KUBE_CLUSTER_NAME="jp-rancher"
+          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_JP_CLUSTER"
           - bash ./.pipelines/rollback.sh
 
 
 pipelines:
 
   branches:
-
-    uat:
-      - step: *prepareEnv
-
-      - parallel:
-        - step: *pythonLint
-        - step: *helmLint
-        - step: *dockerTest
-
-      - parallel:
-        # Swap to *dockerBuildAndPublish once the ECR push is verified to work.
-        - step: *dockerBuild
-        - step: *helmBuild
-
-      - step: *deployUat
-      - step:
-          <<: *rollback
-          trigger: manual
 
     main:
       - step: *prepareEnv
@@ -189,13 +198,16 @@ pipelines:
         - step: *dockerTest
 
       - parallel:
+        # Swap to *dockerBuildAndPublish once the ECR push is verified to work.
         - step: *dockerBuild
         - step: *helmBuild
 
+      # Manual deploy + rollback pair per environment. UAT is verified first,
+      # then prod is promoted using the same image artifact.
+      - step: *deployUat
+      - step: *rollbackUat
       - step: *deployProd
-      - step:
-          <<: *rollback
-          trigger: manual
+      - step: *rollbackProd
 
   pull-requests:
     '**':
