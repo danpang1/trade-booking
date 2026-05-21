@@ -111,22 +111,29 @@ JSON_OUT.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 print(f"wrote {JSON_OUT}")
 
 # ── src/data/tokens.js (bundled seed) ────────────────────────
-lines = [
-    "// Auto-generated snapshot from MySQL reference_data.instrument_token_grouped.",
-    "// Bundled seed for cold-start / offline. Live data fetched at runtime",
-    "// from /tokens.json (refreshed hourly by server.js).",
-    "// Regenerate via: python scripts/snapshot_tokens.py",
-    "",
-    "export const TOKENS = [",
-]
-for t in tokens:
-    sym = t["symbol"].replace('\\', '\\\\').replace('"', '\\"')
-    name = t["name"].replace('\\', '\\\\').replace('"', '\\"')
-    lines.append(f'  {{ symbol: "{sym}", name: "{name}" }},')
-lines.append("];")
-lines.append("")
-lines.append("export const ASSET_SYMBOLS = TOKENS.map((t) => t.symbol);")
-lines.append("")
+# Only meaningful at dev/build time: Vite reads this into the bundle so
+# the picker has data on cold start. The production image doesn't ship
+# src/ (only dist/ + public/ + scripts/ + server.js), so skip cleanly
+# when the parent directory is absent — runtime fetches /tokens.json.
+if JS_OUT.parent.is_dir():
+    lines = [
+        "// Auto-generated snapshot from MySQL reference_data.instrument_token_grouped.",
+        "// Bundled seed for cold-start / offline. Live data fetched at runtime",
+        "// from /tokens.json (refreshed hourly by server.js).",
+        "// Regenerate via: python scripts/snapshot_tokens.py",
+        "",
+        "export const TOKENS = [",
+    ]
+    for t in tokens:
+        sym = t["symbol"].replace('\\', '\\\\').replace('"', '\\"')
+        name = t["name"].replace('\\', '\\\\').replace('"', '\\"')
+        lines.append(f'  {{ symbol: "{sym}", name: "{name}" }},')
+    lines.append("];")
+    lines.append("")
+    lines.append("export const ASSET_SYMBOLS = TOKENS.map((t) => t.symbol);")
+    lines.append("")
 
-JS_OUT.write_text("\n".join(lines), encoding="utf-8")
-print(f"wrote {JS_OUT}")
+    JS_OUT.write_text("\n".join(lines), encoding="utf-8")
+    print(f"wrote {JS_OUT}")
+else:
+    print(f"skip {JS_OUT} (parent dir absent — production runtime)")
