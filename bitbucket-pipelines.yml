@@ -198,8 +198,10 @@ pipelines:
         - step: *dockerTest
 
       - parallel:
-        # Swap to *dockerBuildAndPublish once the ECR push is verified to work.
-        - step: *dockerBuild
+        # Builds and pushes the image to ECR so the cluster can pull it.
+        # Requires AWS_ACCESS_KEY_ID_CI / AWS_SECRET_ACCESS_KEY_CI / AWS_ECR_URL_NEA
+        # repo variables to be configured in Bitbucket.
+        - step: *dockerBuildAndPublish
         - step: *helmBuild
 
       # Manual deploy + rollback pair per environment. UAT is verified first,
