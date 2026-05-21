@@ -25,6 +25,7 @@ import { NETWORKS } from "./data/networks.js";
 import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { api } from "./auth/api.js";
+import UserAdmin from "./admin/UserAdmin.jsx";
 
 // Live token list — initialized from the bundled snapshot, replaced after
 // fetch('/tokens.json') resolves (refreshed hourly by server.js). AssetPicker
@@ -6456,16 +6457,7 @@ export default function TradeBookingForm() {
   };
 
   if (appView === "users" && user?.role === "admin") {
-    return (
-      <div style={{ minHeight: "100vh", background: "#000", color: "#e5e5e5", padding: 32, fontFamily: "'JetBrains Mono', monospace" }}>
-        {/* Header with toggle back */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
-          <div style={{ fontSize: 13, letterSpacing: 2, color: "#7d7d7d" }}>USER ADMIN — placeholder for Task 8</div>
-          <button onClick={() => setAppView("booking")} style={{ background: "transparent", color: "#e5e5e5", border: "1px solid #1f1f1f", padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer" }}>BACK</button>
-        </div>
-        <div style={{ color: "#7d7d7d" }}>User-admin UI lands in Task 8.</div>
-      </div>
-    );
+    return <UserAdmin onClose={() => setAppView("booking")} />;
   }
 
   return (
