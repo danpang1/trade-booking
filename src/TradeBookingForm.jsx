@@ -6693,9 +6693,18 @@ export default function TradeBookingForm() {
 
           {/* ─── User profile footer (clock lives in the top banner) ─── */}
           {(() => {
-            const profile = USER_PROFILES[form.created_by] || {
-              name: form.created_by,
-              role: "User",
+            // Identity + role come from the session (useAuth), not from
+            // USER_PROFILES which is built from the MySQL refdata mirror
+            // and would miss any locally-created auth users.
+            const displayName = user?.username
+              ? user.username
+                  .split(".")
+                  .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+                  .join(" ")
+              : form.created_by || "—";
+            const profile = {
+              name: displayName,
+              role: user?.role || "user",
             };
             const initial = (profile.name || "?").charAt(0).toUpperCase();
             return (

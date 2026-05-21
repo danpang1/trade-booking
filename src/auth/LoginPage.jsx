@@ -9,7 +9,7 @@ const BB = {
   dim:    "#7d7d7d",
   panel:  "#0a0a0a",
   border: "#1f1f1f",
-  accent: "#FA8C16",
+  accent: "#1f63ea",  // tokka blue (sampled from logo; matches TradeBookingForm)
   red:    "#FF4D4F",
 };
 
@@ -53,7 +53,7 @@ export default function LoginPage({ banner }) {
         {banner && (
           <div style={{
             marginBottom: 16, padding: "8px 12px",
-            background: "#2a1a04", border: `1px solid ${BB.accent}`,
+            background: "#04162a", border: `1px solid ${BB.accent}`,
             color: BB.accent, fontSize: 12,
           }}>{banner}</div>
         )}

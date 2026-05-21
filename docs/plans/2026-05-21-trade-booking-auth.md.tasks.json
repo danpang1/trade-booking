@@ -4,65 +4,65 @@
     {
       "id": 1,
       "subject": "Task 1: Schema + DB helpers + pure-logic tests",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Create users + sessions tables and a shared Python helper module with pure-logic unit tests.\n\n**Files:** scripts/apply_schema_users.py, scripts/user_db.py, tests/test_user_db.py, requirements.txt\n\n**Verify:** `pytest tests/test_user_db.py -v`\n\n```json:metadata\n{\"files\":[\"scripts/apply_schema_users.py\",\"scripts/user_db.py\",\"tests/test_user_db.py\",\"requirements.txt\"],\"verifyCommand\":\"pytest tests/test_user_db.py -v\",\"acceptanceCriteria\":[\"idempotent schema\",\"tests pass\",\"column order matches spec\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: User CRUD scripts",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** user_create/list/update/delete scripts.\n\n**Files:** scripts/user_create.py, scripts/user_list.py, scripts/user_update.py, scripts/user_delete.py\n\n**Verify:** Six stdin smoke commands.\n\n```json:metadata\n{\"files\":[\"scripts/user_create.py\",\"scripts/user_list.py\",\"scripts/user_update.py\",\"scripts/user_delete.py\"],\"verifyCommand\":\"echo '{}' | python scripts/user_list.py\",\"acceptanceCriteria\":[\"TTY+stdin dual mode\",\"last-admin guard\",\"self-delete guard\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Auth scripts (login, logout, whoami)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Three auth scripts with sliding window.\n\n**Files:** scripts/auth_login.py, scripts/auth_logout.py, scripts/auth_whoami.py\n\n**Verify:** Stdin smoke incl. negative cases.\n\n```json:metadata\n{\"files\":[\"scripts/auth_login.py\",\"scripts/auth_logout.py\",\"scripts/auth_whoami.py\"],\"verifyCommand\":\"echo '{\\\"username\\\":\\\"peter\\\",\\\"password\\\":\\\"X\\\"}' | python scripts/auth_login.py\",\"acceptanceCriteria\":[\"no user enumeration\",\"sliding window\",\"idempotent logout\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Node middleware + /api/auth routes",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** Cookie parsing, auth gate, /api/auth/{login,logout,me}.\n\n**Files:** server.js\n\n**Verify:** curl exercises.\n\n```json:metadata\n{\"files\":[\"server.js\"],\"verifyCommand\":\"curl -i http://localhost:5181/api/cashflow/recent\",\"acceptanceCriteria\":[\"gate works\",\"cookie set/cleared\",\"CORS with credentials\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: /api/users routes + user_id injection",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 4],
       "description": "**Goal:** Admin CRUD endpoints + force-stamp user_id from session.\n\n**Files:** server.js\n\n**Verify:** curl + DB check.\n\n```json:metadata\n{\"files\":[\"server.js\"],\"verifyCommand\":\"curl -i -b cookies.txt http://localhost:5181/api/users\",\"acceptanceCriteria\":[\"admin gate\",\"last-admin guard\",\"user_id unforgeability\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: Frontend — auth shell",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** Conditional render of LoginPage vs existing form.\n\n**Files:** src/main.jsx, src/App.jsx, src/auth/AuthContext.jsx, src/auth/api.js, src/auth/LoginPage.jsx\n\n**Verify:** Browser smoke.\n\n```json:metadata\n{\"files\":[\"src/main.jsx\",\"src/App.jsx\",\"src/auth/AuthContext.jsx\",\"src/auth/api.js\",\"src/auth/LoginPage.jsx\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"login renders\",\"session persists across reload\",\"logout works\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: TradeBookingForm.jsx edits",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6],
       "description": "**Goal:** Wire form to session; remove user picker; header gains user/logout/users link.\n\n**Files:** src/TradeBookingForm.jsx\n\n**Verify:** Browser + DB check.\n\n```json:metadata\n{\"files\":[\"src/TradeBookingForm.jsx\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"no user picker\",\"header controls present\",\"DB user_id matches session\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: UserAdmin + UserEditModal",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5, 7],
       "description": "**Goal:** Table + modal CRUD UI for admins.\n\n**Files:** src/admin/UserAdmin.jsx, src/admin/UserEditModal.jsx\n\n**Verify:** Full browser CRUD smoke.\n\n```json:metadata\n{\"files\":[\"src/admin/UserAdmin.jsx\",\"src/admin/UserEditModal.jsx\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"CRUD flow works\",\"last-admin dimmed\",\"errors inline\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Smoke script + README",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** Repeatable E2E probe + bootstrap docs.\n\n**Files:** scripts/smoke_auth.py, README.md\n\n**Verify:** `python scripts/smoke_auth.py` → PASS.\n\n```json:metadata\n{\"files\":[\"scripts/smoke_auth.py\",\"README.md\"],\"verifyCommand\":\"python scripts/smoke_auth.py --username peter --password $PW\",\"acceptanceCriteria\":[\"smoke passes\",\"README documents bootstrap\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-21T00:00:00Z"
+  "lastUpdated": "2026-05-21T13:20:00Z"
 }
