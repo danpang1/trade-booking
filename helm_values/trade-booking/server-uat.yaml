@@ -3,3 +3,5 @@
 
 ingress:
   host: test-jp-trade-booking.internal.tokkalabs.com
+  authentication:
+    enabled: false
