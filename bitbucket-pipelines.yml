@@ -116,8 +116,8 @@ definitions:
           - source setup_env.sh
           - bash ./scripts/package_helm.sh
 
-    - step: &deploy
-        name: Deploy using helm
+    - step: &deployUat
+        name: Deploy to UAT
         image: alpine/k8s:1.26.1
         runs-on:
           - 'self.hosted'
@@ -125,8 +125,24 @@ definitions:
           - 'jp.k8'
         script:
           - source setup_env.sh
+          # Pin this step to the UAT cluster regardless of which branch it runs on.
+          # KUBE_CLUSTER_NAME must match the context inside the kubeconfig used by prepare-kubectl.sh.
+          - export KUBE_CLUSTER_NAME="test-rancher"
+          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_TEST_JP_CLUSTER"
+          - bash ./.pipelines/deploy.sh
+
+    - step: &deployProd
+        name: Deploy to production
+        image: alpine/k8s:1.26.1
+        trigger: manual
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
           # Use `dry-run` arg here to test pipeline wiring without touching the cluster.
-          # Remove the arg once UAT deploys are working end-to-end.
+          # Remove the arg once prod deploys are verified end-to-end.
           - bash ./.pipelines/deploy.sh dry-run
 
     - step: &rollback
@@ -158,9 +174,7 @@ pipelines:
         - step: *dockerBuild
         - step: *helmBuild
 
-      - step:
-          <<: *deploy
-          deployment: staging
+      - step: *deployUat
       - step:
           <<: *rollback
           trigger: manual
@@ -178,10 +192,7 @@ pipelines:
         - step: *dockerBuild
         - step: *helmBuild
 
-      - step:
-          <<: *deploy
-          deployment: production
-          trigger: manual
+      - step: *deployProd
       - step:
           <<: *rollback
           trigger: manual

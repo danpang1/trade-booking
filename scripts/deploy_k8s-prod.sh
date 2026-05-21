@@ -28,7 +28,6 @@ log "Executing `basename "$0"`."
 #    * ./helm_values/<application>/<instance>.yaml
 #    * ./helm_values/<application>/<instance>-<environment>.yaml
 #
-# Remove this. This is an example...
-./scripts/run_helm.sh example-namespace example-app example-instance $env $mode
+./scripts/run_helm.sh middle-office trade-booking trade-booking $env $mode
 
 log "Successfully finished."
