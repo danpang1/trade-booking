@@ -1,4 +1,4 @@
 # Runtime Python deps. Pinned ranges; exact versions live in requirements-freeze.txt
 # (used by the Docker build for reproducibility).
 psycopg2-binary>=2.9,<3       # Postgres driver. -binary bundles libpq so no apt deps.
-pymysql>=1.4,<2               # MySQL driver. Pure Python, no native build.
+pymysql>=1.1,<2               # MySQL driver. Pure Python, no native build.
