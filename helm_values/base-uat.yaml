@@ -1,11 +1,11 @@
----
+
 # UAT environment overrides.
 
 image:
   tagPostfix: "-uat"
 
 ingress:
-  host: test.trade-booking.apps.intra.tokkalabs.com
+  host: test-jp-trade-booking.internal.tokkalabs.com
   authentication:
     ssoOauth2Signin: https://oauth2.sso.intra.tokkalabs.com/oauth2/start?rd=https%3A%2F%2Ftest.trade-booking.apps.intra.tokkalabs.com%2F
 

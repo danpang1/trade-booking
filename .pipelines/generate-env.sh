@@ -46,8 +46,8 @@ if [[ "$BITBUCKET_BRANCH" == "master" || "$BITBUCKET_BRANCH" == "main" ]]; then
 
   # Single cluster setup
   ENVIRONMENT="prod"
-  KUBE_CLUSTER_NAME="jp-rancher"
-  KUBE_CLUSTER_CONFIG=$RANCHER_KUBE_CONFIG_JP_CLUSTER
+  KUBE_CLUSTER_NAME="sg-rancher"
+  KUBE_CLUSTER_CONFIG=$RANCHER_KUBE_CONFIG_SG_CLUSTER
 
   # For multi cluster deployment use the following setup.
   # ENVIRONMENT=""
