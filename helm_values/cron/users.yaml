@@ -1,0 +1,13 @@
+---
+# Trade-booking refdata sync — users.
+# Release: cron-users-<env>. Renders one CronJob, no Deployment.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: users
+    enabled: true
+    schedule: "25 * * * *"
+    command: ["python", "/opt/app/scripts/sync_users.py"]
+    args: []

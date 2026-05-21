@@ -28,38 +28,38 @@ JSON_OUT = ROOT / "public" / "tokens.json"
 
 
 def _load_credentials() -> dict[str, str]:
-    """Env vars (TOKEN_PRICE_*) take precedence; .env file parsed as fallback."""
+    """Read t2x-ro-mysql creds. Env vars (T2X_RO_MYSQL_*) take precedence;
+    .env file parsed as fallback. Uses the lookback-window parser shared
+    with sync_counterparties/portfolios/users (the `# t2x-ro-mysql`
+    marker)."""
     env_creds = {
-        k: os.environ[f"TOKEN_PRICE_{k.upper()}"]
+        k: os.environ[f"T2X_RO_MYSQL_{k.upper()}"]
         for k in ("host", "username", "password")
-        if f"TOKEN_PRICE_{k.upper()}" in os.environ
+        if f"T2X_RO_MYSQL_{k.upper()}" in os.environ
     }
     if all(k in env_creds for k in ("host", "username", "password")):
         return env_creds
 
     if not ENV_PATH.exists():
         raise FileNotFoundError(
-            f".env not found at {ENV_PATH} and TOKEN_PRICE_* env vars are incomplete"
+            f".env not found at {ENV_PATH} and T2X_RO_MYSQL_* env vars are incomplete"
         )
+
+    lines = ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
     creds: dict[str, str] = {}
-    in_block = False
-    for line in ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
-        s = line.strip()
-        if "MYSQL TOKEN PRICE DB" in s.upper():
-            in_block = True
-            continue
-        if not in_block:
-            continue
-        if not s or s.startswith("#"):
-            if s.startswith("#") and "MYSQL" not in s.upper():
-                break
-            continue
-        if ":" in s:
-            k, _, v = s.partition(":")
-            creds[k.strip().lower()] = v.strip()
+    for i, ln in enumerate(lines):
+        if "t2x-ro-mysql" in ln.lower():
+            for j in range(max(0, i - 5), min(len(lines), i + 3)):
+                s = lines[j].strip()
+                if not s or s.startswith("#"):
+                    continue
+                if ":" in s:
+                    k, _, v = s.partition(":")
+                    creds[k.strip().lower()] = v.strip()
+            break
     missing = [k for k in ("username", "password", "host") if k not in creds]
     if missing:
-        raise RuntimeError(f"MySQL creds missing keys: {missing}")
+        raise RuntimeError(f"t2x-ro-mysql creds missing keys: {missing}")
     return creds
 
 

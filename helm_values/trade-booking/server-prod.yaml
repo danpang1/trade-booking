@@ -1,0 +1,8 @@
+---
+# Trade-booking server — production overrides.
+
+deployment:
+  replicas: 2  # HA pair in prod
+
+ingress:
+  host: sg-trade-booking.internal.tokkalabs.com
