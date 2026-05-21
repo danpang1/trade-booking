@@ -66,26 +66,6 @@ env_secrets:
   MO_DB_PASSWORD:
     name: trade-booking-mo-db
     key: password
-  # MySQL read-only — used by sync_counterparties/portfolios/users.
-  SG_RO_MYSQL_HOST:
-    name: trade-booking-sg-ro-mysql
-    key: host
-  SG_RO_MYSQL_USERNAME:
-    name: trade-booking-sg-ro-mysql
-    key: username
-  SG_RO_MYSQL_PASSWORD:
-    name: trade-booking-sg-ro-mysql
-    key: password
-  # MySQL token-price DB — used by snapshot_tokens.py.
-  TOKEN_PRICE_HOST:
-    name: trade-booking-token-price
-    key: host
-  TOKEN_PRICE_USERNAME:
-    name: trade-booking-token-price
-    key: username
-  TOKEN_PRICE_PASSWORD:
-    name: trade-booking-token-price
-    key: password
 
 resources:
   requests:
