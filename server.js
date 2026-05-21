@@ -36,6 +36,11 @@ const AUTH_LOGIN_SCRIPT   = resolve(__dirname, "scripts", "auth_login.py");
 const AUTH_LOGOUT_SCRIPT  = resolve(__dirname, "scripts", "auth_logout.py");
 const AUTH_WHOAMI_SCRIPT  = resolve(__dirname, "scripts", "auth_whoami.py");
 
+const USER_CREATE_SCRIPT = resolve(__dirname, "scripts", "user_create.py");
+const USER_LIST_SCRIPT   = resolve(__dirname, "scripts", "user_list.py");
+const USER_UPDATE_SCRIPT = resolve(__dirname, "scripts", "user_update.py");
+const USER_DELETE_SCRIPT = resolve(__dirname, "scripts", "user_delete.py");
+
 const SESSION_COOKIE = "sid";
 const SESSION_MAX_AGE_SEC = 8 * 60 * 60;
 
@@ -264,6 +269,31 @@ async function resolveSession(req) {
   return { sid, ...result.json.user };
 }
 
+function requireAdmin(req, res) {
+  if (req.sessionUser && req.sessionUser.role === "admin") return true;
+  res.statusCode = 403;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ ok: false, error: "admin required" }));
+  return false;
+}
+
+// Force-stamp user_id from session onto a body string before passing to Python.
+// Accepts both raw-payload and {payload:{...}, attachments:[...]} shapes
+// (cashflow_insert.py:88-99 handles both).
+function stampUserId(rawBody, username) {
+  let payload;
+  try { payload = JSON.parse(rawBody || "{}"); }
+  catch { return rawBody; }  // let Python report the bad-JSON error
+  if (payload && typeof payload === "object") {
+    if (payload.payload && typeof payload.payload === "object") {
+      payload.payload.user_id = username;
+    } else {
+      payload.user_id = username;
+    }
+  }
+  return JSON.stringify(payload);
+}
+
 // ── HTTP server: serves /tokens.json (for non-Vite hosts) + /api/health ──
 const server = createServer(async (req, res) => {
   // CORS for the Vite dev server on a different port.
@@ -368,6 +398,60 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ── Users: list ───────────────────────────────────────────────────
+  if (req.url === "/api/users" && req.method === "GET") {
+    if (!requireAdmin(req, res)) return;
+    const result = await spawnPython(USER_LIST_SCRIPT, "{}");
+    res.statusCode = httpStatusFor(result.code, result.json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Users: create ────────────────────────────────────────────────
+  if (req.url === "/api/users" && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const body = await readBody(req);
+    let payload;
+    try { payload = JSON.parse(body || "{}"); }
+    catch { payload = {}; }
+    payload._acting_user = req.sessionUser.username;
+    const result = await spawnPython(USER_CREATE_SCRIPT, JSON.stringify(payload));
+    res.statusCode = httpStatusFor(result.code, result.json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Users: update / delete (path /api/users/:id) ──────────────────
+  const userIdMatch = (req.url || "").match(/^\/api\/users\/(\d+)$/);
+  if (userIdMatch && req.method === "PATCH") {
+    if (!requireAdmin(req, res)) return;
+    const body = await readBody(req);
+    let payload;
+    try { payload = JSON.parse(body || "{}"); }
+    catch { payload = {}; }
+    payload.id = parseInt(userIdMatch[1], 10);
+    payload._acting_user = req.sessionUser.username;
+    const result = await spawnPython(USER_UPDATE_SCRIPT, JSON.stringify(payload));
+    res.statusCode = httpStatusFor(result.code, result.json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+  if (userIdMatch && req.method === "DELETE") {
+    if (!requireAdmin(req, res)) return;
+    const payload = {
+      id: parseInt(userIdMatch[1], 10),
+      _acting_user_id: req.sessionUser.id,
+    };
+    const result = await spawnPython(USER_DELETE_SCRIPT, JSON.stringify(payload));
+    res.statusCode = httpStatusFor(result.code, result.json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
   // Static serve of any refdata JSON: /refdata/portfolios.json, etc.
   // Only matches known keys (REFDATA_SOURCES) so we don't accidentally
   // expose other files under public/refdata/.
@@ -403,8 +487,9 @@ const server = createServer(async (req, res) => {
   // POST /api/cashflow/insert
   if (req.url === "/api/cashflow/insert" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(CASHFLOW_INSERT_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(CASHFLOW_INSERT_SCRIPT, stampedBody);
     const dealRefs = (json && json.rows || []).map((r) => r.deal_ref).join(",");
     console.log(`[cashflow] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
@@ -417,8 +502,9 @@ const server = createServer(async (req, res) => {
   // POST /api/cashflow/amend
   if (req.url === "/api/cashflow/amend" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_SCRIPT, stampedBody);
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[cashflow] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
@@ -470,8 +556,9 @@ const server = createServer(async (req, res) => {
   // Must come BEFORE the bare /api/loan/* routes so it doesn't get matched as a deal_ref.
   if (req.url === "/api/loan/schedule-comment" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT, stampedBody);
     const ref = json && json.row && json.row.loan_deal_ref;
     console.log(`[loan] schedule-comment ${ref || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
@@ -484,8 +571,9 @@ const server = createServer(async (req, res) => {
   // POST /api/loan/insert
   if (req.url === "/api/loan/insert" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_INSERT_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(LOAN_INSERT_SCRIPT, stampedBody);
     const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
     console.log(`[loan] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
@@ -498,8 +586,9 @@ const server = createServer(async (req, res) => {
   // POST /api/loan/amend
   if (req.url === "/api/loan/amend" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_AMEND_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(LOAN_AMEND_SCRIPT, stampedBody);
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[loan] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
@@ -547,8 +636,9 @@ const server = createServer(async (req, res) => {
   // POST /api/spot/insert
   if (req.url === "/api/spot/insert" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(SPOT_INSERT_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(SPOT_INSERT_SCRIPT, stampedBody);
     const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
     console.log(`[spot] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
@@ -561,8 +651,9 @@ const server = createServer(async (req, res) => {
   // POST /api/spot/amend
   if (req.url === "/api/spot/amend" && req.method === "POST") {
     const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(SPOT_AMEND_SCRIPT, body);
+    const { code, json, stderr } = await spawnPython(SPOT_AMEND_SCRIPT, stampedBody);
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[spot] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
