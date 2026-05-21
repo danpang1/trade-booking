@@ -3,7 +3,7 @@
 # Environment-specific overrides live in base-uat.yaml / base-prod.yaml.
 
 image:
-  repository: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/templates/trade-booking
+  repository: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/middle-office/trade-booking
 
 # Run the Node API as the main process. Python scripts are invoked
 # by server.js via child_process.spawn for API endpoints.
