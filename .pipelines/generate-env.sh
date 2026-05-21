@@ -39,8 +39,13 @@ VERSION_BASE=$(find helm -type f -name Chart.yaml  | xargs grep -E "^appVersion.
 if [[ "$BITBUCKET_BRANCH" == "master" || "$BITBUCKET_BRANCH" == "main" ]]; then
   APP_NAME="${APP_NAME}-prod"
 
-  VERSION=$VERSION_BASE
-  VERSION_PYPI=$VERSION_BASE
+  # Suffix the build number so each main-branch push gets a unique ECR
+  # tag (the registry has tag immutability — re-pushing 0.0.N would fail).
+  # BITBUCKET_BUILD_NUMBER increments by 1 per pipeline run repo-wide, so
+  # every downstream step in the same pipeline gets the same VERSION via
+  # the prepareEnv artifact, while subsequent runs get fresh tags.
+  VERSION="$VERSION_BASE-$BITBUCKET_BUILD_NUMBER"
+  VERSION_PYPI="$VERSION_BASE.post$BITBUCKET_BUILD_NUMBER"
 
   # Single cluster setup
   ENVIRONMENT="prod"
