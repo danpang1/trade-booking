@@ -110,7 +110,7 @@ async function fetchRefdataOnce() {
 // Same token names as before so downstream usage stays uniform.
 // ═════════════════════════════════════════════════════════════
 const BB = {
-  bg: "#f2efe8",           // bone (canvas)
+  bg: "#ffffff",           // white (canvas)
   surface: "#f8f6f1",      // chalk (panels)
   surface2: "#f8f6f1",     // chalk (inputs)
   border: "#d9d4c7",       // hair (hairline borders)
