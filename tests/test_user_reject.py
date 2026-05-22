@@ -19,20 +19,35 @@ class FakeCursor:
         self.calls = []
         self.rowcount = delete_rowcount
         self._existing_status = existing_status
+
     def execute(self, sql, params=None):
         self.calls.append((sql, params))
+
     def fetchone(self):
         return (self._existing_status,) if self._existing_status else None
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
 
 
 class FakeConn:
-    def __init__(self, cur): self._c = cur
-    def cursor(self): return self._c
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
-    def close(self): pass
+    def __init__(self, cur):
+        self._c = cur
+
+    def cursor(self):
+        return self._c
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def close(self):
+        pass
 
 
 def _run(payload, delete_rowcount, existing_status=None):

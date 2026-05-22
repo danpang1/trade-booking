@@ -87,7 +87,8 @@ def main() -> int:
         assert s == 403, f"/api/users as non-admin: expected 403, got {s} {body}"
 
     if args.register:
-        import random, string
+        import random
+        import string
         if role != "admin":
             print("FAIL: --register requires an admin account; passed user is not admin",
                   file=sys.stderr)
@@ -95,7 +96,7 @@ def main() -> int:
 
         uname = "smoke_reg_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         email = f"{uname}@smoke.test"
-        pw    = "Secret-12345"
+        pw = "Secret-12345"
         admin_jar = jar  # existing admin session
 
         # 4a. Register fresh user (public endpoint, separate cookie jar)

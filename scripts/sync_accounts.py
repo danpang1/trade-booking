@@ -31,8 +31,8 @@ OUT = REPO / "public" / "refdata" / "accounts.json"
 # care which table a row came from.
 TABLES = [
     ("exchange", "account_exchange", "exchangeName"),
-    ("wallet",   "account_wallet",   "walletType"),
-    ("broker",   "account_broker",   "brokerName"),
+    ("wallet", "account_wallet", "walletType"),
+    ("broker", "account_broker", "brokerName"),
 ]
 
 

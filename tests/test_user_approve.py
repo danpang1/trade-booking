@@ -19,20 +19,35 @@ class FakeCursor:
         self.calls = []
         self.rowcount = rowcount
         self.description = None
+
     def execute(self, sql, params=None):
         self.calls.append((sql, params))
+
     def fetchone(self):
         return None
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
 
 
 class FakeConn:
-    def __init__(self, cur): self._c = cur
-    def cursor(self): return self._c
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
-    def close(self): pass
+    def __init__(self, cur):
+        self._c = cur
+
+    def cursor(self):
+        return self._c
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def close(self):
+        pass
 
 
 def _run(payload, rowcount):
@@ -41,8 +56,8 @@ def _run(payload, rowcount):
     # For non-zero rowcount path, the script then SELECTs the row — give it back something
     if rowcount > 0:
         cur.fetchone = lambda: (1, "u", "u@x.z", "user", "active", "2026-05-22T00:00:00+00:00", "admin1")
-        cur.description = [type("D",(),{"name": n})() for n in
-                           ("id","username","email","role","status","approved_at","approved_by")]
+        cur.description = [type("D", (), {"name": n})() for n in
+                           ("id", "username", "email", "role", "status", "approved_at", "approved_by")]
     fake_in = io.BytesIO(json.dumps(payload).encode("utf-8"))
     fake_in.buffer = fake_in
     out = io.StringIO()

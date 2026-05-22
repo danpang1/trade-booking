@@ -29,7 +29,7 @@ def main() -> int:
 
     try:
         username = user_db.validate_username(payload.get("username", ""))
-        email    = user_db.validate_email(payload.get("email", ""))
+        email = user_db.validate_email(payload.get("email", ""))
         password = user_db.validate_password(payload.get("password", ""))
     except user_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))

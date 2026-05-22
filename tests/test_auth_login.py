@@ -32,18 +32,29 @@ class FakeCursor:
     def fetchone(self):
         return self._user_row
 
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
 
 
 class FakeConn:
     def __init__(self, cursor):
         self._cur = cursor
         self.closed = False
-    def cursor(self): return self._cur
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
-    def close(self): self.closed = True
+
+    def cursor(self):
+        return self._cur
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def close(self):
+        self.closed = True
 
 
 def _run(stdin_payload, user_row):
