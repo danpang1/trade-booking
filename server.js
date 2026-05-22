@@ -201,6 +201,19 @@ function spawnPython(scriptPath, stdinJson) {
       catch (e) {
         parsed = { ok: false, error: "non-JSON output from script", detail: stdout.slice(0, 500) };
       }
+      // Surface Python failures in Grafana. We deliberately don't log
+      // stdin (passwords on /api/auth/login, PII on booking POSTs), but
+      // stderr is safe — Python tracebacks and our own logging only.
+      if (code !== 0) {
+        process.stdout.write(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          msg: "python",
+          script: scriptPath.split(/[\\/]/).pop(),
+          exit_code: code,
+          stderr_tail: stderr.slice(-500),
+        }) + "\n");
+      }
       resolveP({ code, json: parsed, stderr });
     });
     proc.stdin.end(stdinJson);
