@@ -37,10 +37,27 @@ function Routed() {
   return <TradeBookingForm />;
 }
 
+// Thin fixed footer rendered above every route. pointerEvents:none so it
+// never blocks clicks; muted color so it doesn't pull focus from content.
+function Footer() {
+  return (
+    <div style={{
+      position: "fixed", bottom: 4, left: 0, right: 0,
+      textAlign: "center", fontSize: 9, letterSpacing: 0.5,
+      color: "#5d5d5d",
+      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      pointerEvents: "none", zIndex: 1,
+    }}>
+      © 2026 Tokka Labs - Middle Office.
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <Routed />
+      <Footer />
     </AuthProvider>
   );
 }
