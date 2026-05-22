@@ -6043,7 +6043,14 @@ export default function TradeBookingForm() {
       value_date: row.value_date,
       network: row.network || "",
       tx_hash: row.txid_reference || "",
-      created_by: row.user_id,
+      // Don't copy row.user_id into created_by — the form's created_by
+      // represents WHO IS DOING THIS ACTION NOW (the amender), not the
+      // original author. Copying the original leaks the prior author's
+      // identity into the JSON preview and submit payload; server.js
+      // stampUserId() rewrites it back to the session user before
+      // persistence, so DB rows are still correct, but the UI preview
+      // was confusing. Leaving created_by untouched preserves whatever
+      // the session-user useEffect set it to.
       status: row.status,
       notes: row.comment || "",
       // Pre-fill the loan picker from joined mappings (server attaches
@@ -6095,7 +6102,8 @@ export default function TradeBookingForm() {
       // loan_term_days is derived in the form; clear so the open-term
       // input shows blank unless the user re-enters a term.
       loan_term_days: "",
-      created_by: row.user_id,
+      // created_by intentionally NOT copied from row.user_id; see the
+      // matching note in payloadToFormState (cashflow).
       status: row.status,
       notes: row.comment || "",
     };
@@ -6134,7 +6142,8 @@ export default function TradeBookingForm() {
       trade_date: row.trade_date,
       value_date: row.value_date,
       tx_hash: row.txid_reference || "",
-      created_by: row.user_id,
+      // created_by intentionally NOT copied from row.user_id; see the
+      // matching note in payloadToFormState (cashflow).
       status: row.status,
       notes: row.comment || "",
     };
