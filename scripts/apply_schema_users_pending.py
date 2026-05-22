@@ -17,11 +17,15 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS approved_by VARCHAR(64);
 
+-- Postgres has no `ADD CONSTRAINT IF NOT EXISTS`; DROP-then-ADD inside one
+-- transaction is the idiomatic idempotent pattern. Runs inside `with conn:`
+-- so the constraint is never observable-missing to concurrent readers.
 ALTER TABLE users
   DROP CONSTRAINT IF EXISTS users_status_check;
 ALTER TABLE users
   ADD  CONSTRAINT users_status_check CHECK (status IN ('pending','active'));
 
+-- DROP NOT NULL is itself idempotent (no-op if already nullable).
 ALTER TABLE users ALTER COLUMN role DROP NOT NULL;
 
 ALTER TABLE users
