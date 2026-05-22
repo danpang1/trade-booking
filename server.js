@@ -37,10 +37,11 @@ const AUTH_LOGOUT_SCRIPT   = resolve(__dirname, "scripts", "auth_logout.py");
 const AUTH_WHOAMI_SCRIPT   = resolve(__dirname, "scripts", "auth_whoami.py");
 const AUTH_REGISTER_SCRIPT = resolve(__dirname, "scripts", "auth_register.py");
 
-const USER_CREATE_SCRIPT = resolve(__dirname, "scripts", "user_create.py");
-const USER_LIST_SCRIPT   = resolve(__dirname, "scripts", "user_list.py");
-const USER_UPDATE_SCRIPT = resolve(__dirname, "scripts", "user_update.py");
-const USER_DELETE_SCRIPT = resolve(__dirname, "scripts", "user_delete.py");
+const USER_CREATE_SCRIPT  = resolve(__dirname, "scripts", "user_create.py");
+const USER_LIST_SCRIPT    = resolve(__dirname, "scripts", "user_list.py");
+const USER_UPDATE_SCRIPT  = resolve(__dirname, "scripts", "user_update.py");
+const USER_DELETE_SCRIPT  = resolve(__dirname, "scripts", "user_delete.py");
+const USER_APPROVE_SCRIPT = resolve(__dirname, "scripts", "user_approve.py");
 
 const SESSION_COOKIE = "sid";
 const SESSION_MAX_AGE_SEC = 8 * 60 * 60;
@@ -503,6 +504,23 @@ const server = createServer(async (req, res) => {
     };
     const result = await spawnPython(USER_DELETE_SCRIPT, JSON.stringify(payload));
     res.statusCode = httpStatusFor(result.code, result.json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Admin: approve pending user ─────────────────────────────────
+  const approveMatch = req.url && req.url.match(/^\/api\/users\/(\d+)\/approve$/);
+  if (approveMatch && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const userId = parseInt(approveMatch[1], 10);
+    const body = await readBody(req);
+    let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+    parsed.user_id = userId;
+    parsed._acting_user = req.sessionUser.username;
+    const result = await spawnPython(USER_APPROVE_SCRIPT, JSON.stringify(parsed));
+    const status = httpStatusFor(result.code, result.json);
+    res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(result.json));
     return;
