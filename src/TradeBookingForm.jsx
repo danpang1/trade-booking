@@ -4121,23 +4121,11 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
 
   return (
     <div className="px-5 pt-4 pb-8">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="mb-3">
         <div
           className="text-[22px]"
           style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
         >Deal Enquiry</div>
-        <button
-          type="button"
-          onClick={fetchRecent}
-          disabled={loading}
-          className="px-3 py-1 text-[12px]"
-          style={{
-            background: BB?.surface || "#f6f3ec",
-            border: `1px solid ${BB?.border || "#d9d4c7"}`,
-            color: BB?.text || "#1f1f1f",
-            opacity: loading ? 0.5 : 1,
-          }}
-        >{loading ? "Loading…" : "↻ Refresh"}{lastFetchedAt ? ` · ${lastFetchedAt.toLocaleTimeString()}` : ""}</button>
       </div>
 
       {error && (
@@ -4147,204 +4135,277 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters — grid layout: 4 × auto-fill columns at minmax 280px.
-          Date filters span 2 cols so the from/to pair breathes; single-
-          input filters span 1 col. Status chip row pins to a 32px height
-          so it visually aligns with the inputs in its row. ─── */}
+      {/* ─── Filters — pure-white sectioned card ──────────────────────
+          Three horizontal sections (Date Range / Filter By / Search)
+          divided by hairlines for clear visual order. White surface,
+          quiet small-caps section labels. ─── */}
       <div
         className="mb-3"
         style={{
-          background: BB?.surface || "#f6f3ec",
-          border: `1px solid ${BB?.border || "#d9d4c7"}`,
-          padding: "12px 16px 14px",
+          background: "#ffffff",
+          border: "1px solid #e9e7e2",
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {/* Header row — title + Clear */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[10px] tracking-[0.22em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            Filters
+        {/* ── Header strip — section label + active indicator + clear ── */}
+        <div
+          className="flex items-center justify-between"
+          style={{ padding: "10px 16px 9px", borderBottom: "1px solid #f3f1ec" }}
+        >
+          <div className="flex items-baseline gap-2.5">
+            <span
+              className="text-[10px] tracking-[0.28em] uppercase"
+              style={{ color: "#8a857a", fontWeight: 500 }}
+            >Filters</span>
+            {filtersActive && (
+              <span
+                className="text-[9px] tracking-[0.22em] uppercase"
+                style={{ color: "#b45309" }}
+              >· Active</span>
+            )}
           </div>
           <button
             type="button"
             onClick={clearFilters}
             disabled={!filtersActive}
-            className="text-[10px] tracking-[0.22em] uppercase px-3 py-1.5 transition-colors"
+            className="text-[10px] tracking-[0.22em] uppercase transition-colors"
             style={{
               background: "transparent",
-              color: filtersActive ? (BB?.text || "#1f1f1f") : (BB?.faint || "#a5a097"),
-              border: `1px solid ${filtersActive ? (BB?.border || "#d9d4c7") : "#ece7dd"}`,
+              color: filtersActive ? "#1f1f1f" : "#cdc8bb",
+              border: "none",
+              padding: "4px 0",
               cursor: filtersActive ? "pointer" : "not-allowed",
-              height: 28,
             }}
-          >× Clear</button>
+          >× Clear all</button>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            columnGap: 16,
-            rowGap: 14,
-            alignItems: "start",
-          }}
-        >
-          {/* Trade / Value Date · From → To — full datetime filtering.
-              DateTimePicker24 emits "YYYY-MM-DDTHH:MM:SS"; row trade_date
-              is truncated to 19 chars in the filter logic so direct
-              string comparison works (ISO ordering preserves chronology).
-              Picking just a date defaults time to 00:00:00; set "to"
-              time to 23:59:59 if you want the inclusive end-of-day. */}
-          {[
-            { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-            { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
-          ].map((f) => (
-            <div
-              key={f.fromKey}
-              className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
-              style={{ color: BB?.mute || "#666", gridColumn: "span 2" }}
-            >
-              <span>{f.label}</span>
-              <div className="flex items-center gap-2">
-                <DateTimePicker24
-                  value={filters[f.fromKey]}
-                  onChange={(v) => setFilter(f.fromKey, v)}
-                />
-                <span style={{ color: BB?.mute || "#666" }}>→</span>
-                <DateTimePicker24
-                  value={filters[f.toKey]}
-                  onChange={(v) => setFilter(f.toKey, v)}
-                />
+        {/* ── Section 1 — Date Range ── */}
+        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
+          <div
+            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
+            style={{ color: "#a39e90", fontWeight: 500 }}
+          >Date Range</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              columnGap: 24,
+              rowGap: 12,
+            }}
+          >
+            {[
+              { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+              { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
+            ].map((f) => (
+              <div
+                key={f.fromKey}
+                className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: "#6a665c" }}
+              >
+                <span>{f.label}</span>
+                <div className="flex items-center gap-2">
+                  <DateTimePicker24 value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
+                  <span style={{ color: "#a39e90" }}>→</span>
+                  <DateTimePicker24 value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
 
-          {/* Portfolio — span 1. Picker + chip stack. */}
-          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            <span>Portfolio</span>
-            <Select
-              value=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                if (filters.portfolios.includes(v)) return;
-                setFilter("portfolios", [...filters.portfolios, v]);
-              }}
-            >
-              <option value="">
-                {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
-              </option>
-              {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
-                <option key={p.number} value={String(p.number)}>
-                  {p.number} — {p.name}
+        {/* ── Section 2 — Filter By ── */}
+        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
+          <div
+            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
+            style={{ color: "#a39e90", fontWeight: 500 }}
+          >Filter By</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              columnGap: 24,
+              rowGap: 12,
+              alignItems: "start",
+            }}
+          >
+            {/* Portfolio — picker + refined white chip stack */}
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Portfolio</span>
+              <Select
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  if (filters.portfolios.includes(v)) return;
+                  setFilter("portfolios", [...filters.portfolios, v]);
+                }}
+              >
+                <option value="">
+                  {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
                 </option>
-              ))}
-            </Select>
-            {filters.portfolios.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {filters.portfolios.map((num) => {
-                  const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
-                  const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
-                  return (
-                    <span
-                      key={num}
-                      className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
-                      style={{
-                        background: "#ece7dd",
-                        color: BB?.text || "#0d0d0d",
-                        border: `1px solid ${BB?.border || "#d9d4c7"}`,
-                        textTransform: "none",
-                      }}
-                      title={label}
-                    >
-                      {label}
-                      <button
-                        type="button"
-                        aria-label={`Remove ${num}`}
-                        onClick={() =>
-                          setFilter("portfolios", filters.portfolios.filter((x) => x !== num))
-                        }
+                {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
+                  <option key={p.number} value={String(p.number)}>
+                    {p.number} — {p.name}
+                  </option>
+                ))}
+              </Select>
+              {filters.portfolios.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {filters.portfolios.map((num) => {
+                    const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                    const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                    return (
+                      <span
+                        key={num}
+                        className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
                         style={{
-                          background: "transparent",
-                          border: "none",
-                          cursor: "pointer",
-                          color: BB?.mute || "#6a665c",
-                          fontSize: 12,
-                          lineHeight: 1,
-                          padding: 0,
+                          background: "#ffffff",
+                          color: "#0d0d0d",
+                          border: "1px solid #d4cfc2",
+                          textTransform: "none",
                         }}
-                      >×</button>
-                    </span>
+                        title={label}
+                      >
+                        {label}
+                        <button
+                          type="button"
+                          aria-label={`Remove ${num}`}
+                          onClick={() =>
+                            setFilter("portfolios", filters.portfolios.filter((x) => x !== num))
+                          }
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#a39e90",
+                            fontSize: 12,
+                            lineHeight: 1,
+                            padding: 0,
+                          }}
+                        >×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Status — chip toggles. Default = all except CANCELLED. */}
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Status</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {TRADE_STATUSES.map((s) => {
+                  const on = filters.statuses.includes(s);
+                  const sty = CASHFLOW_STATUS_STYLES[s];
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          "statuses",
+                          on
+                            ? filters.statuses.filter((x) => x !== s)
+                            : [...filters.statuses, s]
+                        )
+                      }
+                      className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                      style={{
+                        background: on ? sty.bg : "#ffffff",
+                        border: `1px solid ${on ? sty.border : "#e0dbd0"}`,
+                        color: on ? sty.color : "#a39e90",
+                        cursor: "pointer",
+                        transition: "all 120ms ease",
+                      }}
+                      title={on ? `Hide ${s}` : `Show ${s}`}
+                    >{s}</button>
                   );
                 })}
               </div>
-            )}
-          </div>
-
-          {/* Status — chip toggles. Default = all except CANCELLED. */}
-          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666", gridColumn: "span 2" }}>
-            <span>Status</span>
-            <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
-              {TRADE_STATUSES.map((s) => {
-                const on = filters.statuses.includes(s);
-                const sty = CASHFLOW_STATUS_STYLES[s];
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() =>
-                      setFilter(
-                        "statuses",
-                        on
-                          ? filters.statuses.filter((x) => x !== s)
-                          : [...filters.statuses, s]
-                      )
-                    }
-                    className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
-                    style={{
-                      background: on ? sty.bg : "transparent",
-                      border: `1px solid ${on ? sty.border : "#d9d4c7"}`,
-                      color: on ? sty.color : "#9a9488",
-                      cursor: "pointer",
-                      transition: "all 120ms ease",
-                    }}
-                    title={on ? `Hide ${s}` : `Show ${s}`}
-                  >{s}</button>
-                );
-              })}
             </div>
           </div>
+        </div>
 
-          {/* Text filters — single-column cells. */}
-          {[
-            { key: "base_asset", label: "Base Asset" },
-            { key: "quote_asset", label: "Quote Asset" },
-            { key: "deal_ref", label: "Deal Reference" },
-          ].map((f) => (
-            <label key={f.key} className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
-              <span>{f.label}</span>
-              <Input
-                type="text"
-                placeholder="—"
-                value={filters[f.key]}
-                onChange={(e) => setFilter(f.key, e.target.value)}
-              />
-            </label>
-          ))}
+        {/* ── Section 3 — Search ── */}
+        <div style={{ padding: "12px 16px 14px" }}>
+          <div
+            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
+            style={{ color: "#a39e90", fontWeight: 500 }}
+          >Search</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              columnGap: 16,
+            }}
+          >
+            {[
+              { key: "base_asset", label: "Base Asset" },
+              { key: "quote_asset", label: "Quote Asset" },
+              { key: "deal_ref", label: "Deal Reference" },
+            ].map((f) => (
+              <label
+                key={f.key}
+                className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: "#6a665c" }}
+              >
+                <span>{f.label}</span>
+                <Input
+                  type="text"
+                  placeholder="—"
+                  value={filters[f.key]}
+                  onChange={(e) => setFilter(f.key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div
-        style={{
-          background: BB?.surface || "#f6f3ec",
-          border: `1px solid ${BB?.border || "#d9d4c7"}`,
-          overflowX: "auto",
-        }}
-      >
-        <table className="text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", borderCollapse: "collapse", minWidth: "100%" }}>
+      <div className="overflow-x-auto" style={{ border: `1px solid ${BB?.border || "#d9d4c7"}` }}>
+        <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", borderCollapse: "collapse", minWidth: "100%" }}>
           <thead>
-            <tr style={{ background: "rgba(0,0,0,0.04)", color: BB?.mute || "#666" }}>
-              <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
+            <tr style={{ background: BB?.surface || "#f6f3ec", color: BB?.mute || "#666" }}>
+              <th className="px-2 py-2 whitespace-nowrap text-center" aria-label="Refresh">
+                <button
+                  type="button"
+                  onClick={fetchRecent}
+                  disabled={loading}
+                  title={
+                    loading
+                      ? "Refreshing…"
+                      : lastFetchedAt
+                      ? `Refresh table · last updated ${lastFetchedAt.toLocaleTimeString()}`
+                      : "Refresh table"
+                  }
+                  className="inline-flex items-center justify-center align-middle transition-colors"
+                  style={{
+                    width: 22, height: 22, borderRadius: 0,
+                    border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                    background: "transparent",
+                    color: BB?.dim || "#6a665c",
+                    cursor: loading ? "wait" : "pointer", lineHeight: 1,
+                    opacity: loading ? 0.5 : 1,
+                  }}
+                  onMouseEnter={(ev) => {
+                    if (loading) return;
+                    ev.currentTarget.style.background = "#ece7dd";
+                    ev.currentTarget.style.color = BB?.text || "#0d0d0d";
+                    ev.currentTarget.style.borderColor = BB?.text || "#0d0d0d";
+                  }}
+                  onMouseLeave={(ev) => {
+                    ev.currentTarget.style.background = "transparent";
+                    ev.currentTarget.style.color = BB?.dim || "#6a665c";
+                    ev.currentTarget.style.borderColor = BB?.border || "#d9d4c7";
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    className={loading ? "animate-spin" : ""}
+                    style={{ fontSize: 12, lineHeight: 1 }}
+                  >↻</span>
+                </button>
+              </th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Updated Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Type</th>
@@ -4399,9 +4460,9 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               return (
                 <tr
                   key={r.deal_ref}
-                  style={{ borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
+                  style={{ background: BB?.bg || "#ffffff", borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
                   onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = BB?.bg || "#ffffff"}
                 >
                   <td className="px-2 py-2 whitespace-nowrap">
                     <button
@@ -4635,23 +4696,11 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
   return (
     <div className="px-5 pt-4 pb-8">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="mb-3">
         <div
           className="text-[22px]"
           style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
         >Loan Enquiry</div>
-        <button
-          type="button"
-          onClick={fetchRecent}
-          disabled={loading}
-          className="px-3 py-1 text-[12px]"
-          style={{
-            background: BB?.surface || "#f6f3ec",
-            border: `1px solid ${BB?.border || "#d9d4c7"}`,
-            color: BB?.text || "#1f1f1f",
-            opacity: loading ? 0.5 : 1,
-          }}
-        >{loading ? "Loading…" : "↻ Refresh"}{lastFetchedAt ? ` · ${lastFetchedAt.toLocaleTimeString()}` : ""}</button>
       </div>
 
       {error && (
@@ -4661,166 +4710,225 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters — grid layout, same shape as Deal Enquiry. ─── */}
+      {/* ─── Filters — pure-white sectioned card, parallel to Deal Enquiry ─── */}
       <div
         className="mb-3"
         style={{
-          background: BB?.surface || "#f6f3ec",
-          border: `1px solid ${BB?.border || "#d9d4c7"}`,
-          padding: "12px 16px 14px",
+          background: "#ffffff",
+          border: "1px solid #e9e7e2",
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {/* Header row — title + Clear */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[10px] tracking-[0.22em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            Filters
+        {/* ── Header strip ── */}
+        <div
+          className="flex items-center justify-between"
+          style={{ padding: "10px 16px 9px", borderBottom: "1px solid #f3f1ec" }}
+        >
+          <div className="flex items-baseline gap-2.5">
+            <span
+              className="text-[10px] tracking-[0.28em] uppercase"
+              style={{ color: "#8a857a", fontWeight: 500 }}
+            >Filters</span>
+            {filtersActive && (
+              <span
+                className="text-[9px] tracking-[0.22em] uppercase"
+                style={{ color: "#b45309" }}
+              >· Active</span>
+            )}
           </div>
           <button
             type="button"
             onClick={clearFilters}
             disabled={!filtersActive}
-            className="text-[10px] tracking-[0.22em] uppercase px-3 py-1.5 transition-colors"
+            className="text-[10px] tracking-[0.22em] uppercase transition-colors"
             style={{
               background: "transparent",
-              color: filtersActive ? (BB?.text || "#1f1f1f") : (BB?.faint || "#a5a097"),
-              border: `1px solid ${filtersActive ? (BB?.border || "#d9d4c7") : "#ece7dd"}`,
+              color: filtersActive ? "#1f1f1f" : "#cdc8bb",
+              border: "none",
+              padding: "4px 0",
               cursor: filtersActive ? "pointer" : "not-allowed",
-              height: 28,
             }}
-          >× Clear</button>
+          >× Clear all</button>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            columnGap: 16,
-            rowGap: 14,
-            alignItems: "start",
-          }}
-        >
-          {/* Trade / Maturity Date — each spans 2 columns. Date-only,
-              same UI as the rest of the app. */}
-          {[
-            { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-            { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
-          ].map((f) => (
-            <div
-              key={f.fromKey}
-              className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
-              style={{ color: BB?.mute || "#666", gridColumn: "span 2" }}
-            >
-              <span>{f.label}</span>
-              <div className="flex items-center gap-2">
-                <DatePicker
-                  value={filters[f.fromKey]}
-                  onChange={(v) => setFilter(f.fromKey, v)}
-                />
-                <span style={{ color: BB?.mute || "#666" }}>→</span>
-                <DatePicker
-                  value={filters[f.toKey]}
-                  onChange={(v) => setFilter(f.toKey, v)}
-                />
+        {/* ── Section 1 — Date Range ── */}
+        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
+          <div
+            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
+            style={{ color: "#a39e90", fontWeight: 500 }}
+          >Date Range</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              columnGap: 24,
+              rowGap: 12,
+            }}
+          >
+            {[
+              { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+              { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
+            ].map((f) => (
+              <div
+                key={f.fromKey}
+                className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: "#6a665c" }}
+              >
+                <span>{f.label}</span>
+                <div className="flex items-center gap-2">
+                  <DatePicker value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
+                  <span style={{ color: "#a39e90" }}>→</span>
+                  <DatePicker value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
 
-          {/* Portfolio — picker + chip stack. */}
-          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            <span>Portfolio</span>
-            <Select
-              value=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                if (filters.portfolios.includes(v)) return;
-                setFilter("portfolios", [...filters.portfolios, v]);
-              }}
-            >
-              <option value="">
-                {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
-              </option>
-              {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
-                <option key={p.number} value={String(p.number)}>
-                  {p.number} · {p.name}
+        {/* ── Section 2 — Filter By ── */}
+        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
+          <div
+            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
+            style={{ color: "#a39e90", fontWeight: 500 }}
+          >Filter By</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              columnGap: 24,
+              rowGap: 12,
+              alignItems: "start",
+            }}
+          >
+            {/* Portfolio — picker + refined white chip stack */}
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Portfolio</span>
+              <Select
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  if (filters.portfolios.includes(v)) return;
+                  setFilter("portfolios", [...filters.portfolios, v]);
+                }}
+              >
+                <option value="">
+                  {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
                 </option>
-              ))}
-            </Select>
-            {filters.portfolios.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {filters.portfolios.map((n) => (
-                  <span
-                    key={n}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
-                    style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
-                  >
-                    {n}
-                    <button
-                      type="button"
-                      onClick={() => setFilter("portfolios", filters.portfolios.filter((x) => x !== n))}
-                      style={{ background: "transparent", border: "none", color: "#1f63ea", cursor: "pointer", padding: 0, fontSize: 11, lineHeight: 1 }}
-                    >×</button>
-                  </span>
+                {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
+                  <option key={p.number} value={String(p.number)}>
+                    {p.number} — {p.name}
+                  </option>
                 ))}
-              </div>
-            )}
-          </div>
+              </Select>
+              {filters.portfolios.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {filters.portfolios.map((num) => {
+                    const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                    const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                    return (
+                      <span
+                        key={num}
+                        className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
+                        style={{
+                          background: "#ffffff",
+                          color: "#0d0d0d",
+                          border: "1px solid #d4cfc2",
+                          textTransform: "none",
+                        }}
+                        title={label}
+                      >
+                        {label}
+                        <button
+                          type="button"
+                          aria-label={`Remove ${num}`}
+                          onClick={() =>
+                            setFilter("portfolios", filters.portfolios.filter((x) => x !== num))
+                          }
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#a39e90",
+                            fontSize: 12,
+                            lineHeight: 1,
+                            padding: 0,
+                          }}
+                        >×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-          {/* Status — chip toggles. */}
-          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            <span>Status</span>
-            <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
-              {LOAN_STATUSES.map((s) => {
-                const on = filters.statuses.includes(s);
-                const sty = LOAN_STATUS_STYLES[s];
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() =>
-                      setFilter(
-                        "statuses",
-                        on
-                          ? filters.statuses.filter((x) => x !== s)
-                          : [...filters.statuses, s]
-                      )
-                    }
-                    className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
-                    style={{
-                      background: on ? sty.bg : "transparent",
-                      border: `1px solid ${on ? sty.border : "#d9d4c7"}`,
-                      color: on ? sty.color : "#9a9488",
-                      cursor: "pointer",
-                      transition: "all 120ms ease",
-                    }}
-                    title={on ? `Hide ${s}` : `Show ${s}`}
-                  >{s}</button>
-                );
-              })}
+            {/* Status — chip toggles */}
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Status</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {LOAN_STATUSES.map((s) => {
+                  const on = filters.statuses.includes(s);
+                  const sty = LOAN_STATUS_STYLES[s];
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          "statuses",
+                          on
+                            ? filters.statuses.filter((x) => x !== s)
+                            : [...filters.statuses, s]
+                        )
+                      }
+                      className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                      style={{
+                        background: on ? sty.bg : "#ffffff",
+                        border: `1px solid ${on ? sty.border : "#e0dbd0"}`,
+                        color: on ? sty.color : "#a39e90",
+                        cursor: "pointer",
+                        transition: "all 120ms ease",
+                      }}
+                      title={on ? `Hide ${s}` : `Show ${s}`}
+                    >{s}</button>
+                  );
+                })}
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Principal Asset */}
-          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            <span>Principal Asset</span>
-            <Input
-              type="text"
-              value={filters.principal_asset}
-              onChange={(e) => setFilter("principal_asset", e.target.value)}
-              placeholder="e.g. ETH, USDT"
-            />
-          </div>
-
-          {/* Deal Reference */}
-          <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: BB?.mute || "#666" }}>
-            <span>Deal Reference</span>
-            <Input
-              type="text"
-              value={filters.deal_ref}
-              onChange={(e) => setFilter("deal_ref", e.target.value)}
-              placeholder="MLA00000001, MLA00000005…"
-            />
+        {/* ── Section 3 — Search ── */}
+        <div style={{ padding: "12px 16px 14px" }}>
+          <div
+            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
+            style={{ color: "#a39e90", fontWeight: 500 }}
+          >Search</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              columnGap: 16,
+            }}
+          >
+            <label className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Principal Asset</span>
+              <Input
+                type="text"
+                value={filters.principal_asset}
+                onChange={(e) => setFilter("principal_asset", e.target.value)}
+                placeholder="e.g. ETH, USDT"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Deal Reference</span>
+              <Input
+                type="text"
+                value={filters.deal_ref}
+                onChange={(e) => setFilter("deal_ref", e.target.value)}
+                placeholder="MLA00000001, MLA00000005…"
+              />
+            </label>
           </div>
         </div>
       </div>
@@ -4830,7 +4938,46 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
           <thead>
             <tr style={{ background: BB?.surface || "#f6f3ec", color: BB?.mute || "#666" }}>
-              <th className="px-2 py-2 whitespace-nowrap" aria-label="History"></th>
+              <th className="px-2 py-2 whitespace-nowrap text-center" aria-label="Refresh">
+                <button
+                  type="button"
+                  onClick={fetchRecent}
+                  disabled={loading}
+                  title={
+                    loading
+                      ? "Refreshing…"
+                      : lastFetchedAt
+                      ? `Refresh table · last updated ${lastFetchedAt.toLocaleTimeString()}`
+                      : "Refresh table"
+                  }
+                  className="inline-flex items-center justify-center align-middle transition-colors"
+                  style={{
+                    width: 22, height: 22, borderRadius: 0,
+                    border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                    background: "transparent",
+                    color: BB?.dim || "#6a665c",
+                    cursor: loading ? "wait" : "pointer", lineHeight: 1,
+                    opacity: loading ? 0.5 : 1,
+                  }}
+                  onMouseEnter={(ev) => {
+                    if (loading) return;
+                    ev.currentTarget.style.background = "#ece7dd";
+                    ev.currentTarget.style.color = BB?.text || "#0d0d0d";
+                    ev.currentTarget.style.borderColor = BB?.text || "#0d0d0d";
+                  }}
+                  onMouseLeave={(ev) => {
+                    ev.currentTarget.style.background = "transparent";
+                    ev.currentTarget.style.color = BB?.dim || "#6a665c";
+                    ev.currentTarget.style.borderColor = BB?.border || "#d9d4c7";
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    className={loading ? "animate-spin" : ""}
+                    style={{ fontSize: 12, lineHeight: 1 }}
+                  >↻</span>
+                </button>
+              </th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Direction</th>
