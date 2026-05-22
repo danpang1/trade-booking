@@ -32,7 +32,7 @@ OUT = REPO / "public" / "refdata" / "accounts.json"
 TABLES = [
     ("exchange", "account_exchange", "exchangeName"),
     ("wallet", "account_wallet", "walletType"),
-    ("broker", "account_broker", "brokerName"),
+    ("broker", "account_broker", "exchangeName"),
 ]
 
 

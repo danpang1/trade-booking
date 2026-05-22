@@ -1,0 +1,2078 @@
+{
+  "exchange": [
+    {
+      "name": "EC001@BITGET",
+      "venue": "BITGET",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "EC003@BITGET",
+      "venue": "BITGET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "ECHO-TEST001@MEXC",
+      "venue": "MEXC",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "ECHO-TEST009@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "ECHO001@BITMEX",
+      "venue": "BITMEX",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "ECHO001@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "ECHO001@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "ECHO001@HUOBI",
+      "venue": "HUOBI",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "ECHO001@MEXC",
+      "venue": "MEXC",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "ECHO001@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "ECHO002@BITMEX",
+      "venue": "BITMEX",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "ECHO002@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "ECHO002@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "ECHO002@HUOBI",
+      "venue": "HUOBI",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "ECHO002@MEXC",
+      "venue": "MEXC",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "ECHO002@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "ECHO003@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "ECHO003@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "ECHO003@MEXC",
+      "venue": "MEXC",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO003@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO004@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO004@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "ECHO004@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "ECHO005@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO005@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "ECHO005@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "ECHO006@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "ECHO006@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "ECHO006@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO007@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "ECHO007@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "ECHO007@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO008@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "ECHO008@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "ECHO009@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "ECHO010@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "IMAGINE_01@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_02@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_03@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_04@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_05@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_06@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_07@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "IMAGINE_08@SODEX",
+      "venue": "SODEX",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "MAIN-SODEXMM@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "MAIN-SODEXMM@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "MOON-ECHO@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@BITGET",
+      "venue": "BITGET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@BITMEX",
+      "venue": "BITMEX",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@GATE",
+      "venue": "GATE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@HUOBI",
+      "venue": "HUOBI",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@MEXC",
+      "venue": "MEXC",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-ECHO@OKX",
+      "venue": "OKX",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-TK@BLUEFIN_ARBITRUM",
+      "venue": "BLUEFIN",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "MOON-TK@BLUEFIN_SUI",
+      "venue": "BLUEFIN",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "MOON-TK@COINBASE",
+      "venue": "COINBASE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-TK@KRAKEN",
+      "venue": "KRAKEN",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-TK@KUCOIN",
+      "venue": "KUCOIN",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-TOKKA@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON-TOKKA@OKXSG",
+      "venue": "OKX (SG)",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "MOON@LBANK",
+      "venue": "LBANK EXCHANGE",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "MOON@PAXOS",
+      "venue": "PAXOS GLOBAL PTE LTD (PAXOS)",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "NT001@KUCOIN",
+      "venue": "KUCOIN",
+      "portfolio": ""
+    },
+    {
+      "name": "NT001@MEXC",
+      "venue": "MEXC",
+      "portfolio": ""
+    },
+    {
+      "name": "RANGE_03@VERTEX_ARBITRUM",
+      "venue": "VERTEX_ARBITRUM",
+      "portfolio": ""
+    },
+    {
+      "name": "RANGE_05@VERTEX_ARBITRUM",
+      "venue": "VERTEX_ARBITRUM",
+      "portfolio": ""
+    },
+    {
+      "name": "RANGE_09@VERTEX_BLITZ",
+      "venue": "VERTEX_BLITZ",
+      "portfolio": ""
+    },
+    {
+      "name": "RANGE_12@VERTEX_MANTLE",
+      "venue": "VERTEX_MANTLE",
+      "portfolio": ""
+    },
+    {
+      "name": "REDEEM@BACKEDFI",
+      "venue": "BACKED.FI",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "SODEXMM01@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM01@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM02@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM02@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM03@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM03@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM04@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "SODEXMM04@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "TK001@COINBASE",
+      "venue": "COINBASE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "TK001@KRAKEN",
+      "venue": "KRAKEN",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TK001@KUCOIN",
+      "venue": "KUCOIN",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "TK001@OKXSG",
+      "venue": "OKX (SG)",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "TK002@OKXSG",
+      "venue": "OKX (SG)",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "TK008@KUCOIN",
+      "venue": "KUCOIN",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK009@KUCOIN",
+      "venue": "KUCOIN",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "TK801@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK802@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "TK803@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "TK804@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "TK805@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "TK806@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "TK807@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "TK808@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "TK809@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TK810@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "TK811@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK812@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "TK813@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "TK814@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK815@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "TK816@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "TK817@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - RFQ - PROPAMM"
+    },
+    {
+      "name": "TK818@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK819@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "TK820@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "TK821@BINANCE",
+      "venue": "BINANCE",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "TOKKAARB1@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "TOKKAARB2@BYBIT",
+      "venue": "BYBIT",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "TRADING_01@ALKIMIYA_ETHEREUM",
+      "venue": "ALKIMIYA",
+      "portfolio": "TOKKA LABS - MM LP - ALKIMIYA"
+    },
+    {
+      "name": "TRADING_01@DDEX",
+      "venue": "DBS DIGITAL EXCHANGE (DDEX)",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "TRADING_01@DRIFT_SOL",
+      "venue": "DRIFT",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TRADING_01@ETHGAS",
+      "venue": "ETHGAS",
+      "portfolio": "TOKKA LABS - SSB - BUILDER ETH"
+    },
+    {
+      "name": "TRADING_01@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TRADING_01@KANA",
+      "venue": "KANA LABS LIMITED",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TRADING_01@SOSOVALUE",
+      "venue": "SOSOVALUE",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "TRADING_01@SYNFUTURES_BASE",
+      "venue": "SYNFUTURES DEX",
+      "portfolio": "TOKKA LABS - CLOB - SYNFUTURES DEX"
+    },
+    {
+      "name": "TRADING_02@ALKIMIYA_ETHEREUM",
+      "venue": "ALKIMIYA",
+      "portfolio": "TOKKA LABS - MM LP - ALKIMIYA"
+    },
+    {
+      "name": "TRADING_02@BLUEFIN_SUI",
+      "venue": "BLUEFIN",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "TRADING_02@DRIFT_SOL",
+      "venue": "DRIFT",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TRADING_02@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TRADING_02@SYNFUTURES_BASE",
+      "venue": "SYNFUTURES DEX",
+      "portfolio": "TOKKA LABS - CLOB - SYNFUTURES DEX"
+    },
+    {
+      "name": "TRADING_03@ALKIMIYA_ETHEREUM",
+      "venue": "ALKIMIYA",
+      "portfolio": "TOKKA LABS - MM LP - ALKIMIYA"
+    },
+    {
+      "name": "TRADING_03@BLUEFIN_SUI",
+      "venue": "BLUEFIN",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "TRADING_03@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - RFQ - PROPAMM"
+    },
+    {
+      "name": "TRADING_03@SYNFUTURES_BASE",
+      "venue": "SYNFUTURES DEX",
+      "portfolio": "TOKKA LABS - CLOB - SYNFUTURES DEX"
+    },
+    {
+      "name": "TRADING_04@ALKIMIYA_ETHEREUM",
+      "venue": "ALKIMIYA",
+      "portfolio": "TOKKA LABS - MM LP - ALKIMIYA"
+    },
+    {
+      "name": "TRADING_04@BLUEFIN_SUI",
+      "venue": "BLUEFIN",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "TRADING_04@DRIFT_SOL",
+      "venue": "DRIFT",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TRADING_04@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "TRADING_05@ALKIMIYA_ETHEREUM",
+      "venue": "ALKIMIYA",
+      "portfolio": "TOKKA LABS - MM LP - ALKIMIYA"
+    },
+    {
+      "name": "TRADING_05@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "TRADING_06@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
+    },
+    {
+      "name": "TRADING_07@HYPERLIQUID",
+      "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    }
+  ],
+  "wallet": [
+    {
+      "name": "HF_POOL_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "HF_POOL_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "SHADOW_PMMCROSSCHAIN_BTC_01",
+      "venue": "NOT APPLICABLE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "SHADOW_PMMCROSSCHAIN_EVM_22",
+      "venue": "NOT APPLICABLE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "SHADOW_SODEX_EVM_02",
+      "venue": "NOT APPLICABLE",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "TOKKA TREASURY - BTC - 01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 01 - LOAN",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 02 - OPEX / ZETA",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 03 - ENS",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 04 - (NOT IN USED)",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 04 - TON",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 05 - 21co",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 06 - DLCBTC",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 07 - PARADEX LIQUIDFI",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 08 - BUIDL",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 09 - ONDO",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 10 - CENTRIFUGE",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - SOL - 03 - TRADING",
+      "venue": "PHANTOM",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - SOLANA - 02",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - TON - 01 - TON MM",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - TON - 02 - HG LOAN",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_48CLUB_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_DELEGATOR_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_DELEGATOR_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_DELEGATOR_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_DELEGATOR_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_EVM_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_EVM_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_EVM_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_08",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_09",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_10",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_11",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_12",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_13",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_14",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_15",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OPERATOR_16",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OWNER_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_OWNER_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_WORKER_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_WORKER_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_WORKER_08",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_1INCHFUSION_WORKER_09",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_AGORA_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_AGORA_SUI_01",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_ARMSTROM_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - ARMSTROM"
+    },
+    {
+      "name": "WALLET_ARMSTROM_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - ARMSTROM"
+    },
+    {
+      "name": "WALLET_BACKED_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_BACKED_SOL_01",
+      "venue": "PHANTOM",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_BLUEFIN_SUI_03",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - CLOB - DEX MM BLUEFIN"
+    },
+    {
+      "name": "WALLET_CDA_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_EVM_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA TON HG"
+    },
+    {
+      "name": "WALLET_CDA_EVM_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_EVM_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_EVM_08",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_EVM_09",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_EVM_11",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_SOLANA_01",
+      "venue": "PHANTOM",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CDA_SOLANA_03",
+      "venue": "PHANTOM",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_SUI_08",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_SUI_09",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_CDA_SUI_10",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_SUI_11",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_SUI_12",
+      "venue": "SUI WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_CDA_TON_22",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_23",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_24",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_25",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_26",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_27",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_28",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_29",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_30",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_31",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_32",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_33",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_34",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_35",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_36",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_37",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_38",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_39",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_TON_40",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDA_ZETA_BTC_INTERMEDIATE",
+      "venue": "BITCOIN",
+      "portfolio": "TOKKA LABS - SSB - CDA ALTCHAINS"
+    },
+    {
+      "name": "WALLET_CDASOL_APTOS_01",
+      "venue": "APTOS PETRA WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CDASOL_APTOS_02",
+      "venue": "APTOS PETRA WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CDASOL_APTOS_03",
+      "venue": "APTOS PETRA WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_CDASOL_APTOS_04",
+      "venue": "APTOS PETRA WALLET",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CDASOL_EVM_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CDASOL_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CDASOL_EVM_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_CDASOL_SOLANA_01",
+      "venue": "PHANTOM",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "WALLET_CLOB_HYPERLIQUID_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_COLB_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_08",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_09",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_10",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_11",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_12",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_13",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_15",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_16",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_17",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_18",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_19",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_20",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_21",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_22",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_23",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_24",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_BP_01",
+      "venue": "SAFE WALLET",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_GAS_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_COWSWAP_EVM_GAS_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_DBSDEX_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_ADA_01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_ADA_03",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_BCH_01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_BCH_03",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_BTC_01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_BTC_03",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_DOT_01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_DOT_03",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_ETH_01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_ETH_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_XRP_01",
+      "venue": "LEDGER",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_DBSDEX_INTERMEDIATE_XRP_03",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+    },
+    {
+      "name": "WALLET_ETHENA_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_ETHGAS_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - BUILDER ETH"
+    },
+    {
+      "name": "WALLET_ETHGAS_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - BUILDER ETH"
+    },
+    {
+      "name": "WALLET_HYPERARB_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - ARB - HYPERARBITRAGE"
+    },
+    {
+      "name": "WALLET_METH_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_MEV_CONTRACT_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_CONTRACT_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_CONTRACT_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_CONTRACT_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_CONTRACT_08",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OPERATOR_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OPERATOR_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OPERATOR_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OPERATOR_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OPERATOR_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OPERATOR_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_MEV_OWNER_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - MEV ETH"
+    },
+    {
+      "name": "WALLET_NATIVE_BENDMM_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": ""
+    },
+    {
+      "name": "WALLET_NATIVE_TIDALMM_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": ""
+    },
+    {
+      "name": "WALLET_ONDO_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_PMM_EVM_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_EVM_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_EVM_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_SMARTCONTRACT_SOL_01",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_SOLANA_03",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_SOLANA_04",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMM_TON_01",
+      "venue": "TON WALLET",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_BTC_01",
+      "venue": "BITCOIN TAPROOT",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_BTC_02",
+      "venue": "BITCOIN",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_BTC_03",
+      "venue": "BITCOIN TAPROOT",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_BTC_04",
+      "venue": "BITCOIN TAPROOT",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_CANTON_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_CHAINFLIP_01",
+      "venue": "CHAINFLIP WALLET",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_CHAINFLIP_02",
+      "venue": "CHAINFLIP WALLET",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_08",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_09",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_10",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_11",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_12",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_13",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_14",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_15",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_16",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_17",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_18",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_19",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_20",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_22",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_23",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_24",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_25",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_26",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_27",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_28",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_29",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_30",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_31",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_32",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_33",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_34",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_35",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_36",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_37",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_OWNER_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_SOLANA_01",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - RFQ"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_SOLANA_03",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_SOLANA_04",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_SOLANA_05",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_SOLANA_06",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_SOLANA_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_STELLAR_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_XRP_01",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PROPAMM_CONTRACT_SOL_01",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - RFQ - PROPAMM"
+    },
+    {
+      "name": "WALLET_PROPAMM_SOL_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - RFQ - PROPAMM"
+    },
+    {
+      "name": "WALLET_PROPAMM_SOL_02",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - RFQ - PROPAMM"
+    },
+    {
+      "name": "WALLET_SODEX_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "WALLET_SODEX_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "WALLET_SODEX_VALUECHAIN_01",
+      "venue": "TRUST WALLET",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "WALLET_SODEX_VAULTMANAGER_01",
+      "venue": "METAMASK",
+      "portfolio": "SOSOVALUE - SODEXMM"
+    },
+    {
+      "name": "WALLET_SOL_ARB_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SD - STOCKS ARBITRAGE"
+    },
+    {
+      "name": "WALLET_SOSO_ADA_02",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_BTC_04",
+      "venue": "BITCOIN SEGWIT",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_DOGE_02",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_EVM_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_EVM_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_EVM_06",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_EVM_07",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_SOL_02",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SOSO_XRP_02",
+      "venue": "TRUST WALLET",
+      "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
+    },
+    {
+      "name": "WALLET_SPP_SODEX_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SPP - SODEX"
+    },
+    {
+      "name": "WALLET_SSB_LIQUIDATION_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - LIQUIDATION"
+    },
+    {
+      "name": "WALLET_SSB_LIQUIDATION_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - LIQUIDATION"
+    },
+    {
+      "name": "WALLET_SSB_LIQUIDATION_EVM_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - LIQUIDATION"
+    },
+    {
+      "name": "WALLET_SSB_LIQUIDATION_EVM_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - LIQUIDATION"
+    },
+    {
+      "name": "WALLET_SSB_LIQUIDATION_SMARTCONTRACT_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - LIQUIDATION"
+    },
+    {
+      "name": "WALLET_SSB_PER_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - PYTH EXPRESS RELAY"
+    },
+    {
+      "name": "WALLET_SSB_PER_SMARTCONTRACT_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - PYTH EXPRESS RELAY"
+    },
+    {
+      "name": "WALLET_SSB_PER_SMARTCONTRACT_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - PYTH EXPRESS RELAY"
+    },
+    {
+      "name": "WALLET_SSB_PER_SMARTCONTRACT_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - PYTH EXPRESS RELAY"
+    },
+    {
+      "name": "WALLET_SSB_PER_SOLANA_02",
+      "venue": "PHANTOM",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_SSB_SOLANA_SOL_01",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - SSB - SEARCHER SOLANA"
+    },
+    {
+      "name": "WALLET_STOCKSARB_OPERATOR_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SD - STOCKS ARBITRAGE"
+    },
+    {
+      "name": "WALLET_TEST_BRC20UNISAT_01",
+      "venue": "BRC20 UNISAT",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "WALLET_TEST_FO_EVM_02_FELIX",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "WALLET_TEST_ORDERLY_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "WALLET_TREASURY_B2C2_INTERMEDIATE_ETH",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_BITGLOBAL_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_BTOKEN_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_CIRCLE_INTERMEDIATE_ETH_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_HOPE_INTERMEDIATE_BTC",
+      "venue": "HOPE WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_HOPE_INTERMEDIATE_ETH",
+      "venue": "HOPE WALLET",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_MIDAS_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_NMARKETS_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_ONDO_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_PAXOS_INTERMEDIATE_ETH",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_SOLANA_SPL_LEDGER_01",
+      "venue": "SOLANA (SPL)",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_SQUIDLOAN_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_SUPERSTATE_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_TREASURY_TRUST_INTERMEDIATE_ETH",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "WALLET_UNISWAPX_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_UNISWAPX_SMARTCONTRACT_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_UNISWAPX_SMARTCONTRACT_03",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_UNISWAPX_SMARTCONTRACT_04",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_UNISWAPX_SMARTCONTRACT_05",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - 1INCH FUSION"
+    },
+    {
+      "name": "WALLET_VELORA_EVM_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - VEROLA"
+    },
+    {
+      "name": "WALLET_VELORA_SMARTCONTRACT_02",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - SSB - VEROLA"
+    }
+  ],
+  "broker": [
+    {
+      "name": "MOON-TK@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK001@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TK002@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "TK003@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": ""
+    },
+    {
+      "name": "TK004@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
+    },
+    {
+      "name": "TK005@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TK006@IBKR",
+      "venue": "INTERACTIVE BROKERS",
+      "portfolio": "TOKKA LABS - TREASURY"
+    }
+  ]
+}
