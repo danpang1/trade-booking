@@ -147,8 +147,8 @@ definitions:
           - source setup_env.sh
           # Pin this step to prod regardless of which branch it runs on.
           - export ENVIRONMENT="prod"
-          - export KUBE_CLUSTER_NAME="jp-rancher"
-          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_JP_CLUSTER"
+          - export KUBE_CLUSTER_NAME="sg-rancher"
+          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_SG_CLUSTER"
           - bash ./.pipelines/deploy.sh
 
     - step: &rollbackUat
@@ -177,8 +177,8 @@ definitions:
         script:
           - source setup_env.sh
           - export ENVIRONMENT="prod"
-          - export KUBE_CLUSTER_NAME="jp-rancher"
-          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_JP_CLUSTER"
+          - export KUBE_CLUSTER_NAME="sg-rancher"
+          - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_SG_CLUSTER"
           - bash ./.pipelines/rollback.sh
 
 
