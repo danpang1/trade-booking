@@ -294,8 +294,36 @@ function stampUserId(rawBody, username) {
   return JSON.stringify(payload);
 }
 
+// One structured JSON line per /api/* response on stdout. Tokka's Loki
+// agent scrapes container stdout and tags it `app=trade-booking-server-uat`
+// from pod metadata, so these surface in Grafana with no extra wiring.
+// LogQL: {app="trade-booking-server-uat"} | json | status >= 400
+// Skips /api/health (k8s probes call it on a tight loop) and non-API
+// paths (static bundle assets). Body is never logged — passwords would
+// land in the login row.
+function logRequest(req, res, t0) {
+  const url = req.url || "";
+  if (!url.startsWith("/api/")) return;
+  if (url === "/api/health") return;
+  const line = {
+    ts: new Date().toISOString(),
+    level: res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
+    msg: "http",
+    method: req.method,
+    path: url.split("?")[0],
+    status: res.statusCode,
+    duration_ms: Date.now() - t0,
+    user: (req.sessionUser && req.sessionUser.username) || null,
+    ip: req.headers["x-forwarded-for"] || (req.socket && req.socket.remoteAddress) || null,
+  };
+  process.stdout.write(JSON.stringify(line) + "\n");
+}
+
 // ── HTTP server: serves /tokens.json (for non-Vite hosts) + /api/health ──
 const server = createServer(async (req, res) => {
+  const t0 = Date.now();
+  res.on("finish", () => logRequest(req, res, t0));
+
   // CORS for the Vite dev server on a different port.
   // credentials:'include' requires echoing the request origin (browsers
   // refuse '*' with credentials) AND Access-Control-Allow-Credentials: true.
