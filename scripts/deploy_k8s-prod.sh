@@ -28,7 +28,7 @@ log "Executing `basename "$0"`."
 #    * ./helm_values/<application>/<instance>.yaml
 #    * ./helm_values/<application>/<instance>-<environment>.yaml
 #
-# One Helm release per workload, all under namespace `middle-office`:
+# One Helm release per workload, all under namespace `mo-tools`:
 #
 #   trade-booking-server-<env>    (Deployment + Service + Ingress)
 #   cron-counterparties-<env>     (1 CronJob)
@@ -38,11 +38,11 @@ log "Executing `basename "$0"`."
 #
 # Per-instance values come from helm_values/<service>/<instance>.yaml,
 # auto-discovered by scripts/utils.sh.
-./scripts/run_helm.sh middle-office trade-booking server         $env $mode
+./scripts/run_helm.sh mo-tools trade-booking server         $env $mode
 
-./scripts/run_helm.sh middle-office cron          counterparties $env $mode
-./scripts/run_helm.sh middle-office cron          portfolios     $env $mode
-./scripts/run_helm.sh middle-office cron          tokens         $env $mode
-./scripts/run_helm.sh middle-office cron          users          $env $mode
+./scripts/run_helm.sh mo-tools cron          counterparties $env $mode
+./scripts/run_helm.sh mo-tools cron          portfolios     $env $mode
+./scripts/run_helm.sh mo-tools cron          tokens         $env $mode
+./scripts/run_helm.sh mo-tools cron          users          $env $mode
 
 log "Successfully finished."
