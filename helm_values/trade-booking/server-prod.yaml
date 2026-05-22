@@ -5,4 +5,4 @@ deployment:
   replicas: 2  # HA pair in prod
 
 ingress:
-  host: sg-trade-booking.internal.tokkalabs.com
+  host: sg-tms.internal.tokkalabs.com
