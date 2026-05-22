@@ -57,6 +57,7 @@ const REFDATA_SOURCES = [
   { key: "counterparties", script: "sync_counterparties.py", label: "counterparties" },
   { key: "portfolios",    script: "sync_portfolios.py",     label: "portfolios" },
   { key: "users",         script: "sync_users.py",          label: "users" },
+  { key: "accounts",      script: "sync_accounts.py",       label: "accounts" },
 ];
 const REFDATA_BY_KEY = new Map(REFDATA_SOURCES.map((s) => [s.key, s]));
 const PUBLIC_DIR     = resolve(__dirname, "public");

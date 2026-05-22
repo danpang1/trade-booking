@@ -15,12 +15,6 @@ import {
   History,
 } from "lucide-react";
 import tokkaLogo from "./assets/tokka-labs-logo.png";
-import {
-  ACCOUNTS_EXCHANGE,
-  ACCOUNTS_WALLET,
-  ACCOUNTS_BROKER,
-  ACCOUNT_VENUE_TYPES,
-} from "./data/accounts.js";
 import { NETWORKS } from "./data/networks.js";
 import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
 import { useAuth } from "./auth/AuthContext.jsx";
@@ -49,6 +43,17 @@ let COUNTERPARTIES = [];
 let COUNTERPARTY_IDS = {};
 let SUPERADMIN_USERS = [];
 let USER_PROFILES = {};
+let ACCOUNTS_EXCHANGE = [];
+let ACCOUNTS_WALLET = [];
+let ACCOUNTS_BROKER = [];
+
+// Static UI labels for the Account Type select. The data behind each
+// key (EXCHANGE/WALLET/BROKER) is fetched at runtime — see fetchRefdataOnce.
+const ACCOUNT_VENUE_TYPES = [
+  { key: "EXCHANGE", label: "Exchange" },
+  { key: "WALLET", label: "Wallet" },
+  { key: "BROKER", label: "Brokerage" },
+];
 
 async function fetchRefdataOnce() {
   // Same-origin fetch: Vite proxies in dev, ingress routes in UAT/prod.
@@ -60,10 +65,11 @@ async function fetchRefdataOnce() {
     } catch { return null; }
   };
 
-  const [counterparties, portfolios, users] = await Promise.all([
+  const [counterparties, portfolios, users, accounts] = await Promise.all([
     fetchJson("/refdata/counterparties.json"),
     fetchJson("/refdata/portfolios.json"),
     fetchJson("/refdata/users.json"),
+    fetchJson("/refdata/accounts.json"),
   ]);
 
   if (Array.isArray(counterparties)) {
@@ -82,10 +88,19 @@ async function fetchRefdataOnce() {
       users.map((u) => [u.username, { name: u.displayName, role: "Admin" }])
     );
   }
+  if (accounts && typeof accounts === "object") {
+    if (Array.isArray(accounts.exchange)) ACCOUNTS_EXCHANGE = accounts.exchange;
+    if (Array.isArray(accounts.wallet))   ACCOUNTS_WALLET   = accounts.wallet;
+    if (Array.isArray(accounts.broker))   ACCOUNTS_BROKER   = accounts.broker;
+  }
   return {
     counterparties: counterparties?.length ?? 0,
     portfolios: portfolios?.length ?? 0,
     users: users?.length ?? 0,
+    accounts:
+      (Array.isArray(accounts?.exchange) ? accounts.exchange.length : 0) +
+      (Array.isArray(accounts?.wallet)   ? accounts.wallet.length   : 0) +
+      (Array.isArray(accounts?.broker)   ? accounts.broker.length   : 0),
   };
 }
 
