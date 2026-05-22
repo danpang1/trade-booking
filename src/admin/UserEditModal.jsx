@@ -62,25 +62,25 @@ export default function UserEditModal({ mode, user, isLastAdmin, onClose, onSave
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{
         width: 420, padding: 24, background: BB.panel,
         border: `1px solid ${BB.border}`,
-        fontFamily: "'JetBrains Mono', monospace", color: BB.fg,
+        fontFamily: "'IBM Plex Mono', ui-monospace, monospace", color: BB.fg,
       }}>
         <div style={{ fontSize: 13, letterSpacing: 2, color: BB.dim, marginBottom: 16 }}>
           {isCreate ? "NEW USER" : `EDIT USER #${user.id}`}
         </div>
 
-        <Field label="USERNAME">
+        <Field label="Username">
           <input
             value={username} onChange={(e) => setUsername(e.target.value)}
             disabled={!isCreate || pending} style={input} autoFocus={isCreate}
           />
         </Field>
-        <Field label="EMAIL">
+        <Field label="Email">
           <input
             type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             disabled={pending} style={input}
           />
         </Field>
-        <Field label="ROLE">
+        <Field label="Role">
           <select
             value={role} onChange={(e) => setRole(e.target.value)}
             disabled={pending || (isLastAdmin && !isCreate)} style={input}

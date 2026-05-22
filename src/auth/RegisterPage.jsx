@@ -71,7 +71,7 @@ export default function RegisterPage({ onRegistered, onBackToLogin }) {
     <div style={{
       minHeight: "100vh", background: BB.bg, color: BB.fg,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'JetBrains Mono', monospace",
+      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
     }}>
       <form onSubmit={submit} style={{
         width: 360, padding: 32, background: BB.panel,
