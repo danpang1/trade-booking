@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import tokkaLogo from "../assets/tokka-labs-logo.png";
 import { useAuth } from "./AuthContext.jsx";
 
@@ -19,12 +20,13 @@ const inputStyle = {
   fontFamily: "inherit", fontSize: 13,
 };
 
-export default function LoginPage({ banner }) {
+export default function LoginPage({ banner, onSwitchToRegister }) {
   const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
   const [pending, setPending]   = useState(false);
+  const [showPw, setShowPw]     = useState(false);
 
   async function submit(e) {
     e.preventDefault();
@@ -47,7 +49,7 @@ export default function LoginPage({ banner }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
           <img src={tokkaLogo} alt="Tokka" style={{ height: 28 }} />
-          <div style={{ fontSize: 13, color: BB.dim, letterSpacing: 1.2 }}>TRADE BOOKING</div>
+          <div style={{ fontSize: 13, color: BB.dim, letterSpacing: 1.2 }}>TMS</div>
         </div>
 
         {banner && (
@@ -65,10 +67,28 @@ export default function LoginPage({ banner }) {
         />
 
         <label style={{ display: "block", fontSize: 11, color: BB.dim, marginBottom: 4, marginTop: 16 }}>PASSWORD</label>
-        <input
-          type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-          style={inputStyle} disabled={pending}
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ ...inputStyle, paddingRight: 36 }}
+            disabled={pending}
+          />
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShowPw((v) => !v)}
+            title={showPw ? "Hide password" : "Show password"}
+            style={{
+              position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+              background: "transparent", border: "none", color: BB.dim, cursor: "pointer",
+              padding: 4, display: "flex", alignItems: "center",
+            }}
+          >
+            {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
 
         {error && (
           <div style={{ marginTop: 14, color: BB.red, fontSize: 12 }}>{error}</div>
@@ -82,6 +102,16 @@ export default function LoginPage({ banner }) {
         }}>
           {pending ? "SIGNING IN…" : "SIGN IN"}
         </button>
+
+        {onSwitchToRegister && (
+          <button type="button" onClick={onSwitchToRegister} disabled={pending} style={{
+            width: "100%", marginTop: 10, padding: "8px 16px",
+            background: "transparent", color: BB.dim, border: "none",
+            fontFamily: "inherit", fontSize: 11, letterSpacing: 1.5, cursor: "pointer",
+          }}>
+            REQUEST ACCOUNT →
+          </button>
+        )}
       </form>
     </div>
   );

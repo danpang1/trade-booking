@@ -68,7 +68,11 @@ def connect():
 
 
 # Columns returned to the API consumer. password_hash NEVER appears here.
-PUBLIC_COLUMNS = ("id", "username", "email", "role", "created_at", "updated_at")
+PUBLIC_COLUMNS = (
+    "id", "username", "email", "role",
+    "status", "approved_at", "approved_by",
+    "created_at", "updated_at",
+)
 
 
 def row_to_public(cur, row) -> dict:

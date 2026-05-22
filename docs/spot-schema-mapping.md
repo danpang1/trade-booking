@@ -92,8 +92,9 @@ one the user entered. Validation requires all three to be `> 0` and
 ### Account venue type
 
 `account_type` selects which reference table `AccountPicker` filters
-against. Valid keys are defined by `ACCOUNT_VENUE_TYPES` in
-`src/data/accounts.js`:
+against. Valid keys are defined by the `ACCOUNT_VENUE_TYPES` constant
+in `src/TradeBookingForm.jsx` (account data fetched at runtime from
+`/refdata/accounts.json`, populated by `scripts/sync_accounts.py`):
 
 | Key        | UI label   |
 | ---------- | ---------- |

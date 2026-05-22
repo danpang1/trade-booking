@@ -32,14 +32,17 @@ const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 
-const AUTH_LOGIN_SCRIPT   = resolve(__dirname, "scripts", "auth_login.py");
-const AUTH_LOGOUT_SCRIPT  = resolve(__dirname, "scripts", "auth_logout.py");
-const AUTH_WHOAMI_SCRIPT  = resolve(__dirname, "scripts", "auth_whoami.py");
+const AUTH_LOGIN_SCRIPT    = resolve(__dirname, "scripts", "auth_login.py");
+const AUTH_LOGOUT_SCRIPT   = resolve(__dirname, "scripts", "auth_logout.py");
+const AUTH_WHOAMI_SCRIPT   = resolve(__dirname, "scripts", "auth_whoami.py");
+const AUTH_REGISTER_SCRIPT = resolve(__dirname, "scripts", "auth_register.py");
 
-const USER_CREATE_SCRIPT = resolve(__dirname, "scripts", "user_create.py");
-const USER_LIST_SCRIPT   = resolve(__dirname, "scripts", "user_list.py");
-const USER_UPDATE_SCRIPT = resolve(__dirname, "scripts", "user_update.py");
-const USER_DELETE_SCRIPT = resolve(__dirname, "scripts", "user_delete.py");
+const USER_CREATE_SCRIPT  = resolve(__dirname, "scripts", "user_create.py");
+const USER_LIST_SCRIPT    = resolve(__dirname, "scripts", "user_list.py");
+const USER_UPDATE_SCRIPT  = resolve(__dirname, "scripts", "user_update.py");
+const USER_DELETE_SCRIPT  = resolve(__dirname, "scripts", "user_delete.py");
+const USER_APPROVE_SCRIPT = resolve(__dirname, "scripts", "user_approve.py");
+const USER_REJECT_SCRIPT  = resolve(__dirname, "scripts", "user_reject.py");
 
 const SESSION_COOKIE = "sid";
 const SESSION_MAX_AGE_SEC = 8 * 60 * 60;
@@ -54,6 +57,7 @@ const REFDATA_SOURCES = [
   { key: "counterparties", script: "sync_counterparties.py", label: "counterparties" },
   { key: "portfolios",    script: "sync_portfolios.py",     label: "portfolios" },
   { key: "users",         script: "sync_users.py",          label: "users" },
+  { key: "accounts",      script: "sync_accounts.py",       label: "accounts" },
 ];
 const REFDATA_BY_KEY = new Map(REFDATA_SOURCES.map((s) => [s.key, s]));
 const PUBLIC_DIR     = resolve(__dirname, "public");
@@ -357,7 +361,9 @@ const server = createServer(async (req, res) => {
   // session cookie). Everything else under /api/* requires a valid
   // session. Static assets (no /api/ prefix) fall through unchanged.
   const isApi = (req.url || "").startsWith("/api/");
-  const isPublicApi = req.url === "/api/auth/login" || req.url === "/api/health";
+  const isPublicApi = req.url === "/api/auth/login"
+                  || req.url === "/api/auth/register"
+                  || req.url === "/api/health";
   if (isApi && !isPublicApi) {
     const sessionUser = await resolveSession(req);
     if (!sessionUser) {
@@ -415,6 +421,17 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify(rest));
       return;
     }
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Auth: register ───────────────────────────────────────────────
+  if (req.url === "/api/auth/register" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = await spawnPython(AUTH_REGISTER_SCRIPT, body);
+    const status = httpStatusFor(result.code, result.json);
     res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(result.json));
@@ -489,6 +506,36 @@ const server = createServer(async (req, res) => {
     };
     const result = await spawnPython(USER_DELETE_SCRIPT, JSON.stringify(payload));
     res.statusCode = httpStatusFor(result.code, result.json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Admin: approve pending user ─────────────────────────────────
+  const approveMatch = req.url && req.url.match(/^\/api\/users\/(\d+)\/approve$/);
+  if (approveMatch && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const userId = parseInt(approveMatch[1], 10);
+    const body = await readBody(req);
+    let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+    parsed.user_id = userId;
+    parsed._acting_user = req.sessionUser.username;
+    const result = await spawnPython(USER_APPROVE_SCRIPT, JSON.stringify(parsed));
+    const status = httpStatusFor(result.code, result.json);
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Admin: reject pending user ──────────────────────────────────────────
+  const rejectMatch = req.url && req.url.match(/^\/api\/users\/(\d+)\/reject$/);
+  if (rejectMatch && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const userId = parseInt(rejectMatch[1], 10);
+    const result = await spawnPython(USER_REJECT_SCRIPT, JSON.stringify({ user_id: userId }));
+    const status = httpStatusFor(result.code, result.json);
+    res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(result.json));
     return;

@@ -15,7 +15,8 @@ def main() -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, username, email, role, created_at, updated_at "
+                "SELECT id, username, email, role, status, approved_at, approved_by, "
+                "       created_at, updated_at "
                 "FROM users ORDER BY id"
             )
             rows = [user_db.row_to_public(cur, r) for r in cur.fetchall()]

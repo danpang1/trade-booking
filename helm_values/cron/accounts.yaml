@@ -1,0 +1,13 @@
+---
+# Trade-booking refdata sync — accounts (exchange + wallet + broker).
+# Release: cron-accounts-<env>. Renders one CronJob, no Deployment.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: accounts
+    enabled: true
+    schedule: "35 * * * *"   # hourly at :35 (staggered after users :25, tokens :30)
+    command: ["python", "/opt/app/scripts/sync_accounts.py"]
+    args: []

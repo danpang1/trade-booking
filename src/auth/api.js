@@ -19,3 +19,14 @@ export async function apiJson(path, opts = {}) {
   try { body = await r.json(); } catch { /* may be 204 */ }
   return { status: r.status, body };
 }
+
+export async function register({ username, email, password }) {
+  const r = await api("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email, password }),
+  });
+  let body = null;
+  try { body = await r.json(); } catch { body = { ok: false, error: "non-JSON server response" }; }
+  return { status: r.status, body };
+}

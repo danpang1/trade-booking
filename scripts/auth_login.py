@@ -35,7 +35,7 @@ def main() -> int:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM sessions WHERE expires_at < now()")
                 cur.execute(
-                    "SELECT id, username, email, role, password_hash "
+                    "SELECT id, username, email, role, password_hash, status "
                     "FROM users WHERE LOWER(username) = LOWER(%s)",
                     (username,),
                 )
@@ -43,7 +43,11 @@ def main() -> int:
                 if row is None or not user_db.verify_password(password, row[4]):
                     print(json.dumps({"ok": False, "error": "invalid credentials"}))
                     return 6
-                user_id, u_name, u_email, u_role, _ = row
+                user_id, u_name, u_email, u_role, _, u_status = row
+
+                if u_status != "active":
+                    print(json.dumps({"ok": False, "error": "Account pending admin approval"}))
+                    return 6
 
                 cur.execute(
                     "INSERT INTO sessions (user_id, expires_at) "
