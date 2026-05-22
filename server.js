@@ -42,6 +42,7 @@ const USER_LIST_SCRIPT    = resolve(__dirname, "scripts", "user_list.py");
 const USER_UPDATE_SCRIPT  = resolve(__dirname, "scripts", "user_update.py");
 const USER_DELETE_SCRIPT  = resolve(__dirname, "scripts", "user_delete.py");
 const USER_APPROVE_SCRIPT = resolve(__dirname, "scripts", "user_approve.py");
+const USER_REJECT_SCRIPT  = resolve(__dirname, "scripts", "user_reject.py");
 
 const SESSION_COOKIE = "sid";
 const SESSION_MAX_AGE_SEC = 8 * 60 * 60;
@@ -519,6 +520,19 @@ const server = createServer(async (req, res) => {
     parsed.user_id = userId;
     parsed._acting_user = req.sessionUser.username;
     const result = await spawnPython(USER_APPROVE_SCRIPT, JSON.stringify(parsed));
+    const status = httpStatusFor(result.code, result.json);
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Admin: reject pending user ──────────────────────────────────────────
+  const rejectMatch = req.url && req.url.match(/^\/api\/users\/(\d+)\/reject$/);
+  if (rejectMatch && req.method === "POST") {
+    if (!requireAdmin(req, res)) return;
+    const userId = parseInt(rejectMatch[1], 10);
+    const result = await spawnPython(USER_REJECT_SCRIPT, JSON.stringify({ user_id: userId }));
     const status = httpStatusFor(result.code, result.json);
     res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
