@@ -20,10 +20,29 @@ The dashboard is gated by a login page. Users + sessions live in Postgres UAT, i
 ```powershell
 pip install -r requirements.txt
 python scripts/apply_schema_users.py
+python scripts/apply_schema_users_pending.py
 python scripts/user_create.py --username <you> --email <you>@tokkalabs.com --role admin
 ```
 
 `user_create.py` prompts for the password (hidden via `getpass`). Re-run with new args to add more admins or users.
+
+### Self-registration & approval
+
+Users without an account can request one from the login page:
+
+1. Click `REQUEST ACCOUNT →` on the login form.
+2. Enter username / email / password (twice).
+3. Submit. The account lands in a pending queue — no login until approval.
+
+Admins approve from `USER ADMIN`:
+
+1. Click the `PENDING (N)` tab.
+2. Pick `APPROVE AS USER` or `APPROVE AS ADMIN` per row (role is assigned at approval time, not requested by the user).
+3. Or `REJECT` to delete the request (the user can re-register).
+
+Pending users hitting the login form get `"Account pending admin approval"`. Wrong-password attempts return generic `"invalid credentials"` regardless of status — no account-existence oracle.
+
+Admin bootstrap (above) is unchanged: `user_create.py --role admin` creates an immediately-active admin and skips the approval flow.
 
 ### Smoke test
 
@@ -34,6 +53,12 @@ python scripts/smoke_auth.py --username <you> --password <yourpw>
 ```
 
 Prints `PASS` if login, whoami, role gate (admin → 200 on /api/users, user → 403), bad-login (401), and logout all behave correctly.
+
+Add `--register` to also exercise the registration + approval flow (register → pending-login fails → approve → login OK → register → reject → login fails):
+
+```powershell
+python scripts/smoke_auth.py --username <admin> --password <yourpw> --register
+```
 
 ### Roles
 
