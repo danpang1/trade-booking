@@ -75,3 +75,23 @@ def test_approve_invalid_role_returns_400():
 def test_approve_missing_user_id_returns_400():
     code, body = _run({"role": "user", "_acting_user": "admin1"}, rowcount=0)
     assert code == 3
+
+
+def test_approve_already_active_returns_conflict():
+    """rowcount=0 AND existing row → exit 5 with code:conflict (not 404)."""
+    cur = FakeCursor(rowcount=0)
+    cur.fetchone = lambda: ("active",)  # second SELECT returns the existing status
+    conn = FakeConn(cur)
+    fake_in = io.BytesIO(json.dumps(
+        {"user_id": 1, "role": "user", "_acting_user": "admin1"}
+    ).encode("utf-8"))
+    fake_in.buffer = fake_in
+    out = io.StringIO()
+    with patch.object(user_db, "connect", return_value=conn), \
+         patch.object(sys, "stdin", fake_in), \
+         patch.object(sys, "stdout", out):
+        code = user_approve.main()
+    body = json.loads(out.getvalue() or "{}")
+    assert code == 5
+    assert body.get("code") == "conflict"
+    assert "already active" in body.get("error", "").lower()
