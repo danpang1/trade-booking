@@ -49,7 +49,7 @@ export default function LoginPage({ banner, onSwitchToRegister }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
           <img src={tokkaLogo} alt="Tokka" style={{ height: 28 }} />
-          <div style={{ fontSize: 13, color: BB.dim, letterSpacing: 1.2 }}>TRADE BOOKING</div>
+          <div style={{ fontSize: 13, color: BB.dim, letterSpacing: 1.2 }}>TMS</div>
         </div>
 
         {banner && (
