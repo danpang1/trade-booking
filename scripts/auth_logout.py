@@ -18,13 +18,18 @@ def main() -> int:
         payload = {}
     sid = payload.get("sid")
     if sid:
-        conn = user_db.connect()
+        conn = None
         try:
+            conn = user_db.connect()
             with conn:
                 with conn.cursor() as cur:
                     cur.execute("DELETE FROM sessions WHERE session_id = %s", (sid,))
+        except Exception as e:
+            print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
+            return 5
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
     print(json.dumps({"ok": True}))
     return 0
 

@@ -25,8 +25,9 @@ def main() -> int:
         print(json.dumps({"ok": False}))
         return 6
 
-    conn = user_db.connect()
+    conn = None
     try:
+        conn = user_db.connect()
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -57,7 +58,8 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 if __name__ == "__main__":
