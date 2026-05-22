@@ -20,7 +20,7 @@ const inputStyle = {
   fontFamily: "inherit", fontSize: 13,
 };
 
-export default function LoginPage({ banner }) {
+export default function LoginPage({ banner, onSwitchToRegister }) {
   const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -102,6 +102,16 @@ export default function LoginPage({ banner }) {
         }}>
           {pending ? "SIGNING IN…" : "SIGN IN"}
         </button>
+
+        {onSwitchToRegister && (
+          <button type="button" onClick={onSwitchToRegister} disabled={pending} style={{
+            width: "100%", marginTop: 10, padding: "8px 16px",
+            background: "transparent", color: BB.dim, border: "none",
+            fontFamily: "inherit", fontSize: 11, letterSpacing: 1.5, cursor: "pointer",
+          }}>
+            REQUEST ACCOUNT →
+          </button>
+        )}
       </form>
     </div>
   );
