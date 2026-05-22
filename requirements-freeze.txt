@@ -1,5 +1,6 @@
 # Pinned exact versions for reproducible Docker builds.
-# Regenerate with: pip freeze | grep -E '^(psycopg2|PyMySQL)' > requirements-freeze.txt
+# Regenerate with: pip freeze | grep -E '^(psycopg2|PyMySQL|bcrypt)' > requirements-freeze.txt
 # (matches the developer's local Python 3.11 env on 2026-05-18.)
 psycopg2-binary==2.9.11
 PyMySQL==1.2.0
+bcrypt==4.3.0
