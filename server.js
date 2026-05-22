@@ -32,9 +32,10 @@ const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 
-const AUTH_LOGIN_SCRIPT   = resolve(__dirname, "scripts", "auth_login.py");
-const AUTH_LOGOUT_SCRIPT  = resolve(__dirname, "scripts", "auth_logout.py");
-const AUTH_WHOAMI_SCRIPT  = resolve(__dirname, "scripts", "auth_whoami.py");
+const AUTH_LOGIN_SCRIPT    = resolve(__dirname, "scripts", "auth_login.py");
+const AUTH_LOGOUT_SCRIPT   = resolve(__dirname, "scripts", "auth_logout.py");
+const AUTH_WHOAMI_SCRIPT   = resolve(__dirname, "scripts", "auth_whoami.py");
+const AUTH_REGISTER_SCRIPT = resolve(__dirname, "scripts", "auth_register.py");
 
 const USER_CREATE_SCRIPT = resolve(__dirname, "scripts", "user_create.py");
 const USER_LIST_SCRIPT   = resolve(__dirname, "scripts", "user_list.py");
@@ -357,7 +358,9 @@ const server = createServer(async (req, res) => {
   // session cookie). Everything else under /api/* requires a valid
   // session. Static assets (no /api/ prefix) fall through unchanged.
   const isApi = (req.url || "").startsWith("/api/");
-  const isPublicApi = req.url === "/api/auth/login" || req.url === "/api/health";
+  const isPublicApi = req.url === "/api/auth/login"
+                  || req.url === "/api/auth/register"
+                  || req.url === "/api/health";
   if (isApi && !isPublicApi) {
     const sessionUser = await resolveSession(req);
     if (!sessionUser) {
@@ -415,6 +418,17 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify(rest));
       return;
     }
+    res.statusCode = status;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(result.json));
+    return;
+  }
+
+  // ── Auth: register ───────────────────────────────────────────────
+  if (req.url === "/api/auth/register" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = await spawnPython(AUTH_REGISTER_SCRIPT, body);
+    const status = httpStatusFor(result.code, result.json);
     res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(result.json));
