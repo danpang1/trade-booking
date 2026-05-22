@@ -149,9 +149,7 @@ definitions:
           - export ENVIRONMENT="prod"
           - export KUBE_CLUSTER_NAME="jp-rancher"
           - export KUBE_CLUSTER_CONFIG="$RANCHER_KUBE_CONFIG_JP_CLUSTER"
-          # Use `dry-run` arg here to test pipeline wiring without touching the cluster.
-          # Remove the arg once prod deploys are verified end-to-end.
-          - bash ./.pipelines/deploy.sh dry-run
+          - bash ./.pipelines/deploy.sh
 
     - step: &rollbackUat
         name: Rollback UAT
