@@ -204,12 +204,13 @@ pipelines:
         - step: *dockerBuildAndPublish
         - step: *helmBuild
 
-      # Manual deploy + rollback pair per environment. UAT is verified first,
-      # then prod is promoted using the same image artifact.
-      - step: *deployUat
-      - step: *rollbackUat
-      - step: *deployProd
-      - step: *rollbackProd
+      # Manual deploy + rollback steps for each environment, all triggered
+      # independently so any one can be run without blocking the others.
+      - parallel:
+        - step: *deployUat
+        - step: *deployProd
+        - step: *rollbackUat
+        - step: *rollbackProd
 
   pull-requests:
     '**':
