@@ -6508,7 +6508,7 @@ export default function TradeBookingForm() {
             style={{ height: 32, width: "auto", objectFit: "contain" }}
           />
           <span
-            className="text-[9px] tracking-[0.24em] uppercase font-mono"
+            className="text-[9px] tracking-[0.34em] uppercase font-mono"
             style={{ color: "#9a9488", fontWeight: 400, paddingLeft: 1 }}
           >
             Trade Management System
