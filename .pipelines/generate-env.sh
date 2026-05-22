@@ -39,13 +39,17 @@ VERSION_BASE=$(find helm -type f -name Chart.yaml  | xargs grep -E "^appVersion.
 if [[ "$BITBUCKET_BRANCH" == "master" || "$BITBUCKET_BRANCH" == "main" ]]; then
   APP_NAME="${APP_NAME}-prod"
 
-  # Suffix the build number so each main-branch push gets a unique ECR
-  # tag (the registry has tag immutability — re-pushing 0.0.N would fail).
-  # BITBUCKET_BUILD_NUMBER increments by 1 per pipeline run repo-wide, so
-  # every downstream step in the same pipeline gets the same VERSION via
-  # the prepareEnv artifact, while subsequent runs get fresh tags.
-  VERSION="$VERSION_BASE-$BITBUCKET_BUILD_NUMBER"
-  VERSION_PYPI="$VERSION_BASE.post$BITBUCKET_BUILD_NUMBER"
+  # Pure semver tagging: VERSION == appVersion from helm/Chart.yaml.
+  # ECR has tag immutability, so a push to main without first bumping
+  # helm/Chart.yaml will fail at `docker push` — that's the intended
+  # gate. Use `python scripts/update_version.py` (auto-bumps patch in
+  # both `version:` and `appVersion:`) before pushing.
+  #
+  # The helm chart resolves the image tag to {{ .Chart.AppVersion }}
+  # by default, so whatever CI publishes here is exactly what the
+  # deploy will pull — no `--set image.version` plumbing needed.
+  VERSION=$VERSION_BASE
+  VERSION_PYPI=$VERSION_BASE
 
   # Single cluster setup
   ENVIRONMENT="prod"
