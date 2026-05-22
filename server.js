@@ -311,12 +311,13 @@ const server = createServer(async (req, res) => {
   }
 
   // ── Auth gate ─────────────────────────────────────────────────────
-  // Public paths: only /api/auth/login is exempt. Everything else under
-  // /api/* requires a valid session cookie. Static assets (no /api/
-  // prefix) fall through unchanged.
+  // Public paths: /api/auth/login (so users can log in) and /api/health
+  // (so the Kubernetes startup/liveness probes can reach it without a
+  // session cookie). Everything else under /api/* requires a valid
+  // session. Static assets (no /api/ prefix) fall through unchanged.
   const isApi = (req.url || "").startsWith("/api/");
-  const isLogin = req.url === "/api/auth/login";
-  if (isApi && !isLogin) {
+  const isPublicApi = req.url === "/api/auth/login" || req.url === "/api/health";
+  if (isApi && !isPublicApi) {
     const sessionUser = await resolveSession(req);
     if (!sessionUser) {
       res.statusCode = 401;
