@@ -19,33 +19,40 @@ function Routed() {
   if (!ready) return <div style={{ background: "#000", minHeight: "100vh" }} />;
 
   if (!user) {
-    if (mode === "register") {
-      return (
+    // Auth pages get a thin fixed footer (short viewport, nothing to scroll
+    // past). The authenticated app renders its own inline footer at the
+    // bottom of the scroll container so it doesn't overlap the table.
+    const authPage = mode === "register"
+      ? (
         <RegisterPage
           onBackToLogin={() => setMode("login")}
           onRegistered={(msg) => { setPostRegisterBanner(msg); setMode("login"); }}
         />
+      )
+      : (
+        <LoginPage
+          banner={postRegisterBanner || expiredBanner}
+          onSwitchToRegister={() => { setPostRegisterBanner(""); setMode("register"); }}
+        />
       );
-    }
     return (
-      <LoginPage
-        banner={postRegisterBanner || expiredBanner}
-        onSwitchToRegister={() => { setPostRegisterBanner(""); setMode("register"); }}
-      />
+      <>
+        {authPage}
+        <AuthFooter />
+      </>
     );
   }
   return <TradeBookingForm />;
 }
 
-// Thin fixed footer rendered above every route. pointerEvents:none so it
-// never blocks clicks; muted color so it doesn't pull focus from content.
-function Footer() {
+// Fixed footer used only on the auth pages.
+function AuthFooter() {
   return (
     <div style={{
       position: "fixed", bottom: 4, left: 0, right: 0,
       textAlign: "center", fontSize: 9, letterSpacing: 0.5,
       color: "#5d5d5d",
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
       pointerEvents: "none", zIndex: 1,
     }}>
       © 2026 Tokka Labs - Middle Office.
@@ -57,7 +64,6 @@ export default function App() {
   return (
     <AuthProvider>
       <Routed />
-      <Footer />
     </AuthProvider>
   );
 }

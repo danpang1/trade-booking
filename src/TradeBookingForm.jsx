@@ -2414,7 +2414,7 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 
         <div className="px-6 py-5" style={{ borderBottom: "1px solid #d9d4c7" }}>
           <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Audit Trail</div>
-          <div className="text-[20px] mt-1" style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}>
+          <div className="text-[22px] mt-1" style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}>
             {dealRef}
           </div>
           <div className="text-[11px] opacity-60 mt-1">
@@ -2974,7 +2974,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
           {/* Headline reads "MLA00000003 — 3,300 ETH LOAN FROM ECHOCREEK".
               Direction-aware: LEND → "LOAN TO X", BORROW → "LOAN FROM X". */}
           <div
-            className="text-[24px] mt-1 leading-tight"
+            className="text-[22px] mt-1 leading-tight"
             style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
           >
             {dealRef}
@@ -3228,7 +3228,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                     <th className="px-2 py-2 text-right whitespace-nowrap">Rate (USD)</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">Amount (USD)</th>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Interest Calc Date</th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">Interest Rate P.A. (%)</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Interest Rate (% p.a.)</th>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Interest Asset</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">Accrued Interest</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">WHT</th>
@@ -3239,7 +3239,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                     <th className="px-2 py-2 text-right whitespace-nowrap">Hedged Interest</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">Hedged Price</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">Hedge USDT</th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">Acc Interest To Date</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Accrued Interest to Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3695,7 +3695,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
 // uses a portal-free fixed-position bubble that follows the trigger.
 // Used in the Deal Enquiry table to surface the full ISO timestamp on
 // the truncated date columns and the CID on counterparty.
-function HoverTip({ text, children }) {
+function HoverTip({ text, children, placement = "top" }) {
   const [pos, setPos] = useState(null); // { x, y } in viewport coords, null = hidden
   const bubbleRef = useRef(null);
   const [clampedLeft, setClampedLeft] = useState(null);
@@ -3715,6 +3715,7 @@ function HoverTip({ text, children }) {
     setClampedLeft(x);
   }, [pos, text]);
   if (!text) return children;
+  const isBottom = placement === "bottom";
   // Portal the bubble into document.body so it escapes any transformed
   // ancestor (modals slide-in via translateY would otherwise become the
   // containing block for a fixed-positioned descendant, collapsing the
@@ -3726,8 +3727,8 @@ function HoverTip({ text, children }) {
           style={{
             position: "fixed",
             left: clampedLeft != null ? clampedLeft : pos.x,
-            top: pos.y - 4,
-            transform: "translateY(-100%)",
+            top: isBottom ? pos.y + 4 : pos.y - 4,
+            transform: isBottom ? "none" : "translateY(-100%)",
             background: "#1f1f1f",
             color: "#f2efe8",
             fontSize: 11,
@@ -3754,7 +3755,7 @@ function HoverTip({ text, children }) {
       style={{ display: "inline-block" }}
       onMouseEnter={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
-        setPos({ x: r.left, y: r.top });
+        setPos({ x: r.left, y: isBottom ? r.bottom : r.top });
       }}
       onMouseLeave={() => { setPos(null); setClampedLeft(null); }}
     >
@@ -3992,6 +3993,187 @@ const LOAN_STATUS_STYLES = {
   CANCELLED: { bg: "#fff0eb", border: "#e08a6a", color: "#7a1f00" },
 };
 
+// ─── CSV export helpers ───────────────────────────────────────────────
+// columns: [{ header, key } | { header, get(row) }]. `get` lets us derive
+// values (e.g. Month Year from trade_date). RFC4180 quoting. UTF-8 BOM so
+// Excel renders non-ASCII correctly.
+function csvEscape(v) {
+  if (v == null) return "";
+  let s = String(v);
+  if (/[",\n\r]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function rowsToCsv(rows, columns) {
+  const head = columns.map((c) => csvEscape(c.header)).join(",");
+  const body = rows.map((r) =>
+    columns
+      .map((c) => csvEscape(typeof c.get === "function" ? c.get(r) : r[c.key]))
+      .join(",")
+  );
+  return [head, ...body].join("\n");
+}
+function downloadCsv(filename, csv) {
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const _CSV_MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function fmtMonthYearUtc(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${_CSV_MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+// Today as YYYY-MM-DD in local time — used in CSV filenames.
+function todayStampLocal() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Explicit column sets so CSV layout stays stable. Audit-schema columns
+// (asset/amount/fee_asset/fee_amount, Month Year) are emitted even if the
+// table doesn't render them inline.
+const DEAL_CSV_COLUMNS = [
+  { header: "Updated Date",       key: "effective_start" },
+  { header: "Deal Reference",     key: "deal_ref" },
+  { header: "Deal Type",          key: "txn_type" },
+  { header: "Portfolio ID",       key: "portfolio_id" },
+  { header: "Portfolio Name",     key: "portfolio_name" },
+  { header: "Counterparty",       key: "counterparty" },
+  { header: "Counterparty ID",    key: "counterparty_id" },
+  { header: "Direction",          key: "direction" },
+  { header: "Cashflow Type",      key: "cashflow_type" },
+  { header: "Loan Type",          key: "loan_type" },
+  { header: "Asset",              key: "asset" },
+  { header: "Amount",             key: "amount" },
+  { header: "Fee Asset",          key: "fee_asset" },
+  { header: "Fee Amount",         key: "fee_amount" },
+  { header: "Base Asset",         key: "base_asset" },
+  { header: "Quote Asset",        key: "quote_asset" },
+  { header: "Trade Date",         key: "trade_date" },
+  { header: "Value Date",         key: "value_date" },
+  { header: "Maturity Date",      key: "maturity_date" },
+  { header: "Account",            key: "account" },
+  { header: "Status",             key: "status" },
+  { header: "Month Year",         get: (r) => fmtMonthYearUtc(r.trade_date) },
+  { header: "Linked Deal Refs",   get: (r) => (r.mappings || []).map((m) => m.counterpart_deal_ref).filter(Boolean).join("; ") },
+];
+const LOAN_CSV_COLUMNS = [
+  { header: "Input Date",         get: (r) => r.first_effective_start || r.effective_start || "" },
+  { header: "Deal Reference",     key: "deal_ref" },
+  { header: "Direction",          key: "direction" },
+  { header: "Loan Type",          key: "loan_type" },
+  { header: "Portfolio ID",       key: "portfolio_id" },
+  { header: "Portfolio Name",     key: "portfolio_name" },
+  { header: "Counterparty",       key: "counterparty" },
+  { header: "Counterparty ID",    key: "counterparty_id" },
+  { header: "Principal Asset",    key: "principal_asset" },
+  { header: "Principal Amount",   key: "principal_amount" },
+  { header: "Interest Rate %pa",  key: "interest_rate_pa_pct" },
+  { header: "Interest Type",      key: "interest_type" },
+  { header: "Interest Asset",     key: "interest_asset" },
+  { header: "Trade Date",         key: "trade_date" },
+  { header: "Maturity Date",      key: "maturity_date" },
+  { header: "Is Hedged",          get: (r) => (r.is_hedged ? "Y" : "N") },
+  { header: "Hedged Qty",         key: "hedged_qty" },
+  { header: "Hedged Asset",       key: "hedged_asset" },
+  { header: "Status",             key: "status" },
+];
+
+// Page-size options for the enquiry tables — used by both DealEnquiry and
+// LoanEnquiry. 50 is the default; bump higher for power-users scanning a
+// large window without paging.
+const ENQUIRY_PAGE_SIZES = [25, 50, 100, 200];
+
+// Shared pagination footer for the enquiry tables. Renders row range +
+// page-size picker on the left, Prev/Next + page indicator on the right.
+function EnquiryPaginationBar({
+  page, totalPages, pageSize, setPage, setPageSize,
+  pageStart, pageEnd, totalRows, BB,
+}) {
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+  return (
+    <div
+      className="flex items-center justify-between flex-wrap gap-2"
+      style={{
+        marginTop: 8,
+        padding: "8px 12px",
+        border: `1px solid ${BB?.border || "#d9d4c7"}`,
+        background: "#ffffff",
+        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        fontSize: 11,
+        color: "#6a665c",
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <span>
+          {totalRows === 0 ? "No rows" : `${pageStart}–${pageEnd} of ${totalRows}`}
+        </span>
+        <span style={{ color: "#a39e90" }}>·</span>
+        <label className="flex items-center gap-1.5 text-[10px] tracking-[0.18em] uppercase">
+          <span>Page size</span>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            style={{
+              fontFamily: "inherit",
+              fontSize: 11,
+              padding: "2px 4px",
+              border: "1px solid #d9d4c7",
+              background: "#ffffff",
+              color: "#1f1f1f",
+            }}
+          >
+            {ENQUIRY_PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={!canPrev}
+          className="text-[10px] tracking-[0.22em] uppercase px-2 py-1 transition-colors"
+          style={{
+            background: "transparent",
+            border: `1px solid ${canPrev ? "#d9d4c7" : "#ece7dd"}`,
+            color: canPrev ? "#1f1f1f" : "#cdc8bb",
+            cursor: canPrev ? "pointer" : "not-allowed",
+          }}
+        >← Prev</button>
+        <span
+          className="text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "#6a665c", minWidth: 80, textAlign: "center" }}
+        >
+          Page {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={!canNext}
+          className="text-[10px] tracking-[0.22em] uppercase px-2 py-1 transition-colors"
+          style={{
+            background: "transparent",
+            border: `1px solid ${canNext ? "#d9d4c7" : "#ece7dd"}`,
+            color: canNext ? "#1f1f1f" : "#cdc8bb",
+            cursor: canNext ? "pointer" : "not-allowed",
+          }}
+        >Next →</button>
+      </div>
+    </div>
+  );
+}
+
 const DEAL_ENQUIRY_INITIAL_FILTERS = {
   trade_date_from: "",
   trade_date_to: "",
@@ -4031,6 +4213,12 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(DEAL_ENQUIRY_INITIAL_FILTERS);
   const filtersActive = filtersDifferFromDefault(filters, DEAL_ENQUIRY_INITIAL_FILTERS);
+  const hasDateFilter = !!(filters.trade_date_from || filters.trade_date_to || filters.value_date_from || filters.value_date_to);
+  const [showDates, setShowDates] = useState(false);
+  // Pagination — page is 1-indexed; resets to 1 whenever filters change.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  useEffect(() => { setPage(1); }, [filters, pageSize]);
 
   // Cashflow rows expose `asset` / `fee_asset`; once SPOT rows ship they'll
   // expose `base_asset` / `quote_asset`. Filter on whichever the row has.
@@ -4092,6 +4280,22 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
     });
   }, [rows, filters]);
 
+  const totalRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  // Clamp page if filteredRows shrinks below current page window.
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
+    [filteredRows, page, pageSize]
+  );
+  const pageStart = totalRows === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = Math.min(page * pageSize, totalRows);
+
+  const exportCsv = useCallback(() => {
+    const csv = rowsToCsv(filteredRows, DEAL_CSV_COLUMNS);
+    downloadCsv(`deal-enquiry-${todayStampLocal()}.csv`, csv);
+  }, [filteredRows]);
+
   const fetchRecent = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -4135,10 +4339,9 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters — pure-white sectioned card ──────────────────────
-          Three horizontal sections (Date Range / Filter By / Search)
-          divided by hairlines for clear visual order. White surface,
-          quiet small-caps section labels. ─── */}
+      {/* ─── Filters — compact white card. Portfolio/Status/Search live
+          inline; date pickers tuck behind a "Date filters" toggle so the
+          card stays small when dates aren't being filtered. ─── */}
       <div
         className="mb-3"
         style={{
@@ -4147,10 +4350,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {/* ── Header strip — section label + active indicator + clear ── */}
+        {/* Header strip — label, date toggle, clear all */}
         <div
           className="flex items-center justify-between"
-          style={{ padding: "10px 16px 9px", borderBottom: "1px solid #f3f1ec" }}
+          style={{ padding: "8px 16px", borderBottom: "1px solid #f3f1ec" }}
         >
           <div className="flex items-baseline gap-2.5">
             <span
@@ -4164,68 +4367,64 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               >· Active</span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!filtersActive}
-            className="text-[10px] tracking-[0.22em] uppercase transition-colors"
-            style={{
-              background: "transparent",
-              color: filtersActive ? "#1f1f1f" : "#cdc8bb",
-              border: "none",
-              padding: "4px 0",
-              cursor: filtersActive ? "pointer" : "not-allowed",
-            }}
-          >× Clear all</button>
-        </div>
-
-        {/* ── Section 1 — Date Range ── */}
-        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
-          <div
-            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
-            style={{ color: "#a39e90", fontWeight: 500 }}
-          >Date Range</div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              columnGap: 24,
-              rowGap: 12,
-            }}
-          >
-            {[
-              { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-              { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
-            ].map((f) => (
-              <div
-                key={f.fromKey}
-                className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
-                style={{ color: "#6a665c" }}
-              >
-                <span>{f.label}</span>
-                <div className="flex items-center gap-2">
-                  <DateTimePicker24 value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
-                  <span style={{ color: "#a39e90" }}>→</span>
-                  <DateTimePicker24 value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center gap-5">
+            <button
+              type="button"
+              onClick={() => setShowDates((s) => !s)}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              {showDates ? "− Hide dates" : "+ Date filters"}
+              {!showDates && hasDateFilter && (
+                <span style={{ color: "#b45309", marginLeft: 4 }}>· Active</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!filtersActive}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: filtersActive ? "#1f1f1f" : "#cdc8bb",
+                border: "none",
+                padding: "4px 0",
+                cursor: filtersActive ? "pointer" : "not-allowed",
+              }}
+            >× Clear all</button>
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={totalRows === 0}
+              title={totalRows === 0 ? "No rows to export" : `Download ${totalRows} row${totalRows === 1 ? "" : "s"} as CSV`}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: totalRows === 0 ? "#cdc8bb" : "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: totalRows === 0 ? "not-allowed" : "pointer",
+              }}
+            >↓ CSV</button>
           </div>
         </div>
 
-        {/* ── Section 2 — Filter By ── */}
-        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
-          <div
-            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
-            style={{ color: "#a39e90", fontWeight: 500 }}
-          >Filter By</div>
+        {/* Body — Portfolio + Status row, then Search row */}
+        <div style={{ padding: "10px 16px 12px" }}>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               columnGap: 24,
-              rowGap: 12,
+              rowGap: 10,
               alignItems: "start",
+              marginBottom: 10,
             }}
           >
             {/* Portfolio — picker + refined white chip stack */}
@@ -4324,14 +4523,8 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ── Section 3 — Search ── */}
-        <div style={{ padding: "12px 16px 14px" }}>
-          <div
-            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
-            style={{ color: "#a39e90", fontWeight: 500 }}
-          >Search</div>
+          {/* Search row */}
           <div
             style={{
               display: "grid",
@@ -4360,6 +4553,38 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
             ))}
           </div>
         </div>
+
+        {/* Collapsible date range */}
+        {showDates && (
+          <div style={{ padding: "10px 16px 12px", borderTop: "1px solid #f3f1ec" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                columnGap: 24,
+                rowGap: 10,
+              }}
+            >
+              {[
+                { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+                { label: "Value Date · From → To", fromKey: "value_date_from", toKey: "value_date_to" },
+              ].map((f) => (
+                <div
+                  key={f.fromKey}
+                  className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+                  style={{ color: "#6a665c" }}
+                >
+                  <span>{f.label}</span>
+                  <div className="flex items-center gap-2">
+                    <DateTimePicker24 value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
+                    <span style={{ color: "#a39e90" }}>→</span>
+                    <DateTimePicker24 value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto" style={{ border: `1px solid ${BB?.border || "#d9d4c7"}` }}>
@@ -4453,7 +4678,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                 </td>
               </tr>
             )}
-            {filteredRows.map((r) => {
+            {pagedRows.map((r) => {
               // Month Year is intentionally NOT rendered in the GUI but is
               // still part of the audit schema — when CSV export is added,
               // include it derived from trade_date as Month YYYY (UTC).
@@ -4616,6 +4841,18 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
           </tbody>
         </table>
       </div>
+
+      <EnquiryPaginationBar
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        setPage={setPage}
+        setPageSize={setPageSize}
+        pageStart={pageStart}
+        pageEnd={pageEnd}
+        totalRows={totalRows}
+        BB={BB}
+      />
     </div>
   );
 }
@@ -4643,6 +4880,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
   const filtersActive = filtersDifferFromDefault(filters, LOAN_ENQUIRY_INITIAL_FILTERS);
+  const hasDateFilter = !!(filters.trade_date_from || filters.trade_date_to || filters.maturity_date_from || filters.maturity_date_to);
+  const [showDates, setShowDates] = useState(false);
+  // Pagination — page is 1-indexed; resets to 1 whenever filters change.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  useEffect(() => { setPage(1); }, [filters, pageSize]);
 
   const filteredRows = useMemo(() => {
     const tokens = (s) =>
@@ -4675,6 +4918,21 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       return true;
     });
   }, [rows, filters]);
+
+  const totalRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
+    [filteredRows, page, pageSize]
+  );
+  const pageStart = totalRows === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = Math.min(page * pageSize, totalRows);
+
+  const exportCsv = useCallback(() => {
+    const csv = rowsToCsv(filteredRows, LOAN_CSV_COLUMNS);
+    downloadCsv(`loan-enquiry-${todayStampLocal()}.csv`, csv);
+  }, [filteredRows]);
 
   const fetchRecent = useCallback(async () => {
     setLoading(true);
@@ -4710,7 +4968,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters — pure-white sectioned card, parallel to Deal Enquiry ─── */}
+      {/* ─── Filters — compact white card, parallel to Deal Enquiry. Date
+          pickers tuck behind a "Date filters" toggle to keep the card small
+          when dates aren't being filtered. ─── */}
       <div
         className="mb-3"
         style={{
@@ -4719,10 +4979,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
         }}
       >
-        {/* ── Header strip ── */}
+        {/* Header strip — label, date toggle, clear all */}
         <div
           className="flex items-center justify-between"
-          style={{ padding: "10px 16px 9px", borderBottom: "1px solid #f3f1ec" }}
+          style={{ padding: "8px 16px", borderBottom: "1px solid #f3f1ec" }}
         >
           <div className="flex items-baseline gap-2.5">
             <span
@@ -4736,68 +4996,64 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               >· Active</span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!filtersActive}
-            className="text-[10px] tracking-[0.22em] uppercase transition-colors"
-            style={{
-              background: "transparent",
-              color: filtersActive ? "#1f1f1f" : "#cdc8bb",
-              border: "none",
-              padding: "4px 0",
-              cursor: filtersActive ? "pointer" : "not-allowed",
-            }}
-          >× Clear all</button>
-        </div>
-
-        {/* ── Section 1 — Date Range ── */}
-        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
-          <div
-            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
-            style={{ color: "#a39e90", fontWeight: 500 }}
-          >Date Range</div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              columnGap: 24,
-              rowGap: 12,
-            }}
-          >
-            {[
-              { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-              { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
-            ].map((f) => (
-              <div
-                key={f.fromKey}
-                className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
-                style={{ color: "#6a665c" }}
-              >
-                <span>{f.label}</span>
-                <div className="flex items-center gap-2">
-                  <DatePicker value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
-                  <span style={{ color: "#a39e90" }}>→</span>
-                  <DatePicker value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center gap-5">
+            <button
+              type="button"
+              onClick={() => setShowDates((s) => !s)}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              {showDates ? "− Hide dates" : "+ Date filters"}
+              {!showDates && hasDateFilter && (
+                <span style={{ color: "#b45309", marginLeft: 4 }}>· Active</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!filtersActive}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: filtersActive ? "#1f1f1f" : "#cdc8bb",
+                border: "none",
+                padding: "4px 0",
+                cursor: filtersActive ? "pointer" : "not-allowed",
+              }}
+            >× Clear all</button>
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={totalRows === 0}
+              title={totalRows === 0 ? "No rows to export" : `Download ${totalRows} row${totalRows === 1 ? "" : "s"} as CSV`}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: totalRows === 0 ? "#cdc8bb" : "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: totalRows === 0 ? "not-allowed" : "pointer",
+              }}
+            >↓ CSV</button>
           </div>
         </div>
 
-        {/* ── Section 2 — Filter By ── */}
-        <div style={{ padding: "12px 16px 14px", borderBottom: "1px solid #f3f1ec" }}>
-          <div
-            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
-            style={{ color: "#a39e90", fontWeight: 500 }}
-          >Filter By</div>
+        {/* Body — Portfolio + Status row, then Search row */}
+        <div style={{ padding: "10px 16px 12px" }}>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               columnGap: 24,
-              rowGap: 12,
+              rowGap: 10,
               alignItems: "start",
+              marginBottom: 10,
             }}
           >
             {/* Portfolio — picker + refined white chip stack */}
@@ -4896,14 +5152,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ── Section 3 — Search ── */}
-        <div style={{ padding: "12px 16px 14px" }}>
-          <div
-            className="text-[9px] tracking-[0.32em] uppercase mb-2.5"
-            style={{ color: "#a39e90", fontWeight: 500 }}
-          >Search</div>
+          {/* Search row */}
           <div
             style={{
               display: "grid",
@@ -4931,6 +5181,38 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             </label>
           </div>
         </div>
+
+        {/* Collapsible date range */}
+        {showDates && (
+          <div style={{ padding: "10px 16px 12px", borderTop: "1px solid #f3f1ec" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                columnGap: 24,
+                rowGap: 10,
+              }}
+            >
+              {[
+                { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
+                { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
+              ].map((f) => (
+                <div
+                  key={f.fromKey}
+                  className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+                  style={{ color: "#6a665c" }}
+                >
+                  <span>{f.label}</span>
+                  <div className="flex items-center gap-2">
+                    <DatePicker value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
+                    <span style={{ color: "#a39e90" }}>→</span>
+                    <DatePicker value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Table ─── */}
@@ -5002,7 +5284,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 </td>
               </tr>
             )}
-            {filteredRows.map((r) => {
+            {pagedRows.map((r) => {
               const principalNum = parseFloat(r.principal_amount) || 0;
               const principalFmt = principalNum.toLocaleString("en-US", { maximumFractionDigits: 5 });
               const mapCount = (r.mappings || []).length;
@@ -5148,6 +5430,18 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           </tbody>
         </table>
       </div>
+
+      <EnquiryPaginationBar
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        setPage={setPage}
+        setPageSize={setPageSize}
+        pageStart={pageStart}
+        pageEnd={pageEnd}
+        totalRows={totalRows}
+        BB={BB}
+      />
     </div>
   );
 }
@@ -6636,7 +6930,7 @@ export default function TradeBookingForm() {
       style={{
         background: BB.bg,
         color: BB.text,
-        fontFamily: "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace",
+        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
       }}
     >
       {/* ════ BANNER — one clean black strip ════ */}
@@ -6662,88 +6956,71 @@ export default function TradeBookingForm() {
           </span>
         </div>
 
-        {/* RIGHT — env indicator (derived from hostname) + UTC date/time */}
-        <div className="flex items-center gap-5 text-[10px] tracking-[0.22em] uppercase font-mono">
-          {/* ENV indicator — vertical: ENV label on top, ● PROD/UAT below */}
-          <div
-            className="flex flex-col items-start gap-0.5 leading-none"
-            title={`Environment derived from hostname: ${typeof window !== "undefined" ? window.location.hostname : ""}`}
-          >
-            <span style={{ color: "#6a665c" }}>ENV</span>
-            <span className="flex items-center gap-1.5">
-              <span
-                aria-hidden
-                className="inline-block"
-                style={{
-                  width: 7,
-                  height: 7,
-                  background: env === "PROD" ? BB.green : "#1f63ea",
-                  boxShadow: `0 0 6px ${env === "PROD" ? BB.green : "#1f63ea"}`,
-                }}
-              />
-              <span
-                style={{
-                  color: env === "PROD" ? "#6ee7b7" : "#bfdbfe",
-                  fontWeight: 600,
-                  letterSpacing: "0.18em",
-                }}
-              >
-                {env}
-              </span>
-            </span>
-          </div>
+        {/* RIGHT — minimal indicator dots. Full status surfaces on hover via
+            HoverTip (instant, no browser title-attribute delay). Left dot =
+            environment (PROD/UAT derived from hostname). Right dot = refdata
+            sync state; click to re-sync. */}
+        <div className="flex items-center gap-3">
+          {/* ENV dot */}
+          <HoverTip text={`ENV: ${env}`} placement="bottom">
+            <span
+              aria-label={`Environment: ${env}`}
+              className="inline-block"
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: env === "PROD" ? BB.green : "#1f63ea",
+                boxShadow: `0 0 8px ${env === "PROD" ? BB.green : "#1f63ea"}`,
+              }}
+            />
+          </HoverTip>
 
-          <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
-
-          {/* REFDATA — re-sync portfolios/counterparties/users/tokens from MySQL */}
-          <button
-            type="button"
-            onClick={refreshRefdata}
-            disabled={refdataLoading}
-            className="flex flex-col items-start gap-0.5 transition-opacity hover:opacity-80 leading-none"
-            style={{ opacity: refdataLoading ? 0.55 : 1, cursor: refdataLoading ? "wait" : "pointer" }}
-            title={
+          {/* REFDATA dot — click to re-sync MySQL refdata */}
+          <HoverTip
+            placement="bottom"
+            text={
               refdataError
-                ? `Refresh failed: ${refdataError}`
+                ? `REFDATA: error — ${refdataError}`
+                : refdataLoading
+                ? "REFDATA: syncing…"
                 : refdataLastAt
-                ? `Last refreshed ${refdataLastAt.toLocaleTimeString()} · click to re-sync MySQL`
-                : "Click to re-sync MySQL refdata (portfolios / counterparties / users / tokens)"
+                ? `REFDATA: ${refdataLastAt.toLocaleTimeString()} · click to re-sync`
+                : "REFDATA: click to load"
             }
           >
-            <span style={{ color: "#6a665c" }}>REFDATA</span>
-            <span className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={refreshRefdata}
+              disabled={refdataLoading}
+              aria-label="Refresh reference data"
+              className="flex items-center transition-opacity hover:opacity-80"
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 4,
+                opacity: refdataLoading ? 0.55 : 1,
+                cursor: refdataLoading ? "wait" : "pointer",
+              }}
+            >
               <span
                 aria-hidden
                 className="inline-block"
                 style={{
-                  width: 7,
-                  height: 7,
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
                   background: refdataError ? BB.red : refdataLoading ? "#1f63ea" : BB.green,
-                  boxShadow: `0 0 6px ${refdataError ? BB.red : refdataLoading ? "#1f63ea" : BB.green}`,
+                  boxShadow: `0 0 8px ${refdataError ? BB.red : refdataLoading ? "#1f63ea" : BB.green}`,
                 }}
               />
-              <span
-                style={{
-                  color: refdataError ? "#fca5a5" : refdataLoading ? "#bfdbfe" : "#6ee7b7",
-                  fontWeight: 600,
-                  letterSpacing: "0.18em",
-                }}
-              >
-                {refdataLoading
-                  ? "SYNCING"
-                  : refdataError
-                  ? "ERROR"
-                  : refdataLastAt
-                  ? refdataLastAt.toLocaleTimeString().slice(0, 5)
-                  : "—"}
-              </span>
-            </span>
-          </button>
+            </button>
+          </HoverTip>
 
           <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
 
           {/* UTC date · time */}
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2 text-[10px] tracking-[0.22em] uppercase font-mono">
             <span
               className="tabular-nums"
               style={{ color: "#ece7dd", letterSpacing: "0.1em" }}
@@ -6754,10 +7031,6 @@ export default function TradeBookingForm() {
             </span>
             <span style={{ color: "#6a665c" }}>UTC</span>
           </div>
-
-          {/* USER / LOGOUT cluster moved to the left sidebar (profile footer
-              + admin Users nav). Identity surfaces in one place to keep the
-              top banner reserved for refdata-sync state + UTC clock. */}
         </div>
       </header>
 
@@ -6919,7 +7192,7 @@ export default function TradeBookingForm() {
         </aside>
 
         {/* ─── MAIN PANEL ─── */}
-        <main className="flex-1 min-w-0 pb-8 overflow-y-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto">
           {view === "DEAL_ENQUIRY" && (
             <DealEnquiry
               BB={BB}
@@ -6995,7 +7268,7 @@ export default function TradeBookingForm() {
             }
             accent={BB.amber}
           >
-            <Field label="Internal Trade Id" span={6}>
+            <Field label="Internal Trade ID" span={6}>
               <Input
                 value={form.trade_id}
                 readOnly
@@ -7007,7 +7280,7 @@ export default function TradeBookingForm() {
                 }}
               />
             </Field>
-            <Field label={form.category === "LOAN" ? "Order ID" : "External Trade Id (optional)"} span={6}>
+            <Field label={form.category === "LOAN" ? "Order ID" : "External Trade ID (optional)"} span={6}>
               <Input
                 placeholder={form.category === "LOAN" ? "" : "exchange order id / counterparty ref / 0x…"}
                 value={form.external_trade_id}
@@ -7099,10 +7372,10 @@ export default function TradeBookingForm() {
                 </Field>
               </>
             )}
-            <Field label="Created by" required span={4}>
+            <Field label="Created By" required span={4}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
                 <span style={{ fontSize: 11, color: "#7d7d7d", letterSpacing: 1 }}>BOOKED BY</span>
-                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "'JetBrains Mono', monospace" }}>{user?.username || "—"}</span>
+                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>{user?.username || "—"}</span>
               </div>
             </Field>
             {form.category === "CASHFLOW" && (
@@ -7183,7 +7456,7 @@ export default function TradeBookingForm() {
                         })
                       : onPortfolio;
                     return (
-                      <Field label="Linked Loan(s) (optional)" span={8}>
+                      <Field label="Linked Loans (optional)" span={8}>
                         <LoanPicker
                           selected={form.cf_loan_deal_refs || []}
                           onChange={(next) => set("cf_loan_deal_refs", next)}
@@ -7821,7 +8094,7 @@ export default function TradeBookingForm() {
                     }
                   />
                 </Field>
-                <Field label="Interest Rate P.A (%)" span={3}>
+                <Field label="Interest Rate (% p.a.)" span={3}>
                   <NumberInput
                     placeholder="e.g. 8.5"
                     value={form.interest_rate}
@@ -8273,6 +8546,21 @@ export default function TradeBookingForm() {
       </div>
       </ModalShell>
           )}
+
+          {/* Inline footer — sits at the bottom of the scrollable main, so
+              it appears only when the user scrolls past the table rather
+              than locking to the viewport edge. */}
+          <div
+            className="px-5 py-4 text-center"
+            style={{
+              fontSize: 9,
+              letterSpacing: 0.5,
+              color: "#5d5d5d",
+              fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+            }}
+          >
+            © 2026 Tokka Labs - Middle Office.
+          </div>
         </main>
             <ConflictModal
               open={Boolean(conflictModal)}
