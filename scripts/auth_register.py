@@ -53,14 +53,19 @@ def main() -> int:
         print(json.dumps({"ok": True, "user": row}))
         return 0
     except psycopg2.errors.UniqueViolation as e:
+        # Public endpoint — do NOT include raw `detail` (Postgres error
+        # string carries the column name + offending value, which enables
+        # username enumeration). The full error still reaches Grafana
+        # via spawnPython's stderr-logging path on non-zero exit.
+        print(str(e).strip(), file=sys.stderr)
         print(json.dumps({
             "ok": False, "code": "conflict",
             "error": "username or email already taken",
-            "detail": str(e).strip(),
         }))
         return 5
     except Exception as e:
-        print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
+        print(str(e), file=sys.stderr)
+        print(json.dumps({"ok": False, "error": "DB error"}))
         return 5
     finally:
         if conn is not None:
