@@ -15,11 +15,12 @@ const PYTHON = platform() === "win32" ? "python" : "python3";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = 5181;
 
-const CASHFLOW_INSERT_SCRIPT = resolve(__dirname, "scripts", "cashflow_insert.py");
-const CASHFLOW_AMEND_SCRIPT  = resolve(__dirname, "scripts", "cashflow_amend.py");
-const CASHFLOW_RECENT_SCRIPT = resolve(__dirname, "scripts", "cashflow_recent.py");
-const CASHFLOW_GET_SCRIPT    = resolve(__dirname, "scripts", "cashflow_get.py");
-const CASHFLOW_HISTORY_SCRIPT = resolve(__dirname, "scripts", "cashflow_history.py");
+const CASHFLOW_INSERT_SCRIPT   = resolve(__dirname, "scripts", "cashflow_insert.py");
+const CASHFLOW_AMEND_SCRIPT    = resolve(__dirname, "scripts", "cashflow_amend.py");
+const CASHFLOW_RECENT_SCRIPT   = resolve(__dirname, "scripts", "cashflow_recent.py");
+const CASHFLOW_GET_SCRIPT      = resolve(__dirname, "scripts", "cashflow_get.py");
+const CASHFLOW_HISTORY_SCRIPT  = resolve(__dirname, "scripts", "cashflow_history.py");
+const CASHFLOW_TX_FETCH_SCRIPT = resolve(__dirname, "scripts", "cashflow_tx_fetch.py");
 const LOAN_INSERT_SCRIPT  = resolve(__dirname, "scripts", "loan_insert.py");
 const LOAN_AMEND_SCRIPT   = resolve(__dirname, "scripts", "loan_amend.py");
 const LOAN_RECENT_SCRIPT  = resolve(__dirname, "scripts", "loan_recent.py");
@@ -239,6 +240,8 @@ function httpStatusFor(exitCode, json) {
   if (exitCode === 0) return 200;
   if (json && json.code === "conflict") return 409;
   if (json && json.code === "not_found") return 404;
+  if (json && json.code === "no_transfers") return 422;
+  if (json && json.code === "upstream") return 502;
   if (exitCode === 3) return 400;  // validation
   if (exitCode === 4) return 404;  // not_found (fallback if code missing)
   if (exitCode === 6) return 401;  // auth failure
@@ -582,6 +585,22 @@ const server = createServer(async (req, res) => {
     const dealRefs = (json && json.rows || []).map((r) => r.deal_ref).join(",");
     console.log(`[cashflow] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // POST /api/cashflow/fetch-tx
+  //   Body: { tx_hash, network }
+  //   Calls Goldrush via scripts/cashflow_tx_fetch.py and returns parsed transfers.
+  //   Session-gated like all /api/cashflow/* — the global middleware already enforces it.
+  if (req.url === "/api/cashflow/fetch-tx" && req.method === "POST") {
+    const rawBody = await readBody(req);
+    const { code, json, stderr } = await spawnPython(CASHFLOW_TX_FETCH_SCRIPT, rawBody);
+    if (stderr) {
+      // surfaced in spawnPython's own structured log when code !== 0; nothing extra here.
+    }
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(json));
