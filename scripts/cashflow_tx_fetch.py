@@ -13,6 +13,7 @@ Manual smoke (requires GOLDRUSH_API_KEY in env):
         | GOLDRUSH_API_KEY=$GOLDRUSH_API_KEY python3 scripts/cashflow_tx_fetch.py
 """
 from __future__ import annotations
+import re
 
 
 # 25 EVM chains we support, mapped to Goldrush chain names + native asset.
@@ -45,3 +46,36 @@ CHAINS: dict[str, dict[str, str]] = {
     "SAGAEVM": {"chain_name": "sagaevm-mainnet", "native_asset": "SAGA"},
     "XRPLEVM": {"chain_name": "xrplevm-mainnet", "native_asset": "XRP"},
 }
+
+# Exit codes — map to HTTP via server.js:httpStatusFor.
+EXIT_OK = 0
+EXIT_VALIDATION = 3   # → 400
+EXIT_NOT_FOUND = 4    # → 404
+EXIT_UPSTREAM = 5     # → 502 (via json.code="upstream")
+EXIT_MISCONFIG = 6    # → 500 (via fallback)
+EXIT_NO_XFERS = 7     # → 422 (via json.code="no_transfers")
+
+
+_HASH_RE = re.compile(r"^0x[0-9a-f]{64}$")
+
+
+class ValidationError(ValueError):
+    """Raised for malformed inputs. Maps to EXIT_VALIDATION (HTTP 400)."""
+
+
+def validate_input(payload: dict) -> dict:
+    """Validate and normalize stdin payload. Returns a new dict with lower-case hash."""
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+    tx_hash = payload.get("tx_hash")
+    network = payload.get("network")
+    if not isinstance(tx_hash, str):
+        raise ValidationError("tx_hash is required")
+    tx_hash = tx_hash.lower()
+    if not _HASH_RE.match(tx_hash):
+        raise ValidationError("tx_hash must be 0x + 64 hex chars")
+    if not isinstance(network, str) or network not in CHAINS:
+        raise ValidationError(
+            f"network must be one of: {', '.join(sorted(CHAINS))}"
+        )
+    return {"tx_hash": tx_hash, "network": network}
