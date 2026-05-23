@@ -374,7 +374,7 @@ const server = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
@@ -466,6 +466,15 @@ const server = createServer(async (req, res) => {
 
   // ── Auth: logout ──────────────────────────────────────────────────
   if (req.url === "/api/auth/logout" && req.method === "POST") {
+    if (req.sessionUser.authMode !== "cookie") {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({
+        ok: false,
+        error: "logout requires session login (cookie). To revoke a Bearer token, use DELETE /api/tokens/:id",
+      }));
+      return;
+    }
     const sid = req.sessionUser.sid;
     await spawnPython(AUTH_LOGOUT_SCRIPT, JSON.stringify({ sid }));
     clearSessionCookie(res);
