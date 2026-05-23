@@ -14,6 +14,7 @@ Manual smoke (requires GOLDRUSH_API_KEY in env):
 """
 from __future__ import annotations
 import re
+import sys
 
 
 # 25 EVM chains we support, mapped to Goldrush chain names + native asset.
@@ -79,3 +80,77 @@ def validate_input(payload: dict) -> dict:
             f"network must be one of: {', '.join(sorted(CHAINS))}"
         )
     return {"tx_hash": tx_hash, "network": network}
+
+
+_ERC20_TRANSFER_SIG = (
+    "Transfer(indexed address from, indexed address to, uint256 value)"
+)
+
+
+def _minor_to_decimal(raw: int | str, decimals: int, *, strip_zeros: bool = False) -> str:
+    """Convert integer minor units (wei, satoshi, USDT-base-units, etc.) to a decimal string.
+
+    No scientific notation. `decimals=0` returns the int verbatim. With strip_zeros=True,
+    trailing zeros past the radix point are removed (and a bare "0" is returned for 0);
+    without it, the full declared precision is preserved (so 100 USDT → "100.000000").
+    """
+    raw_int = int(raw)
+    if decimals == 0:
+        return str(raw_int)
+    whole, frac = divmod(raw_int, 10 ** decimals)
+    out = f"{whole}.{str(frac).zfill(decimals)}"
+    if strip_zeros:
+        out = out.rstrip("0").rstrip(".")
+        if out == "":
+            out = "0"
+    return out
+
+
+def parse_goldrush(resp: dict, network: str) -> dict:
+    """Parse Covalent /transaction_v2 response into our normalized shape.
+
+    Caller is responsible for checking that `resp` is the success-shape (data.items
+    non-empty) before calling — see fetch_tx() for the error-mapping layer.
+    """
+    item = resp["data"]["items"][0]
+    gas_spent = int(item["gas_spent"])
+    gas_price = int(item["gas_price"])
+    gas_fee_wei = gas_spent * gas_price
+    gas_fee = _minor_to_decimal(gas_fee_wei, 18, strip_zeros=True)
+
+    transfers: list[dict] = []
+    for log in item.get("log_events") or []:
+        decoded = log.get("decoded") or {}
+        if decoded.get("signature") != _ERC20_TRANSFER_SIG:
+            continue
+        params = {p["name"]: p["value"] for p in decoded.get("params", [])}
+        if not all(k in params for k in ("from", "to", "value")):
+            continue
+        decimals = log.get("sender_contract_decimals")
+        ticker = log.get("sender_contract_ticker_symbol")
+        contract = log.get("sender_address")
+        if decimals is None or ticker is None or contract is None:
+            print(
+                f"[cashflow_tx_fetch] skipping non-standard token log "
+                f"(decimals={decimals!r}, ticker={ticker!r}, contract={contract!r})",
+                file=sys.stderr,
+            )
+            continue
+        transfers.append({
+            "asset": ticker,
+            "amount": _minor_to_decimal(params["value"], int(decimals)),
+            "from": params["from"],
+            "to": params["to"],
+            "decimals": int(decimals),
+            "contract_address": contract,
+        })
+
+    return {
+        "transfers": transfers,
+        "gas_fee": gas_fee,
+        "gas_asset": CHAINS[network]["native_asset"],
+        "timestamp": item["block_signed_at"],
+        "block_number": int(item["block_height"]),
+        "tx_from": item["from_address"],
+        "tx_to": item["to_address"],
+    }
