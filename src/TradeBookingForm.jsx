@@ -5766,6 +5766,7 @@ export default function TradeBookingForm() {
   const [txFetchLoading, setTxFetchLoading] = useState(false);
   const [txFetchError, setTxFetchError] = useState(null);
   const [txFetchResult, setTxFetchResult] = useState(null); // {transfers, gas_fee, …} | null
+  const [txFetchSuccess, setTxFetchSuccess] = useState(null);
   // ENV is derived from window.location.hostname, not user-toggleable:
   //   localhost / 127.0.0.1            → UAT  (dev mirrors UAT backend)
   //   hostname contains 'test' or 'uat' → UAT
@@ -5807,13 +5808,39 @@ export default function TradeBookingForm() {
         setTxFetchError(txFetchErrorMessage(res.status, json, form.network));
         return;
       }
-      setTxFetchResult(json);
-      // Task 8 will hook applyAutofill here.
+      if (json.transfers && json.transfers.length === 1) {
+        applyAutofill(json.transfers[0], json);
+        setTxFetchResult(null); // hide the result; the form now has the data
+      } else {
+        // Multi-transfer — Task 9 surfaces the picker by keeping txFetchResult set.
+        setTxFetchResult(json);
+      }
     } catch (e) {
       setTxFetchError("Couldn't reach the server, try again");
     } finally {
       setTxFetchLoading(false);
     }
+  }
+
+  // Autofill helper (Task 8): fills empty-only fields from a single transfer.
+  function isEmpty(v) {
+    return v === "" || v === null || v === undefined;
+  }
+
+  function applyAutofill(transfer, result) {
+    const dateOnly = (result.timestamp || "").slice(0, 10); // "2026-05-22T…" → "2026-05-22"
+    const stamp = `from: ${result.tx_from} → to: ${result.tx_to} (tx ${form.tx_hash})`;
+    const patch = {};
+    if (isEmpty(form.cf_asset))   patch.cf_asset   = transfer.asset;
+    if (isEmpty(form.cf_amount))  patch.cf_amount  = transfer.amount;
+    if (isEmpty(form.gas_asset))  patch.gas_asset  = result.gas_asset;
+    if (isEmpty(form.gas_fee))    patch.gas_fee    = result.gas_fee;
+    if (isEmpty(form.trade_date)) patch.trade_date = dateOnly;
+    if (isEmpty(form.value_date)) patch.value_date = dateOnly;
+    patch.notes = isEmpty(form.notes) ? stamp : `${form.notes}\n${stamp}`;
+    setMany(patch);
+    setTxFetchSuccess("Filled from chain");
+    setTimeout(() => setTxFetchSuccess(null), 4000);
   }
 
   function txFetchErrorMessage(status, json, network) {
@@ -8069,6 +8096,7 @@ export default function TradeBookingForm() {
                       set("tx_hash", e.target.value);
                       setTxFetchError(null);
                       setTxFetchResult(null);
+                      setTxFetchSuccess(null);
                     }}
                   />
                   {(() => {
@@ -8097,6 +8125,11 @@ export default function TradeBookingForm() {
                 {txFetchError && (
                   <div className="text-[11px] mt-1 font-mono" style={{ color: BB.red }}>
                     {txFetchError}
+                  </div>
+                )}
+                {txFetchSuccess && (
+                  <div className="text-[11px] mt-1 font-mono" style={{ color: BB.green }}>
+                    {txFetchSuccess}
                   </div>
                 )}
               </Field>
