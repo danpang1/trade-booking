@@ -36,6 +36,11 @@ const AUTH_LOGIN_SCRIPT    = resolve(__dirname, "scripts", "auth_login.py");
 const AUTH_LOGOUT_SCRIPT   = resolve(__dirname, "scripts", "auth_logout.py");
 const AUTH_WHOAMI_SCRIPT   = resolve(__dirname, "scripts", "auth_whoami.py");
 const AUTH_REGISTER_SCRIPT = resolve(__dirname, "scripts", "auth_register.py");
+const AUTH_WHOAMI_BEARER_SCRIPT = resolve(__dirname, "scripts", "auth_whoami_bearer.py");
+
+const TOKEN_CREATE_SCRIPT = resolve(__dirname, "scripts", "token_create.py");
+const TOKEN_LIST_SCRIPT   = resolve(__dirname, "scripts", "token_list.py");
+const TOKEN_REVOKE_SCRIPT = resolve(__dirname, "scripts", "token_revoke.py");
 
 const USER_CREATE_SCRIPT  = resolve(__dirname, "scripts", "user_create.py");
 const USER_LIST_SCRIPT    = resolve(__dirname, "scripts", "user_list.py");
@@ -276,14 +281,35 @@ function clearSessionCookie(res) {
   );
 }
 
-// Resolve the cookie to a session-user via auth_whoami.py.
-// Returns null if no cookie / unknown sid / expired.
+// Resolve the request identity.
+// Path A: session cookie → auth_whoami.py
+// Path B: Bearer token   → auth_whoami_bearer.py  (added Phase 0)
+// Returns null if neither path yields a valid user.
+// Both paths return the same shape plus an authMode field:
+//   { authMode: "cookie"|"bearer", sid?, id, username, email, role }
 async function resolveSession(req) {
+  // Path A: existing cookie auth
   const sid = parseCookies(req)[SESSION_COOKIE];
-  if (!sid) return null;
-  const result = await spawnPython(AUTH_WHOAMI_SCRIPT, JSON.stringify({ sid }));
-  if (result.code !== 0 || !result.json || result.json.ok !== true) return null;
-  return { sid, ...result.json.user };
+  if (sid) {
+    const result = await spawnPython(AUTH_WHOAMI_SCRIPT, JSON.stringify({ sid }));
+    if (result.code === 0 && result.json && result.json.ok === true) {
+      return { authMode: "cookie", sid, ...result.json.user };
+    }
+  }
+
+  // Path B: Bearer token (added in Phase 0)
+  const authHeader = req.headers.authorization || "";
+  if (authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    if (token) {
+      const result = await spawnPython(AUTH_WHOAMI_BEARER_SCRIPT, JSON.stringify({ token }));
+      if (result.code === 0 && result.json && result.json.ok === true) {
+        return { authMode: "bearer", ...result.json.user };
+      }
+    }
+  }
+
+  return null;
 }
 
 function requireAdmin(req, res) {
@@ -540,6 +566,61 @@ const server = createServer(async (req, res) => {
     res.end(JSON.stringify(result.json));
     return;
   }
+
+  // ── API Tokens (cookie-auth ONLY; Bearer can't mint more Bearer) ──
+  if ((req.url || "").startsWith("/api/tokens")) {
+    if (req.sessionUser.authMode !== "cookie") {
+      res.statusCode = 403;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({
+        ok: false,
+        error: "tokens API requires session login (cookie), not Bearer",
+      }));
+      return;
+    }
+
+    // POST /api/tokens — create
+    if (req.url === "/api/tokens" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed;
+      try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+      parsed._acting_user = req.sessionUser.username;
+      const result = await spawnPython(TOKEN_CREATE_SCRIPT, JSON.stringify(parsed));
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // GET /api/tokens — list
+    if (req.url === "/api/tokens" && req.method === "GET") {
+      const stdin = JSON.stringify({ _acting_user: req.sessionUser.username });
+      const result = await spawnPython(TOKEN_LIST_SCRIPT, stdin);
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // DELETE /api/tokens/:id — revoke
+    const m = (req.url || "").match(/^\/api\/tokens\/(\d+)$/);
+    if (m && req.method === "DELETE") {
+      const id = parseInt(m[1], 10);
+      const stdin = JSON.stringify({ id, _acting_user: req.sessionUser.username });
+      const result = await spawnPython(TOKEN_REVOKE_SCRIPT, stdin);
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // unknown method/path under /api/tokens
+    res.statusCode = 404;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: false, error: "not found" }));
+    return;
+  }
+  // ── API Tokens end ────────────────────────────────────────────────────
 
   // Static serve of any refdata JSON: /refdata/portfolios.json, etc.
   // Only matches known keys (REFDATA_SOURCES) so we don't accidentally
