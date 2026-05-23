@@ -77,6 +77,15 @@ Every booking POST has its `user_id` field overwritten by the session username s
 
 Bloomberg-terminal aesthetic — black canvas, orange (`#FA8C16`) primary accent, cyan/amber/green/red data colors, sharp rectangular inputs, JetBrains Mono throughout. All theme tokens live in the `BB` constants block at the top of `src/TradeBookingForm.jsx` — nothing leaks to global CSS.
 
+## Features
+
+### Cashflow — Auto-fill from tx hash (EVM)
+
+In the cashflow booking form, after picking a network and pasting a transaction
+hash, click **Fetch** to pull the asset, amount, gas, and timestamps directly
+from chain (via Goldrush/Covalent). Only EVM chains supported in v1 — Solana,
+Tron, BTC etc. need to be filled manually. Requires `GOLDRUSH_API_KEY` in env.
+
 ## Wire-up status
 
 Frontend-only at this point. The "Book Trade" button currently just flips `status → BOOKED` locally and updates the JSON preview. Planned backend:
