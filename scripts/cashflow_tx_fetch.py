@@ -145,6 +145,17 @@ def parse_goldrush(resp: dict, network: str) -> dict:
             "contract_address": contract,
         })
 
+    if not transfers and int(item.get("value", "0")) > 0:
+        native_value = int(item["value"])
+        transfers.append({
+            "asset": CHAINS[network]["native_asset"],
+            "amount": _minor_to_decimal(native_value, 18),
+            "from": item["from_address"],
+            "to": item["to_address"],
+            "decimals": 18,
+            "contract_address": None,
+        })
+
     return {
         "transfers": transfers,
         "gas_fee": gas_fee,
