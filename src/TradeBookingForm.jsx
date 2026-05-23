@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Calendar,
   History,
+  Loader2,
 } from "lucide-react";
 import tokkaLogo from "./assets/tokka-labs-logo.png";
 import { NETWORKS } from "./data/networks.js";
@@ -102,6 +103,28 @@ async function fetchRefdataOnce() {
       (Array.isArray(accounts?.wallet)   ? accounts.wallet.length   : 0) +
       (Array.isArray(accounts?.broker)   ? accounts.broker.length   : 0),
   };
+}
+
+// ═════════════════════════════════════════════════════════════
+// Cashflow tx-hash fetch — EVM network set + validation helpers.
+// EVM_NETWORKS is duplicated client-side so the Fetch button's
+// disabled state is instant (no round-trip). Canonical list lives
+// in scripts/cashflow_tx_fetch.py:CHAINS — keep both in sync.
+// ═════════════════════════════════════════════════════════════
+const EVM_NETWORKS = new Set([
+  "ETHEREUM", "BINANCE SMART CHAIN", "POLYGON", "ARBITRUM", "OPTIMISM",
+  "BASE", "AVALANCHE", "LINEA", "SCROLL", "MANTLE", "BLAST", "MODE",
+  "CELO", "ZKSYNC", "SONIC", "GNOSIS", "BERACHAIN", "HYPEREVM",
+  "UNICHAIN", "SONEIUM", "ZETA", "PLASMA", "TEMPO", "SAGAEVM", "XRPLEVM",
+]);
+
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+
+function fetchButtonDisabledReason(network, txHash) {
+  if (!network) return "Pick a network first";
+  if (!EVM_NETWORKS.has(network)) return "Tx fetch only supports EVM chains for now";
+  if (!txHash || !TX_HASH_RE.test(txHash.trim())) return "Enter a valid 0x… hash";
+  return null;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -5739,6 +5762,10 @@ export default function TradeBookingForm() {
 
   const [submittedRecord, setSubmittedRecord] = useState(null);
   const [copied, setCopied] = useState(false);
+  // Cashflow tx-hash fetch state (Task 7).
+  const [txFetchLoading, setTxFetchLoading] = useState(false);
+  const [txFetchError, setTxFetchError] = useState(null);
+  const [txFetchResult, setTxFetchResult] = useState(null); // {transfers, gas_fee, …} | null
   // ENV is derived from window.location.hostname, not user-toggleable:
   //   localhost / 127.0.0.1            → UAT  (dev mirrors UAT backend)
   //   hostname contains 'test' or 'uat' → UAT
@@ -5759,6 +5786,43 @@ export default function TradeBookingForm() {
   const [categoryCache, setCategoryCache] = useState({});
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v, last_modified_at: isoNow() }));
   const setMany = (patch) => setForm((f) => ({ ...f, ...patch, last_modified_at: isoNow() }));
+
+  // Cashflow tx-hash fetch handler (Task 7).
+  async function handleFetchTx() {
+    setTxFetchError(null);
+    setTxFetchResult(null);
+    setTxFetchLoading(true);
+    try {
+      const res = await fetch("/api/cashflow/fetch-tx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tx_hash: form.tx_hash.trim(),
+          network: form.network,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTxFetchError(txFetchErrorMessage(res.status, json, form.network));
+        return;
+      }
+      setTxFetchResult(json);
+      // Task 8 will hook applyAutofill here.
+    } catch (e) {
+      setTxFetchError("Couldn't reach the server, try again");
+    } finally {
+      setTxFetchLoading(false);
+    }
+  }
+
+  function txFetchErrorMessage(status, json, network) {
+    if (status === 400) return "Couldn't read that hash, double-check it";
+    if (status === 404) return `Not found on ${network} — wrong network?`;
+    if (status === 422) return "No token or native transfers found in this tx";
+    if (status === 502) return "Couldn't reach chain explorer, try again";
+    return "Something went wrong fetching this tx";
+  }
 
   // Fields that EVERY product form has but with its own value space — these
   // get snapshotted on category switch.
@@ -7997,11 +8061,44 @@ export default function TradeBookingForm() {
                 </Select>
               </Field>
               <Field label="Tx Hash (optional)" span={8}>
-                <Input
-                  placeholder="0x… (on-chain hash, if applicable)"
-                  value={form.tx_hash}
-                  onChange={(e) => set("tx_hash", e.target.value)}
-                />
+                <div className="flex gap-2 items-stretch">
+                  <Input
+                    placeholder="0x… (on-chain hash, if applicable)"
+                    value={form.tx_hash}
+                    onChange={(e) => {
+                      set("tx_hash", e.target.value);
+                      setTxFetchError(null);
+                      setTxFetchResult(null);
+                    }}
+                  />
+                  {(() => {
+                    const disabledReason = fetchButtonDisabledReason(form.network, form.tx_hash);
+                    return (
+                      <button
+                        type="button"
+                        onClick={handleFetchTx}
+                        disabled={txFetchLoading || disabledReason !== null}
+                        title={disabledReason || "Fetch on-chain details"}
+                        className="px-3 py-1 text-[11px] font-mono tracking-[0.12em] uppercase transition-colors flex items-center gap-1 whitespace-nowrap"
+                        style={{
+                          background: txFetchLoading || disabledReason !== null ? BB.surface2 : BB.orange,
+                          color: txFetchLoading || disabledReason !== null ? BB.faint : "#ffffff",
+                          border: `1px solid ${txFetchLoading || disabledReason !== null ? BB.border : BB.orange}`,
+                          cursor: txFetchLoading || disabledReason !== null ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {txFetchLoading
+                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching…</>
+                          : "Fetch"}
+                      </button>
+                    );
+                  })()}
+                </div>
+                {txFetchError && (
+                  <div className="text-[11px] mt-1 font-mono" style={{ color: BB.red }}>
+                    {txFetchError}
+                  </div>
+                )}
               </Field>
             </Section>
           )}
