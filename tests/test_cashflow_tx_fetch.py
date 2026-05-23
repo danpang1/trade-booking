@@ -10,6 +10,9 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 import cashflow_tx_fetch  # noqa: E402
+import io  # noqa: E402
+import json as _json  # noqa: E402
+from urllib.error import HTTPError, URLError  # noqa: E402
 
 
 # ── §1: Chain mapping ────────────────────────────────────────────
@@ -248,3 +251,107 @@ def test_parse_multi_transfer_returns_all_in_order():
     assert out["transfers"][0]["amount"] == "1000.000000"
     assert out["transfers"][1]["asset"] == "FEE"
     assert out["transfers"][1]["amount"] == "5.000000000000000000"
+
+
+# ── §5: HTTP orchestration ───────────────────────────────────────
+
+
+def _fake_urlopen_json(body: dict):
+    """Build a fake urlopen() return value with .read() yielding the JSON body.
+
+    Returns a BytesIO, which satisfies the context-manager contract the script uses
+    via `with urllib.request.urlopen(...) as resp` — BytesIO implements __enter__/__exit__.
+    """
+    return io.BytesIO(_json.dumps(body).encode("utf-8"))
+
+
+def test_fetch_tx_happy_path(monkeypatch):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+    monkeypatch.setattr(
+        cashflow_tx_fetch.urllib.request, "urlopen",
+        lambda req, timeout=None: _fake_urlopen_json(USDT_TRANSFER_FIXTURE),
+    )
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_OK
+    assert out["ok"] is True
+    assert out["transfers"][0]["asset"] == "USDT"
+    assert out["gas_fee"] == "0.0013"
+
+
+def test_fetch_tx_validation_fail_no_http_call(monkeypatch):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+
+    def _boom(*a, **k):
+        raise AssertionError("urlopen must not be called on validation failure")
+    monkeypatch.setattr(cashflow_tx_fetch.urllib.request, "urlopen", _boom)
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": "nope", "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_VALIDATION
+    assert out["ok"] is False
+
+
+def test_fetch_tx_goldrush_404(monkeypatch):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+
+    def _raise_404(req, timeout=None):
+        raise HTTPError(req.full_url, 404, "Not Found", {}, io.BytesIO(b""))
+    monkeypatch.setattr(cashflow_tx_fetch.urllib.request, "urlopen", _raise_404)
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_NOT_FOUND
+    assert out == {"ok": False, "error": "tx not found", "code": "not_found"}
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+def test_fetch_tx_goldrush_5xx_maps_to_upstream(monkeypatch, status):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+
+    def _raise_5xx(req, timeout=None):
+        raise HTTPError(req.full_url, status, "Server Error", {}, io.BytesIO(b""))
+    monkeypatch.setattr(cashflow_tx_fetch.urllib.request, "urlopen", _raise_5xx)
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_UPSTREAM
+    assert out["code"] == "upstream"
+
+
+def test_fetch_tx_network_unreachable_maps_to_upstream(monkeypatch):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+
+    def _urlerror(req, timeout=None):
+        raise URLError("DNS lookup failed")
+    monkeypatch.setattr(cashflow_tx_fetch.urllib.request, "urlopen", _urlerror)
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_UPSTREAM
+    assert out["code"] == "upstream"
+
+
+def test_fetch_tx_missing_api_key(monkeypatch):
+    monkeypatch.delenv("GOLDRUSH_API_KEY", raising=False)
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_MISCONFIG
+
+
+def test_fetch_tx_no_transfers_and_zero_value(monkeypatch):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+    empty = {"data": {"items": [{
+        "block_signed_at": "2026-05-22T17:00:00Z", "block_height": 1, "tx_hash": VALID_HASH,
+        "from_address": "0x0", "to_address": "0x1",
+        "value": "0", "gas_spent": 21000, "gas_price": 1, "log_events": [],
+    }]}}
+    monkeypatch.setattr(
+        cashflow_tx_fetch.urllib.request, "urlopen",
+        lambda req, timeout=None: _fake_urlopen_json(empty),
+    )
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_NO_XFERS
+    assert out["code"] == "no_transfers"
+
+
+def test_fetch_tx_empty_items_response_maps_to_not_found(monkeypatch):
+    """Covalent returns 200 + data.items=[] for unknown tx on some chains."""
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+    monkeypatch.setattr(
+        cashflow_tx_fetch.urllib.request, "urlopen",
+        lambda req, timeout=None: _fake_urlopen_json({"data": {"items": []}}),
+    )
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_NOT_FOUND
+    assert out == {"ok": False, "error": "tx not found", "code": "not_found"}

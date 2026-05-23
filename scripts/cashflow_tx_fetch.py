@@ -13,8 +13,12 @@ Manual smoke (requires GOLDRUSH_API_KEY in env):
         | GOLDRUSH_API_KEY=$GOLDRUSH_API_KEY python3 scripts/cashflow_tx_fetch.py
 """
 from __future__ import annotations
+import json
+import os
 import re
 import sys
+import urllib.error
+import urllib.request
 
 
 # 25 EVM chains we support, mapped to Goldrush chain names + native asset.
@@ -53,7 +57,7 @@ EXIT_OK = 0
 EXIT_VALIDATION = 3   # → 400
 EXIT_NOT_FOUND = 4    # → 404
 EXIT_UPSTREAM = 5     # → 502 (via json.code="upstream")
-EXIT_MISCONFIG = 6    # → 500 (via fallback)
+EXIT_MISCONFIG = 8    # → 500 (no mapping in server.js:httpStatusFor → default 500)
 EXIT_NO_XFERS = 7     # → 422 (via json.code="no_transfers")
 
 
@@ -165,3 +169,67 @@ def parse_goldrush(resp: dict, network: str) -> dict:
         "tx_from": item["from_address"],
         "tx_to": item["to_address"],
     }
+
+
+GOLDRUSH_BASE = "https://api.covalenthq.com/v1"
+GOLDRUSH_TIMEOUT_SEC = 15
+
+
+def call_goldrush(tx_hash: str, network: str, api_key: str) -> dict:
+    """Single HTTP GET to Goldrush. Returns decoded JSON. Raises HTTPError/URLError."""
+    chain = CHAINS[network]["chain_name"]
+    url = f"{GOLDRUSH_BASE}/{chain}/transaction_v2/{tx_hash}/"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
+    with urllib.request.urlopen(req, timeout=GOLDRUSH_TIMEOUT_SEC) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def fetch_tx(payload: dict) -> tuple[int, dict]:
+    """Top-level: validate → call → parse → map errors. Returns (exit_code, json_body)."""
+    api_key = os.environ.get("GOLDRUSH_API_KEY")
+    if not api_key:
+        return EXIT_MISCONFIG, {"ok": False, "error": "server misconfigured",
+                                "detail": "GOLDRUSH_API_KEY not set"}
+    try:
+        normalized = validate_input(payload)
+    except ValidationError as e:
+        return EXIT_VALIDATION, {"ok": False, "error": str(e)}
+
+    try:
+        resp = call_goldrush(normalized["tx_hash"], normalized["network"], api_key)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return EXIT_NOT_FOUND, {"ok": False, "error": "tx not found", "code": "not_found"}
+        return EXIT_UPSTREAM, {"ok": False, "error": "upstream unavailable",
+                               "code": "upstream", "detail": f"http {e.code}"}
+    except urllib.error.URLError as e:
+        return EXIT_UPSTREAM, {"ok": False, "error": "upstream unavailable",
+                               "code": "upstream", "detail": str(e.reason)}
+
+    # Covalent returns 200 + data.items=[] for unknown tx on some chains.
+    items = (resp.get("data") or {}).get("items") or []
+    if not items:
+        return EXIT_NOT_FOUND, {"ok": False, "error": "tx not found", "code": "not_found"}
+
+    parsed = parse_goldrush(resp, normalized["network"])
+    if not parsed["transfers"]:
+        return EXIT_NO_XFERS, {"ok": False, "error": "no transfers", "code": "no_transfers"}
+
+    return EXIT_OK, {"ok": True, **parsed}
+
+
+def main() -> None:
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw) if raw else {}
+    except json.JSONDecodeError as e:
+        sys.stdout.write(json.dumps({"ok": False, "error": "invalid JSON on stdin",
+                                     "detail": str(e)}))
+        sys.exit(EXIT_VALIDATION)
+    code, body = fetch_tx(payload)
+    sys.stdout.write(json.dumps(body))
+    sys.exit(code)
+
+
+if __name__ == "__main__":
+    main()
