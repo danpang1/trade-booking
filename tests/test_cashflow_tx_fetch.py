@@ -355,3 +355,21 @@ def test_fetch_tx_empty_items_response_maps_to_not_found(monkeypatch):
     code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
     assert code == cashflow_tx_fetch.EXIT_NOT_FOUND
     assert out == {"ok": False, "error": "tx not found", "code": "not_found"}
+
+
+def test_fetch_tx_sends_explicit_user_agent(monkeypatch):
+    """Goldrush's WAF 403s requests with the default Python-urllib UA — we must override."""
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+    captured = {}
+
+    def _capture(req, timeout=None):
+        # Request.headers normalizes header names to Capitalized-Form
+        captured["user_agent"] = req.headers.get("User-agent")
+        captured["authorization"] = req.headers.get("Authorization")
+        return _fake_urlopen_json(USDT_TRANSFER_FIXTURE)
+
+    monkeypatch.setattr(cashflow_tx_fetch.urllib.request, "urlopen", _capture)
+    cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert captured["user_agent"], "User-Agent must be set to avoid Goldrush WAF 403"
+    assert "Python-urllib" not in captured["user_agent"]
+    assert captured["authorization"] == "Bearer test-key"

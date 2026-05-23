@@ -173,13 +173,19 @@ def parse_goldrush(resp: dict, network: str) -> dict:
 
 GOLDRUSH_BASE = "https://api.covalenthq.com/v1"
 GOLDRUSH_TIMEOUT_SEC = 15
+# Goldrush sits behind a WAF that 403s requests with the default
+# `Python-urllib/X.Y` User-Agent. Any explicit UA works.
+GOLDRUSH_USER_AGENT = "middle-office-tools/cashflow-tx-fetch"
 
 
 def call_goldrush(tx_hash: str, network: str, api_key: str) -> dict:
     """Single HTTP GET to Goldrush. Returns decoded JSON. Raises HTTPError/URLError."""
     chain = CHAINS[network]["chain_name"]
     url = f"{GOLDRUSH_BASE}/{chain}/transaction_v2/{tx_hash}/"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": GOLDRUSH_USER_AGENT,
+    })
     with urllib.request.urlopen(req, timeout=GOLDRUSH_TIMEOUT_SEC) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
