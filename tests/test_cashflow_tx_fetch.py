@@ -323,8 +323,9 @@ def test_fetch_tx_network_unreachable_maps_to_upstream(monkeypatch):
     assert out["code"] == "upstream"
 
 
-def test_fetch_tx_missing_api_key(monkeypatch):
+def test_fetch_tx_missing_api_key(monkeypatch, tmp_path):
     monkeypatch.delenv("GOLDRUSH_API_KEY", raising=False)
+    monkeypatch.setattr(cashflow_tx_fetch, "_ENV_FILE", tmp_path / "nope.env")
     code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
     assert code == cashflow_tx_fetch.EXIT_MISCONFIG
 
@@ -355,6 +356,36 @@ def test_fetch_tx_empty_items_response_maps_to_not_found(monkeypatch):
     code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
     assert code == cashflow_tx_fetch.EXIT_NOT_FOUND
     assert out == {"ok": False, "error": "tx not found", "code": "not_found"}
+
+
+def test_read_api_key_prefers_env_over_dotenv(monkeypatch, tmp_path):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "env-wins")
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("GOLDRUSH_API_KEY=dotenv-loses\n")
+    monkeypatch.setattr(cashflow_tx_fetch, "_ENV_FILE", fake_env)
+    assert cashflow_tx_fetch._read_api_key() == "env-wins"
+
+
+def test_read_api_key_falls_back_to_dotenv(monkeypatch, tmp_path):
+    monkeypatch.delenv("GOLDRUSH_API_KEY", raising=False)
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("# some comment\nUNRELATED=foo\nGOLDRUSH_API_KEY=from-dotenv\nMORE=bar\n")
+    monkeypatch.setattr(cashflow_tx_fetch, "_ENV_FILE", fake_env)
+    assert cashflow_tx_fetch._read_api_key() == "from-dotenv"
+
+
+def test_read_api_key_returns_none_when_missing_everywhere(monkeypatch, tmp_path):
+    monkeypatch.delenv("GOLDRUSH_API_KEY", raising=False)
+    monkeypatch.setattr(cashflow_tx_fetch, "_ENV_FILE", tmp_path / "nope.env")
+    assert cashflow_tx_fetch._read_api_key() is None
+
+
+def test_read_api_key_ignores_commented_line(monkeypatch, tmp_path):
+    monkeypatch.delenv("GOLDRUSH_API_KEY", raising=False)
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("# GOLDRUSH_API_KEY=commented-out\nOTHER=x\n")
+    monkeypatch.setattr(cashflow_tx_fetch, "_ENV_FILE", fake_env)
+    assert cashflow_tx_fetch._read_api_key() is None
 
 
 def test_fetch_tx_sends_explicit_user_agent(monkeypatch):

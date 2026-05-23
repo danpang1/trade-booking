@@ -19,6 +19,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 
 # 25 EVM chains we support, mapped to Goldrush chain names + native asset.
@@ -177,6 +178,30 @@ GOLDRUSH_TIMEOUT_SEC = 15
 # `Python-urllib/X.Y` User-Agent. Any explicit UA works.
 GOLDRUSH_USER_AGENT = "middle-office-tools/cashflow-tx-fetch"
 
+_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
+
+def _read_api_key() -> str | None:
+    """Process env wins; fall back to a simple KEY=VALUE lookup in repo .env.
+
+    Matches the env-precedence convention used by cashflow_db.load_creds.
+    Single-key lookup (we only need GOLDRUSH_API_KEY) so no block parsing
+    needed — just scan for the first matching uncommented line.
+    """
+    val = os.environ.get("GOLDRUSH_API_KEY")
+    if val:
+        return val
+    if not _ENV_FILE.exists():
+        return None
+    for line in _ENV_FILE.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        if key.strip() == "GOLDRUSH_API_KEY":
+            return value.strip() or None
+    return None
+
 
 def call_goldrush(tx_hash: str, network: str, api_key: str) -> dict:
     """Single HTTP GET to Goldrush. Returns decoded JSON. Raises HTTPError/URLError."""
@@ -192,7 +217,7 @@ def call_goldrush(tx_hash: str, network: str, api_key: str) -> dict:
 
 def fetch_tx(payload: dict) -> tuple[int, dict]:
     """Top-level: validate → call → parse → map errors. Returns (exit_code, json_body)."""
-    api_key = os.environ.get("GOLDRUSH_API_KEY")
+    api_key = _read_api_key()
     if not api_key:
         return EXIT_MISCONFIG, {"ok": False, "error": "server misconfigured",
                                 "detail": "GOLDRUSH_API_KEY not set"}
