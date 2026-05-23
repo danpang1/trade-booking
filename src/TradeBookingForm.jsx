@@ -127,6 +127,11 @@ function fetchButtonDisabledReason(network, txHash) {
   return null;
 }
 
+function shortAddr(addr) {
+  if (!addr || addr.length < 12) return addr || "";
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
 // ═════════════════════════════════════════════════════════════
 // Altas editorial palette — mirrors the nxgen-mo dashboard's
 // bone/ink/hair tokens (see dashboard/src/index.css @theme block).
@@ -8130,6 +8135,43 @@ export default function TradeBookingForm() {
                 {txFetchSuccess && (
                   <div className="text-[11px] mt-1 font-mono" style={{ color: BB.green }}>
                     {txFetchSuccess}
+                  </div>
+                )}
+                {txFetchResult && txFetchResult.transfers && txFetchResult.transfers.length > 1 && (
+                  <div className="mt-2 rounded p-2" style={{ background: BB.surface, border: `1px solid ${BB.border}` }}>
+                    <div className="text-[11px] font-mono mb-1" style={{ color: BB.mute }}>
+                      Multiple transfers in this tx — pick the one to import:
+                    </div>
+                    <ul className="space-y-1">
+                      {txFetchResult.transfers.map((t, i) => (
+                        <li key={i} className="flex items-center justify-between">
+                          <span className="text-[11px] font-mono" style={{ color: BB.text }}>
+                            <span style={{ color: BB.yellow }}>{t.amount}</span>{" "}{t.asset}
+                            <span style={{ color: BB.faint }}> — {shortAddr(t.from)} → {shortAddr(t.to)}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => { applyAutofill(t, txFetchResult); setTxFetchResult(null); }}
+                            className="ml-2 px-2 py-0.5 text-[11px] font-mono tracking-[0.1em] uppercase transition-colors whitespace-nowrap"
+                            style={{ background: BB.orange, color: "#ffffff", border: `1px solid ${BB.orange}`, cursor: "pointer" }}
+                            onMouseEnter={(ev) => { ev.currentTarget.style.background = BB.amber; ev.currentTarget.style.borderColor = BB.amber; }}
+                            onMouseLeave={(ev) => { ev.currentTarget.style.background = BB.orange; ev.currentTarget.style.borderColor = BB.orange; }}
+                          >
+                            Use this
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => setTxFetchResult(null)}
+                      className="mt-2 text-[11px] font-mono underline"
+                      style={{ color: BB.faint, cursor: "pointer" }}
+                      onMouseEnter={(ev) => { ev.currentTarget.style.color = BB.dim; }}
+                      onMouseLeave={(ev) => { ev.currentTarget.style.color = BB.faint; }}
+                    >
+                      Cancel
+                    </button>
                   </div>
                 )}
               </Field>
