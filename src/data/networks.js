@@ -1,11 +1,36 @@
-// Auto-generated snapshot from MySQL reference_data.
-// Source query:
-//   SELECT name FROM counterparty
-//   WHERE deletedAt IS NULL AND type='BLOCKCHAIN'
-//   ORDER BY name
-// TODO: replace with live fetch when the booking-API service is up.
+// Network dropdown options for the trade booking form.
+//
+// Sourced from MySQL reference_data.counterparty WHERE type='BLOCKCHAIN'
+// (auto-generated snapshot — TODO: replace with a live fetch from a
+// booking-API service).
+//
+// PRESENTATION ORDER: most-used chains first, then everything else alphabetical.
+// Most-used roughly tracks native-token market cap weighted by how often we
+// actually book cashflows on each chain. Adjust the PRIORITY list to taste —
+// the OTHERS list stays alphabetical so new auto-gen entries land predictably.
 
-export const NETWORKS = [
+const PRIORITY = [
+  "ETHEREUM",
+  "BINANCE SMART CHAIN",
+  "SOLANA",
+  "TRON",
+  "BITCOIN",
+  "POLYGON",
+  "ARBITRUM",
+  "BASE",
+  "OPTIMISM",
+  "AVALANCHE",
+  "SUI",
+  "APTOS",
+  "TON",
+  "RIPPLE",
+  "CARDANO",
+  "POLKADOT",
+  "STELLAR",
+  "HEDERA",
+];
+
+const ALL_ALPHABETICAL = [
   "APTOS",
   "ARBITRUM",
   "AVALANCHE",
@@ -49,3 +74,8 @@ export const NETWORKS = [
   "ZETA",
   "ZKSYNC",
 ];
+
+const priorityKnown = PRIORITY.filter((n) => ALL_ALPHABETICAL.includes(n));
+const others = ALL_ALPHABETICAL.filter((n) => !priorityKnown.includes(n));
+
+export const NETWORKS = [...priorityKnown, ...others];
