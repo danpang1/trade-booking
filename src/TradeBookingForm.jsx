@@ -20,6 +20,7 @@ import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { api } from "./auth/api.js";
 import UserAdmin from "./admin/UserAdmin.jsx";
+import ApiTokens from "./settings/ApiTokens.jsx";
 
 // Live token list — initialized from the bundled snapshot, replaced after
 // fetch('/tokens.json') resolves (refreshed hourly by server.js). AssetPicker
@@ -5458,7 +5459,7 @@ function useClock() {
 
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
-  const [appView, setAppView] = useState("booking"); // "booking" | "users"
+  const [appView, setAppView] = useState("booking"); // "booking" | "users" | "tokens"
   const fileInputRef = useRef(null);
   const clock = useClock();
 
@@ -6919,6 +6920,10 @@ export default function TradeBookingForm() {
     return { __html: html };
   };
 
+  if (appView === "tokens") {
+    return <ApiTokens onClose={() => setAppView("booking")} />;
+  }
+
   if (appView === "users" && user?.role === "admin") {
     return <UserAdmin onClose={() => setAppView("booking")} />;
   }
@@ -7097,6 +7102,12 @@ export default function TradeBookingForm() {
               label="Pending Bookings"
               active={view === "PENDING_BOOKINGS"}
               onClick={() => setView("PENDING_BOOKINGS")}
+            />
+
+            <NavTabRow
+              label="API Tokens"
+              active={appView === "tokens"}
+              onClick={() => setAppView("tokens")}
             />
 
             {user?.role === "admin" && (
