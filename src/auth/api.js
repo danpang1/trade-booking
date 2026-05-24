@@ -30,3 +30,24 @@ export async function register({ username, email, password }) {
   try { body = await r.json(); } catch { body = { ok: false, error: "non-JSON server response" }; }
   return { status: r.status, body };
 }
+
+// ── API Tokens (Phase 0) ─────────────────────────────────────────
+
+export async function listTokens() {
+  const { status, body } = await apiJson("/api/tokens");
+  return { status, body };
+}
+
+export async function createToken({ name, expires_in_days }) {
+  const { status, body } = await apiJson("/api/tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, expires_in_days }),
+  });
+  return { status, body };
+}
+
+export async function revokeToken(id) {
+  const { status, body } = await apiJson(`/api/tokens/${id}`, { method: "DELETE" });
+  return { status, body };
+}

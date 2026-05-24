@@ -399,7 +399,7 @@ Commands:
 ```
 tokka-mo login                            # interactive: username/pw → mints token → saves
 tokka-mo logout                           # DELETE /api/tokens/:id → clear local creds
-tokka-mo whoami                           # GET /api/auth/whoami
+tokka-mo whoami                           # GET /api/auth/me
 tokka-mo refdata refresh                  # pull /refdata/*.json → cache
 tokka-mo book < payload.json              # POST /api/bookings/draft
 tokka-mo book-batch < batch.json          # POST /api/bookings/draft/batch
@@ -439,7 +439,7 @@ Windows users: `install.sh` has a `.bat` counterpart; CLI logic is OS-agnostic P
 
 | Phase | Duration | Deliverables | Done when |
 |---|---|---|---|
-| **0. Foundation** | ~1 wk | `apply_schema_api_tokens.py`, `api_tokens` table, Bearer auth middleware in `server.js`, `POST/GET/DELETE /api/tokens`, `<ApiTokens>` settings page in React | A user can generate, view, and revoke tokens in the React app. Smoke test: `curl -H "Authorization: Bearer <token>" /api/auth/whoami` returns user info |
+| **0. Foundation** | ~1 wk | `apply_schema_api_tokens.py`, `api_tokens` table, Bearer auth middleware in `server.js`, `POST/GET/DELETE /api/tokens`, `<ApiTokens>` settings page in React | A user can generate, view, and revoke tokens in the React app. Smoke test: `curl -H "Authorization: Bearer <token>" /api/auth/me` returns user info |
 | **1. CASHFLOW draft + batch, end-to-end** | ~1.5–2 wk | `apply_schema_drafts.py`, `bookings_draft` table, all draft endpoints (single **and** batch, CASHFLOW only), `draft_approve.py` invoking `cashflow_insert.py`, `<PendingDrafts>` page in React with batch grouping, `TradeBookingForm.jsx` `draft` mode for CASHFLOW, plugin v0.1 (CASHFLOW, single + batch) | One dogfooder can book a 6-trade CASHFLOW batch in Claude Code in UAT, see the batch grouped on `/pending`, approve-all, all 6 land in `trades_cashflow` |
 | **2. SPOT support** | ~3–5 d | SPOT handling in plugin skill + `draft_approve.py`, SPOT field validation, `TradeBookingForm.jsx` `draft` mode extended to SPOT, plugin v0.5 (SPOT + CASHFLOW) | Same dogfooder can book a SPOT trade in Claude Code, review on `/pending`, approve, and see it land in `trades_spot`. Batch works for SPOT too (the endpoint and pending grouping are already in place from Phase 1) |
 | **3. Polish & rollout** | ~3–5 d | Idempotency hardening, plugin error UX, install one-liner, README, rollout docs, expand to 2–3 more users | First non-dogfood cohort can install and book without help. Issues filed are tracked but not blocking |
