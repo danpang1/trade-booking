@@ -82,11 +82,11 @@ def main() -> int:
     print(f"✓ list tokens ({len(body['tokens'])} total)")
 
     # 4. Use the Bearer token (no cookie this time)
-    status, body = _req("GET", "/api/auth/whoami", bearer=token)
+    status, body = _req("GET", "/api/auth/me", bearer=token)
     assert status == 200 and body and body.get("user"), f"bearer whoami failed: {status} {body}"
     assert body["user"]["username"].lower() == args.username.lower(), \
         f"bearer resolved to wrong user: {body}"
-    print("✓ bearer auth against /api/auth/whoami")
+    print("✓ bearer auth against /api/auth/me")
 
     # 5. Bearer CANNOT mint another token (must be cookie)
     status, body = _req("POST", "/api/tokens",
@@ -100,7 +100,7 @@ def main() -> int:
     print(f"✓ revoke token (id={token_id})")
 
     # 7. Bearer now fails 401
-    status, body = _req("GET", "/api/auth/whoami", bearer=token)
+    status, body = _req("GET", "/api/auth/me", bearer=token)
     assert status == 401, f"expected 401 after revoke, got {status} {body}"
     print("✓ revoked token returns 401")
 

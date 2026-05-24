@@ -914,10 +914,10 @@ curl -H "Cookie: sid=$COOKIE" http://localhost:5181/api/tokens
 ```
 Expected: an array including the newly-created row (no `token_hash` field).
 
-Use the Bearer token against `/api/auth/whoami` (or any authed endpoint):
+Use the Bearer token against `/api/auth/me` (or any authed endpoint):
 ```bash
 TOKEN="<paste>"
-curl -H "Authorization: Bearer $TOKEN" http://localhost:5181/api/auth/whoami
+curl -H "Authorization: Bearer $TOKEN" http://localhost:5181/api/auth/me
 ```
 Expected: 200 with the user payload — proves Bearer auth works.
 
@@ -939,7 +939,7 @@ Expected: `{"ok":true}`.
 
 Verify revoked token no longer works:
 ```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:5181/api/auth/whoami
+curl -H "Authorization: Bearer $TOKEN" http://localhost:5181/api/auth/me
 ```
 Expected: 401.
 
@@ -1456,7 +1456,7 @@ In a browser at `http://localhost:5180`:
 In a terminal:
 ```bash
 TOKEN="<paste from step 5.6 above>"
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:5181/api/auth/whoami | python -m json.tool
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:5181/api/auth/me | python -m json.tool
 ```
 Expected: `{"ok": true, "user": {"id": ..., "username": "...", ...}}`
 
@@ -1474,7 +1474,7 @@ git commit -m "feat(tokens): wire API Tokens link + page into sidebar nav"
 **Files:**
 - Create: `scripts/smoke_tokens.py`
 
-Mirrors `scripts/smoke_auth.py`. Exercises the full lifecycle: log in (cookie) → create token → list → use Bearer against `/api/auth/whoami` → Bearer-can't-mint-token → revoke → Bearer fails 401.
+Mirrors `scripts/smoke_auth.py`. Exercises the full lifecycle: log in (cookie) → create token → list → use Bearer against `/api/auth/me` → Bearer-can't-mint-token → revoke → Bearer fails 401.
 
 - [ ] **Step 1: Write the smoke**
 
@@ -1565,11 +1565,11 @@ def main() -> int:
     print(f"✓ list tokens ({len(body['tokens'])} total)")
 
     # 4. Use the Bearer token (no cookie this time)
-    status, body = _req("GET", "/api/auth/whoami", bearer=token)
+    status, body = _req("GET", "/api/auth/me", bearer=token)
     assert status == 200 and body and body.get("user"), f"bearer whoami failed: {status} {body}"
     assert body["user"]["username"].lower() == args.username.lower(), \
         f"bearer resolved to wrong user: {body}"
-    print("✓ bearer auth against /api/auth/whoami")
+    print("✓ bearer auth against /api/auth/me")
 
     # 5. Bearer CANNOT mint another token (must be cookie)
     status, body = _req("POST", "/api/tokens",
@@ -1583,7 +1583,7 @@ def main() -> int:
     print(f"✓ revoke token (id={token_id})")
 
     # 7. Bearer now fails 401
-    status, body = _req("GET", "/api/auth/whoami", bearer=token)
+    status, body = _req("GET", "/api/auth/me", bearer=token)
     assert status == 401, f"expected 401 after revoke, got {status} {body}"
     print("✓ revoked token returns 401")
 
@@ -1612,7 +1612,7 @@ Expected output:
 ✓ login (cookie)
 ✓ create token (id=N, prefix=tkmo_...)
 ✓ list tokens (M total)
-✓ bearer auth against /api/auth/whoami
+✓ bearer auth against /api/auth/me
 ✓ bearer blocked from /api/tokens (403)
 ✓ revoke token (id=N)
 ✓ revoked token returns 401
@@ -1655,7 +1655,7 @@ token from the in-app `API TOKENS` page (top right of the header when logged in)
 
 ```bash
 # Authenticate any /api/* request with:
-curl -H "Authorization: Bearer tkmo_..." http://localhost:5181/api/auth/whoami
+curl -H "Authorization: Bearer tkmo_..." http://localhost:5181/api/auth/me
 ```
 
 Tokens carry your `user_id` and respect all the same auth gates as the cookie
@@ -1730,7 +1730,7 @@ Phase 0 is done. Phase 1 (CASHFLOW draft + batch + plugin) is planned in a separ
 - [ ] `python scripts/smoke_auth.py --username <you> --password <pw>` — PASS (regression)
 - [ ] `python scripts/smoke_tokens.py --username <you> --password <pw>` — PASS
 - [ ] Browser smoke: log in → API TOKENS → generate → copy → revoke (UAT)
-- [ ] `curl -H "Authorization: Bearer <token>" /api/auth/whoami` returns 200 with user payload
+- [ ] `curl -H "Authorization: Bearer <token>" /api/auth/me` returns 200 with user payload
 - [ ] `curl -H "Authorization: Bearer <token>" -X POST /api/tokens` returns 403 (Bearer can't mint)
 - [ ] PROD schema applied + smoke against PROD URL — PASS
 - [ ] Helm chart version bumped + deployed

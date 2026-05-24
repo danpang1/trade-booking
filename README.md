@@ -79,7 +79,7 @@ For programmatic access (Claude Code, CI runners, scripts), generate a personal 
 
 ```bash
 # Authenticate any /api/* request with:
-curl -H "Authorization: Bearer tkmo_..." http://localhost:5181/api/auth/whoami
+curl -H "Authorization: Bearer tkmo_..." http://localhost:5181/api/auth/me
 ```
 
 Tokens carry your `user_id` and respect all the same auth gates as the cookie session. The `/api/tokens` management surface itself (and `/api/auth/logout`) requires cookie login — tokens cannot mint or revoke other tokens, preventing privilege chaining.
