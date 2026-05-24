@@ -73,6 +73,21 @@ HTTP-only cookie, 8-hour sliding window: every authenticated request extends `ex
 
 Every booking POST has its `user_id` field overwritten by the session username server-side, so it doesn't matter what the form sends — the DB always records the actual signed-in user.
 
+## API Tokens (Phase 0)
+
+For programmatic access (Claude Code, CI runners, scripts), generate a personal token from the in-app `API Tokens` page (sidebar nav, available to all logged-in users).
+
+```bash
+# Authenticate any /api/* request with:
+curl -H "Authorization: Bearer tkmo_..." http://localhost:5181/api/auth/whoami
+```
+
+Tokens carry your `user_id` and respect all the same auth gates as the cookie session. The `/api/tokens` management surface itself (and `/api/auth/logout`) requires cookie login — tokens cannot mint or revoke other tokens, preventing privilege chaining.
+
+Defaults: 30/90/365-day expiry (your choice), sha256-hashed at rest, plaintext shown **once** at creation. Revoke is one click; effective immediately.
+
+End-to-end smoke: `python scripts/smoke_tokens.py --username <you> --password <yourpw>`.
+
 ## Theme
 
 Bloomberg-terminal aesthetic — black canvas, orange (`#FA8C16`) primary accent, cyan/amber/green/red data colors, sharp rectangular inputs, JetBrains Mono throughout. All theme tokens live in the `BB` constants block at the top of `src/TradeBookingForm.jsx` — nothing leaks to global CSS.
