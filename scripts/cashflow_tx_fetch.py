@@ -215,6 +215,114 @@ def call_goldrush(tx_hash: str, network: str, api_key: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+# ── Address resolution against reference_data MySQL ────────────────
+
+# Tables we resolve against, in priority order. Each must expose
+# (address, blockchain, ownerName, name, status, deletedAt).
+_RESOLVE_TABLES: tuple[tuple[str, str], ...] = (
+    ("counterparty_settlement_crypto", "counterparty"),
+    ("account_wallet_deposit", "our_wallet"),
+    ("account_exchange_deposit", "our_exchange_deposit"),
+)
+
+
+def _load_refdata_creds() -> dict[str, str] | None:
+    """Read t2x-ro-mysql creds. Env vars (T2X_RO_MYSQL_*) take precedence;
+    .env file parsed as fallback for local dev. Returns None if neither source
+    supplies a complete set — callers should skip resolution silently rather
+    than fail the whole fetch.
+
+    Anchors on the host name (`sg-ro-mysql`) rather than the comment text so
+    it works for both `# t2x-ro-mysql` and `#MYSQL RO` block conventions.
+    """
+    env_creds = {
+        k: os.environ[f"T2X_RO_MYSQL_{k.upper()}"]
+        for k in ("host", "username", "password")
+        if f"T2X_RO_MYSQL_{k.upper()}" in os.environ
+    }
+    if all(k in env_creds for k in ("host", "username", "password")):
+        return env_creds
+
+    if not _ENV_FILE.exists():
+        return None
+    lines = _ENV_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+    anchor = None
+    for i, ln in enumerate(lines):
+        if "sg-ro-mysql" in ln.lower():
+            anchor = i
+            break
+    if anchor is None:
+        return None
+    creds: dict[str, str] = {}
+    for j in range(max(0, anchor - 5), min(len(lines), anchor + 5)):
+        s = lines[j].strip()
+        if not s or s.startswith("#") or ":" not in s or "=" in s:
+            continue
+        k, _, v = s.partition(":")
+        key = k.strip().lower()
+        if key in ("host", "username", "password"):
+            creds[key] = v.strip()
+    return creds if all(k in creds for k in ("host", "username", "password")) else None
+
+
+def resolve_addresses(addresses: list[str], network: str) -> dict[str, dict]:
+    """Look each address up in reference_data, scoped to the given network.
+
+    Returns a dict keyed by LOWER-case address. Missing addresses are absent
+    from the dict (callers should treat absence as "no match"). On any DB
+    error or missing creds, returns an empty dict — resolution is a best-effort
+    enrichment that must never block the tx fetch itself.
+
+    Each value: {"kind": "<table-kind>", "owner": ownerName, "label": name}
+    First-match wins across the table priority order.
+    """
+    if not addresses:
+        return {}
+    creds = _load_refdata_creds()
+    if not creds:
+        print("[cashflow_tx_fetch] skipping address resolution: refdata creds unavailable",
+              file=sys.stderr)
+        return {}
+
+    lower = sorted({a.lower() for a in addresses if a})
+    if not lower:
+        return {}
+
+    try:
+        import pymysql  # imported lazily so the script still runs without pymysql installed
+    except ImportError:
+        print("[cashflow_tx_fetch] skipping address resolution: pymysql not installed",
+              file=sys.stderr)
+        return {}
+
+    out: dict[str, dict] = {}
+    try:
+        conn = pymysql.connect(
+            host=creds["host"], user=creds["username"], password=creds["password"],
+            database="reference_data", connect_timeout=10,
+        )
+        try:
+            cur = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(lower))
+            for table, kind in _RESOLVE_TABLES:
+                cur.execute(
+                    f"SELECT LOWER(address), ownerName, name FROM {table} "
+                    f"WHERE LOWER(address) IN ({placeholders}) "
+                    f"AND blockchain = %s AND deletedAt IS NULL "
+                    f"AND (status IS NULL OR status='ACTIVE')",
+                    (*lower, network),
+                )
+                for addr, owner, label in cur.fetchall():
+                    if addr not in out:
+                        out[addr] = {"kind": kind, "owner": owner, "label": label}
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[cashflow_tx_fetch] address resolution failed: {e}", file=sys.stderr)
+        return {}
+    return out
+
+
 def fetch_tx(payload: dict) -> tuple[int, dict]:
     """Top-level: validate → call → parse → map errors. Returns (exit_code, json_body)."""
     api_key = _read_api_key()
@@ -246,7 +354,17 @@ def fetch_tx(payload: dict) -> tuple[int, dict]:
     if not parsed["transfers"]:
         return EXIT_NO_XFERS, {"ok": False, "error": "no transfers", "code": "no_transfers"}
 
-    return EXIT_OK, {"ok": True, **parsed}
+    # Best-effort enrichment: resolve every address touched by the tx against
+    # reference_data. Failures here MUST NOT fail the fetch — handled inside.
+    unique_addrs: list[str] = []
+    seen: set[str] = set()
+    for a in [parsed["tx_from"], parsed["tx_to"]] + [t["from"] for t in parsed["transfers"]] + [t["to"] for t in parsed["transfers"]]:
+        if a and a.lower() not in seen:
+            seen.add(a.lower())
+            unique_addrs.append(a)
+    resolutions = resolve_addresses(unique_addrs, normalized["network"])
+
+    return EXIT_OK, {"ok": True, **parsed, "resolutions": resolutions}
 
 
 def main() -> None:

@@ -388,6 +388,132 @@ def test_read_api_key_ignores_commented_line(monkeypatch, tmp_path):
     assert cashflow_tx_fetch._read_api_key() is None
 
 
+# ── §6: Address resolution against reference_data ────────────────
+
+class _FakeCursor:
+    """Returns a different result set per table queried, keyed by table name in the SQL."""
+
+    def __init__(self, by_table):
+        self._by_table = by_table
+        self._buffer = []
+
+    def execute(self, sql, args):
+        for table, rows in self._by_table.items():
+            if f" {table} " in sql:
+                self._buffer = list(rows)
+                return
+        self._buffer = []
+
+    def fetchall(self):
+        return self._buffer
+
+    def close(self):
+        pass
+
+
+class _FakeConn:
+    def __init__(self, by_table):
+        self._by_table = by_table
+
+    def cursor(self):
+        return _FakeCursor(self._by_table)
+
+    def close(self):
+        pass
+
+
+def _install_fake_pymysql(monkeypatch, by_table):
+    """Inject a fake pymysql module so resolve_addresses runs without a real DB."""
+    import types
+    fake = types.ModuleType("pymysql")
+    fake.connect = lambda **kw: _FakeConn(by_table)
+    monkeypatch.setitem(sys.modules, "pymysql", fake)
+
+
+def test_resolve_addresses_returns_empty_when_no_creds(monkeypatch):
+    monkeypatch.setattr(cashflow_tx_fetch, "_load_refdata_creds", lambda: None)
+    assert cashflow_tx_fetch.resolve_addresses(["0xabc"], "ETHEREUM") == {}
+
+
+def test_resolve_addresses_returns_empty_when_no_addresses(monkeypatch):
+    monkeypatch.setattr(cashflow_tx_fetch, "_load_refdata_creds",
+                        lambda: {"host": "h", "username": "u", "password": "p"})
+    assert cashflow_tx_fetch.resolve_addresses([], "ETHEREUM") == {}
+
+
+def test_resolve_addresses_hits_counterparty(monkeypatch):
+    monkeypatch.setattr(cashflow_tx_fetch, "_load_refdata_creds",
+                        lambda: {"host": "h", "username": "u", "password": "p"})
+    _install_fake_pymysql(monkeypatch, {
+        "counterparty_settlement_crypto": [
+            ("0xaaaa000000000000000000000000000000000001", "HASHFLOW FOUNDATION", "Hashflow Monthly Fees"),
+        ],
+        "account_wallet_deposit": [],
+        "account_exchange_deposit": [],
+    })
+    out = cashflow_tx_fetch.resolve_addresses(
+        ["0xAAaa000000000000000000000000000000000001", "0xnomatch00000000000000000000000000000002"],
+        "ETHEREUM",
+    )
+    assert out == {
+        "0xaaaa000000000000000000000000000000000001": {
+            "kind": "counterparty",
+            "owner": "HASHFLOW FOUNDATION",
+            "label": "Hashflow Monthly Fees",
+        },
+    }
+
+
+def test_resolve_addresses_priority_counterparty_over_wallet(monkeypatch):
+    """If an address appears in BOTH tables, the counterparty hit wins (table priority order)."""
+    monkeypatch.setattr(cashflow_tx_fetch, "_load_refdata_creds",
+                        lambda: {"host": "h", "username": "u", "password": "p"})
+    same_addr = "0xcccc000000000000000000000000000000000003"
+    _install_fake_pymysql(monkeypatch, {
+        "counterparty_settlement_crypto": [(same_addr, "CPARTY", "cp-label")],
+        "account_wallet_deposit": [(same_addr, "WALLET", "wallet-label")],
+        "account_exchange_deposit": [],
+    })
+    out = cashflow_tx_fetch.resolve_addresses([same_addr], "ETHEREUM")
+    assert out[same_addr]["kind"] == "counterparty"
+    assert out[same_addr]["owner"] == "CPARTY"
+
+
+def test_resolve_addresses_swallows_db_errors(monkeypatch):
+    """Resolution is best-effort enrichment — a DB error must not kill the fetch."""
+    monkeypatch.setattr(cashflow_tx_fetch, "_load_refdata_creds",
+                        lambda: {"host": "h", "username": "u", "password": "p"})
+    import types
+    bad = types.ModuleType("pymysql")
+
+    def _boom(**kw):
+        raise RuntimeError("connection refused")
+    bad.connect = _boom
+    monkeypatch.setitem(sys.modules, "pymysql", bad)
+    assert cashflow_tx_fetch.resolve_addresses(["0xabc"], "ETHEREUM") == {}
+
+
+def test_fetch_tx_attaches_resolutions_to_response(monkeypatch):
+    monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")
+    monkeypatch.setattr(
+        cashflow_tx_fetch.urllib.request, "urlopen",
+        lambda req, timeout=None: _fake_urlopen_json(USDT_TRANSFER_FIXTURE),
+    )
+    monkeypatch.setattr(cashflow_tx_fetch, "_load_refdata_creds",
+                        lambda: {"host": "h", "username": "u", "password": "p"})
+    _install_fake_pymysql(monkeypatch, {
+        "counterparty_settlement_crypto": [
+            ("0x2222222222222222222222222222222222222222", "SOME COUNTERPARTY", "label-1"),
+        ],
+        "account_wallet_deposit": [],
+        "account_exchange_deposit": [],
+    })
+    code, out = cashflow_tx_fetch.fetch_tx({"tx_hash": VALID_HASH, "network": "ETHEREUM"})
+    assert code == cashflow_tx_fetch.EXIT_OK
+    assert "resolutions" in out
+    assert out["resolutions"]["0x2222222222222222222222222222222222222222"]["owner"] == "SOME COUNTERPARTY"
+
+
 def test_fetch_tx_sends_explicit_user_agent(monkeypatch):
     """Goldrush's WAF 403s requests with the default Python-urllib UA — we must override."""
     monkeypatch.setenv("GOLDRUSH_API_KEY", "test-key")

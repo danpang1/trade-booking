@@ -5843,8 +5843,22 @@ export default function TradeBookingForm() {
     if (isEmpty(form.trade_date)) patch.trade_date = dateOnly;
     if (isEmpty(form.value_date)) patch.value_date = dateOnly;
     patch.notes = isEmpty(form.notes) ? stamp : `${form.notes}\n${stamp}`;
+    // Resolve counterparty from refdata: if exactly one of from/to maps to a
+    // counterparty (not our own wallet/exchange), fill it empty-only.
+    const resolutions = result.resolutions || {};
+    const counterpartyOwners = new Set(
+      [transfer.from, transfer.to]
+        .map((a) => resolutions[(a || "").toLowerCase()])
+        .filter((r) => r && r.kind === "counterparty")
+        .map((r) => r.owner),
+    );
+    let filledCp = null;
+    if (counterpartyOwners.size === 1 && isEmpty(form.counterparty)) {
+      patch.counterparty = [...counterpartyOwners][0];
+      filledCp = patch.counterparty;
+    }
     setMany(patch);
-    setTxFetchSuccess("Filled from chain");
+    setTxFetchSuccess(filledCp ? `Filled from chain — counterparty: ${filledCp}` : "Filled from chain");
     setTimeout(() => setTxFetchSuccess(null), 4000);
   }
 
@@ -8143,11 +8157,18 @@ export default function TradeBookingForm() {
                       Multiple transfers in this tx — pick the one to import:
                     </div>
                     <ul className="space-y-1">
-                      {txFetchResult.transfers.map((t, i) => (
+                      {txFetchResult.transfers.map((t, i) => {
+                        const resolutions = txFetchResult.resolutions || {};
+                        const fromR = resolutions[(t.from || "").toLowerCase()];
+                        const toR = resolutions[(t.to || "").toLowerCase()];
+                        return (
                         <li key={i} className="flex items-center justify-between">
                           <span className="text-[11px] font-mono" style={{ color: BB.text }}>
                             <span style={{ color: BB.yellow }}>{t.amount}</span>{" "}{t.asset}
-                            <span style={{ color: BB.faint }}> — {shortAddr(t.from)} → {shortAddr(t.to)}</span>
+                            <span style={{ color: BB.faint }}>
+                              {" "}— {shortAddr(t.from)}{fromR ? ` (${fromR.owner})` : ""}
+                              {" "}→ {shortAddr(t.to)}{toR ? ` (${toR.owner})` : ""}
+                            </span>
                           </span>
                           <button
                             type="button"
@@ -8160,7 +8181,8 @@ export default function TradeBookingForm() {
                             Use this
                           </button>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                     <button
                       type="button"
