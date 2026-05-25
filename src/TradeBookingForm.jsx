@@ -5160,6 +5160,355 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
   );
 }
 
+// ─── LoanScheduleExportModal — date + portfolio + accrual filters ────
+// Triggered from the Loan Enquiry "↓ LOAN SCHEDULE" button. Opens with
+// from = T-1 prev biz day, to = T-1 (yesterday), all portfolios selected,
+// accrual date = yesterday UTC. Fetches /api/loan/export, runs each loan
+// through buildLoanScheduleRows, flattens to 20-column CSV, downloads.
+const LOAN_SCHEDULE_COLUMNS = [
+  "START DATE",
+  "MATURITY DATE",
+  "PORTFOLIO",
+  "PORTFOLIO NAME",
+  "ASSET",
+  "AMOUNT",
+  "RATE (USD)",
+  "AMOUNT (USD)",
+  "INTEREST CALCULATION DATE",
+  "INTEREST RATE P.A. (%)",
+  "INTEREST ASSET",
+  "ACCRUED INTEREST",
+  "WHT",
+  "NET PAID INTEREST",
+  "LOAN TYPE",
+  "COUNTERPARTY",
+  "COMMENT",
+  "Hedged Interest",
+  "Hedged Price",
+  "Hedge USDT",
+];
+
+function _fmtScheduleDateForCsv(ms) {
+  if (ms == null) return "";
+  const d = new Date(ms);
+  // YYYY-MM-DD in UTC components to match how trade_date is stored.
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function _fmtNumberForCsv(v, decimals = 8) {
+  if (v == null || v === "" || Number.isNaN(v)) return "";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "";
+  // Strip trailing zeros after decimal; keep up to `decimals` precision.
+  return n
+    .toFixed(decimals)
+    .replace(/\.?0+$/, "");
+}
+
+// Lookup map for comment by trigger_cashflow_deal_ref. Loan rows arrive
+// with `.schedule_comments` already attached when present.
+function _scheduleCommentsByTrigger(loan) {
+  const out = {};
+  const list = Array.isArray(loan?.schedule_comments) ? loan.schedule_comments : [];
+  for (const c of list) {
+    const ref = c.trigger_cashflow_deal_ref;
+    if (ref) out[ref] = c.comment || "";
+  }
+  return out;
+}
+
+// Build the per-period schedule CSV rows for one loan. Returns an array
+// of objects keyed by LOAN_SCHEDULE_COLUMNS headers.
+function loanToScheduleCsvRows(loan, accrualDate) {
+  const periods = buildLoanScheduleRows(loan, accrualDate);
+  if (periods.length === 0) return [];
+  const principal = loan.principal_amount;
+  const rateUsd = loan.hedged_price;
+  const amountUsd =
+    principal != null && rateUsd != null && rateUsd !== ""
+      ? Number(principal) * Number(rateUsd)
+      : "";
+  const whtPct = (parseFloat(loan.wht_pct) || 0) / 100;
+  const commentsByTrigger = _scheduleCommentsByTrigger(loan);
+  return periods.map((p) => {
+    const accrued = p.accrued || 0;
+    const wht = accrued * whtPct;
+    const hedgeUsdt =
+      rateUsd != null && rateUsd !== "" ? accrued * Number(rateUsd) : "";
+    const comment = (p.triggerDealRef && commentsByTrigger[p.triggerDealRef]) || "";
+    return {
+      "START DATE": _fmtScheduleDateForCsv(p.startMs),
+      "MATURITY DATE": loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "",
+      "PORTFOLIO": loan.portfolio_id || "",
+      "PORTFOLIO NAME": loan.portfolio_name || "",
+      "ASSET": loan.principal_asset || "",
+      "AMOUNT": _fmtNumberForCsv(principal),
+      "RATE (USD)": _fmtNumberForCsv(rateUsd),
+      "AMOUNT (USD)": _fmtNumberForCsv(amountUsd),
+      "INTEREST CALCULATION DATE": _fmtScheduleDateForCsv(p.calcEndMs),
+      "INTEREST RATE P.A. (%)": _fmtNumberForCsv(loan.interest_rate_pa_pct, 6),
+      "INTEREST ASSET": loan.interest_asset || "",
+      "ACCRUED INTEREST": _fmtNumberForCsv(accrued),
+      "WHT": _fmtNumberForCsv(wht),
+      "NET PAID INTEREST": _fmtNumberForCsv(p.netPaid),
+      "LOAN TYPE": loan.loan_type || "",
+      "COUNTERPARTY": loan.counterparty || "",
+      "COMMENT": comment,
+      "Hedged Interest": _fmtNumberForCsv(accrued),
+      "Hedged Price": _fmtNumberForCsv(rateUsd),
+      "Hedge USDT": _fmtNumberForCsv(hedgeUsdt),
+    };
+  });
+}
+
+function LoanScheduleExportModal({ open, onClose, onError }) {
+  const computeDefaults = () => {
+    // T = yesterday's calendar date. T-1 = prev business day from T.
+    const t = new Date();
+    t.setDate(t.getDate() - 1);
+    return {
+      from: fmtDateInput(prevBusinessDay(t)),
+      to: fmtDateInput(t),
+      accrual: fmtDateInput(t),
+      portfolios: PORTFOLIOS.map((p) => String(p.number)),
+    };
+  };
+
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [accrual, setAccrual] = useState("");
+  const [portfolios, setPortfolios] = useState([]);
+  const [portfoliosExpanded, setPortfoliosExpanded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const d = computeDefaults();
+    setFrom(d.from);
+    setTo(d.to);
+    setAccrual(d.accrual);
+    setPortfolios(d.portfolios);
+    setPortfoliosExpanded(false);
+  }, [open]);
+
+  const doDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      portfolios.forEach((p) => qs.append("portfolio", p));
+      const r = await api(`/api/loan/export?${qs.toString()}`);
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}`);
+      }
+      const body = await r.json();
+      if (!body.ok) {
+        throw new Error(body.error || "loan export failed");
+      }
+      const loans = body.rows || [];
+      const csvRows = [];
+      for (const loan of loans) {
+        csvRows.push(...loanToScheduleCsvRows(loan, accrual || null));
+      }
+      const csv = rowsToCsv(
+        csvRows,
+        LOAN_SCHEDULE_COLUMNS.map((h) => ({ header: h, key: h })),
+      );
+      downloadCsv(`loan-schedule-${todayStampLocal()}.csv`, csv);
+      onClose();
+    } catch (e) {
+      onError(`Loan Schedule download failed: ${String(e.message || e)}`);
+    } finally {
+      setDownloading(false);
+    }
+  }, [from, to, accrual, portfolios, downloading, onClose, onError]);
+
+  const dateInputStyle = {
+    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontSize: 12,
+    padding: "6px 8px",
+    border: "1px solid #d9d4c7",
+    background: "#ffffff",
+    color: "#0d0d0d",
+  };
+
+  return (
+    <ModalShell open={open} onClose={onClose}>
+      <div style={{ padding: "28px 32px", maxWidth: 720 }}>
+        <div
+          className="text-[22px]"
+          style={{
+            fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+            marginBottom: 18,
+          }}
+        >Download Loan Schedule</div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            columnGap: 16,
+            marginBottom: 18,
+          }}
+        >
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+          >
+            <span>Trade Date From</span>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+          >
+            <span>Trade Date To</span>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+            title="As-of date for LIVE (still-open) period accrual"
+          >
+            <span>Accrual Date</span>
+            <input
+              type="date"
+              value={accrual}
+              onChange={(e) => setAccrual(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "#6a665c", marginBottom: 18 }}
+        >
+          <div className="flex items-center justify-between" style={{ minHeight: 18 }}>
+            <span>Portfolios</span>
+            {portfolios.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPortfoliosExpanded((v) => !v)}
+                className="text-[10px] tracking-[0.18em] uppercase"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#6a665c",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {portfoliosExpanded
+                  ? `▾ Hide selected (${portfolios.length})`
+                  : `▸ Show selected (${portfolios.length})`}
+              </button>
+            )}
+          </div>
+          <Select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (portfolios.includes(v)) return;
+              setPortfolios([...portfolios, v]);
+            }}
+          >
+            <option value="">
+              {portfolios.length === 0
+                ? "— Add portfolio —"
+                : `+ Add another (${portfolios.length} selected)`}
+            </option>
+            {PORTFOLIOS.filter((p) => !portfolios.includes(String(p.number))).map((p) => (
+              <option key={p.number} value={String(p.number)}>
+                {p.number} — {p.name}
+              </option>
+            ))}
+          </Select>
+          {portfolios.length > 0 && portfoliosExpanded && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {portfolios.map((num) => {
+                const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                return (
+                  <span
+                    key={num}
+                    className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
+                    style={{
+                      background: "#ffffff",
+                      color: "#0d0d0d",
+                      border: "1px solid #d4cfc2",
+                      textTransform: "none",
+                    }}
+                    title={label}
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${num}`}
+                      onClick={() =>
+                        setPortfolios(portfolios.filter((x) => x !== num))
+                      }
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#a39e90",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                    >×</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2" style={{ marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: "transparent",
+              color: downloading ? "#cdc8bb" : "#1f1f1f",
+              border: "1px solid #d9d4c7",
+              cursor: downloading ? "not-allowed" : "pointer",
+            }}
+          >Cancel</button>
+          <button
+            type="button"
+            onClick={doDownload}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: downloading ? "#cdc8bb" : "#1f1f1f",
+              color: "#f2efe8",
+              border: "1px solid #1f1f1f",
+              cursor: downloading ? "wait" : "pointer",
+            }}
+          >{downloading ? "Preparing…" : "Download"}</button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 // ─── LoanEnquiry — separate view for trades_loan rows ────────────────
 // Parallel to DealEnquiry but with loan-specific columns. Click the
 // deal_ref to amend; click 📜 to see SCD2 history.
@@ -5236,6 +5585,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     const csv = rowsToCsv(filteredRows, LOAN_CSV_COLUMNS);
     downloadCsv(`loan-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
+
+  const [showLoanScheduleModal, setShowLoanScheduleModal] = useState(false);
 
   const fetchRecent = useCallback(async () => {
     setLoading(true);
@@ -5344,6 +5695,19 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 cursor: totalRows === 0 ? "not-allowed" : "pointer",
               }}
             >↓ CSV</button>
+            <button
+              type="button"
+              onClick={() => setShowLoanScheduleModal(true)}
+              title="Pick filters and download the per-period loan schedule CSV (one row per accrual segment per loan)"
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >↓ LOAN SCHEDULE</button>
           </div>
         </div>
 
@@ -5744,6 +6108,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         pageEnd={pageEnd}
         totalRows={totalRows}
         BB={BB}
+      />
+
+      <LoanScheduleExportModal
+        open={showLoanScheduleModal}
+        onClose={() => setShowLoanScheduleModal(false)}
+        onError={setError}
       />
     </div>
   );
