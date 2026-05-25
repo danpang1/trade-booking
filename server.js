@@ -32,6 +32,7 @@ const SPOT_AMEND_SCRIPT   = resolve(__dirname, "scripts", "spot_amend.py");
 const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
+const EXPORT_BLOTTER_SCRIPT = resolve(__dirname, "scripts", "export_blotter.py");
 
 const AUTH_LOGIN_SCRIPT    = resolve(__dirname, "scripts", "auth_login.py");
 const AUTH_LOGOUT_SCRIPT   = resolve(__dirname, "scripts", "auth_logout.py");
@@ -896,6 +897,46 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/exports/blotter.csv?from=&to=&type=&portfolio=...
+  // Streams a CSV download of live cashflow + spot trades in the
+  // 18-column MO blotter layout. Spot trades are exploded into 2-3
+  // per-asset legs; INTER PTF FUNDING counterparties are resolved to
+  // portfolio names. See scripts/export_blotter.py for the contract.
+  // HEAD is accepted so the UI can probe for errors before triggering
+  // the actual download (so users see in-page errors, not a broken file).
+  if ((req.method === "GET" || req.method === "HEAD") && req.url.startsWith("/api/exports/blotter.csv")) {
+    const url = new URL(req.url, "http://localhost");
+    const from = url.searchParams.get("from") || null;
+    const to   = url.searchParams.get("to")   || null;
+    const type = (url.searchParams.get("type") || "all").toLowerCase();
+    const portfolioIds = url.searchParams.getAll("portfolio").filter(Boolean);
+    const stdin = JSON.stringify({
+      from, to, type,
+      portfolio_ids: portfolioIds,
+    });
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(EXPORT_BLOTTER_SCRIPT, stdin);
+    if (stderr) console.error(`[exports:err] ${stderr.trim()}`);
+    if (code !== 0 || !json || json.ok !== true) {
+      res.statusCode = httpStatusFor(code, json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(json || { ok: false, error: "export failed" }));
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const fromTag = (from || "all").slice(0, 10);
+    const toTag = (to || today).slice(0, 10);
+    const filename = `blotter_${fromTag}_${toTag}.csv`;
+    console.log(`[exports] blotter ${json.row_count} rows (${Date.now() - t0}ms)`);
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    // UTF-8 BOM so Excel opens the file in the correct codepage. Matches
+    // the client-side downloadCsv helper convention in TradeBookingForm.jsx.
+    res.end("﻿" + json.csv);
+    return;
+  }
+
   // ── Static fallback: serve React bundle from dist/ if it exists ──────
   // GET-only. Path-traversal-safe: the resolved file must be inside DIST_DIR.
   // Unknown routes (SPA navigation) get index.html — the React router takes
@@ -951,5 +992,6 @@ server.listen(PORT, () => {
   console.log(`[server]   GET  /api/spot/recent          — list N recent live rows`);
   console.log(`[server]   GET  /api/spot/:deal_ref       — fetch one live row`);
   console.log(`[server]   GET  /api/spot/:deal_ref/history — all SCD2 versions`);
+  console.log(`[server]   GET  /api/exports/blotter.csv  — full blotter CSV (cashflow + spot)`);
   scheduleHourlyRefdataSync();
 });
