@@ -5263,12 +5263,15 @@ function loanToScheduleCsvRows(loan, accrualDate) {
 
 function LoanScheduleExportModal({ open, onClose, onError }) {
   const computeDefaults = () => {
-    // T = yesterday's calendar date. T-1 = prev business day from T.
+    // Loan trade_date filter defaults to empty — include every active
+    // loan regardless of when it was booked (most loans run for months,
+    // so a narrow recency window would exclude almost all of them).
+    // Accrual Date defaults to yesterday UTC (the LIVE period cutoff).
     const t = new Date();
     t.setDate(t.getDate() - 1);
     return {
-      from: fmtDateInput(prevBusinessDay(t)),
-      to: fmtDateInput(t),
+      from: "",
+      to: "",
       accrual: fmtDateInput(t),
       portfolios: PORTFOLIOS.map((p) => String(p.number)),
     };
@@ -5356,8 +5359,9 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
           <label
             className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
             style={{ color: "#6a665c" }}
+            title="Loan booked on or after this date. Empty = no lower bound."
           >
-            <span>Trade Date From</span>
+            <span>Loan Booked From</span>
             <input
               type="date"
               value={from}
@@ -5368,8 +5372,9 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
           <label
             className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
             style={{ color: "#6a665c" }}
+            title="Loan booked on or before this date. Empty = no upper bound."
           >
-            <span>Trade Date To</span>
+            <span>Loan Booked To</span>
             <input
               type="date"
               value={to}
