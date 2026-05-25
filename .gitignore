@@ -11,6 +11,7 @@ dist
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv*/
 
 # Workbooks used locally for sample/reference data; do not commit.
 *.xlsx

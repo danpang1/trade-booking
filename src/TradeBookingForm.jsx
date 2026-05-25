@@ -2563,6 +2563,107 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 // Fetches /api/loan/:deal_ref on open, renders the loan contract
 // summary + computed running balances + chronological table of mapped
 // cashflows. Buttons inline let the user jump to amend or audit history.
+// Parse a stored trade_date as a UTC date-only timestamp. Trade dates are
+// "YYYY-MM-DDTHH:MM:SS" with no zone; naive Date.parse treats them as local
+// time which shifts fmtScheduleDate one day earlier in zones east of UTC.
+// Slicing the date portion and appending T00:00:00Z forces UTC midnight.
+const _LOAN_MS_PER_DAY = 86400000;
+function _parseLoanTradeDateMs(s) {
+  if (!s) return NaN;
+  return Date.parse(String(s).slice(0, 10) + "T00:00:00Z");
+}
+
+// Compute the amortization-by-event schedule rows for one loan.
+//
+// Inputs:
+//   loan         — loan row (with `.mappings` already attached)
+//   accrualDate  — YYYY-MM-DD cutoff for the LIVE (still-open) period's
+//                  accrual, or null/undefined to skip LIVE accrual
+//
+// Returns: array of period objects { startMs, endMs, notional, calcEndMs,
+//   days, accrued, netPaid, triggerDealRef }. Same shape the LoanScheduleModal
+//   has used since the schedule view was introduced.
+//
+// Pure: no React, no I/O, no DOM. Safe to call from the export pipeline.
+function buildLoanScheduleRows(loan, accrualDate) {
+  if (!loan) return [];
+  const mappings = [...(loan.mappings || [])].sort((a, b) => {
+    const ta = String(a.trade_date || "");
+    const tb = String(b.trade_date || "");
+    return ta.localeCompare(tb);
+  });
+  const dayBasis = parseInt(loan.day_count_basis, 10) || 365;
+  const rate = (parseFloat(loan.interest_rate_pa_pct) || 0) / 100;
+  const principalAmount = parseFloat(loan.principal_amount) || 0;
+  const accrualEndMs = accrualDate ? Date.parse(accrualDate + "T23:59:59Z") : null;
+  const tradeStartMs = loan.trade_date ? _parseLoanTradeDateMs(loan.trade_date) : null;
+
+  const events = [];
+  for (const m of mappings) {
+    if (!m.trade_date) continue;
+    const ms = _parseLoanTradeDateMs(m.trade_date);
+    if (Number.isNaN(ms)) continue;
+    if (m.mapping_type === "PRINCIPAL_DISBURSE") {
+      events.push({ ms, type: "DISBURSE", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+    } else if (m.mapping_type === "PRINCIPAL_REPAY") {
+      events.push({ ms, type: "REPAY", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+    } else if (m.mapping_type === "INTEREST") {
+      events.push({ ms, type: "INTEREST", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+    }
+  }
+  // Fallback: no disburse cashflow linked → synthesise from the loan row itself.
+  if (!events.some((e) => e.type === "DISBURSE") && tradeStartMs != null) {
+    events.push({ ms: tradeStartMs, type: "DISBURSE", amount: principalAmount, dealRef: null });
+  }
+  events.sort((a, b) => a.ms - b.ms);
+  if (events.length === 0) return [];
+
+  // Collapse same-day same-type events.
+  const eventsByDayType = new Map();
+  for (const ev of events) {
+    const key = `${ev.ms}|${ev.type}`;
+    const prior = eventsByDayType.get(key);
+    if (prior) {
+      prior.amount += ev.amount;
+      if (ev.dealRef && (!prior.dealRef || ev.dealRef < prior.dealRef)) {
+        prior.dealRef = ev.dealRef;
+      }
+    } else {
+      eventsByDayType.set(key, { ...ev });
+    }
+  }
+  const collapsedEvents = Array.from(eventsByDayType.values()).sort((a, b) => {
+    if (a.ms !== b.ms) return a.ms - b.ms;
+    const order = { DISBURSE: 0, REPAY: 1, INTEREST: 2 };
+    return (order[a.type] ?? 99) - (order[b.type] ?? 99);
+  });
+
+  const periods = [];
+  let notional = 0;
+  for (let i = 0; i < collapsedEvents.length; i++) {
+    const ev = collapsedEvents[i];
+    if (ev.type === "DISBURSE") notional += ev.amount;
+    else if (ev.type === "REPAY") notional -= ev.amount;
+    const startMs = i === 0 ? ev.ms : ev.ms + _LOAN_MS_PER_DAY;
+    const next = collapsedEvents[i + 1];
+    const endMs = next ? next.ms : null;
+    if (notional <= 0) continue;
+
+    const cutoffMs = endMs != null ? endMs : accrualEndMs;
+    let days = 0;
+    let calcEndMs = null;
+    if (cutoffMs != null && cutoffMs >= startMs) {
+      days = Math.floor((cutoffMs - startMs) / _LOAN_MS_PER_DAY) + 1;
+      calcEndMs = cutoffMs;
+    }
+    const accrued = notional * rate * days / dayBasis;
+    const netPaid = next && next.type === "INTEREST" ? next.amount : 0;
+
+    periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
+  }
+  return periods;
+}
+
 function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend, onHistory, onCashflowSelect, onBookCashflow }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -2735,112 +2836,10 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
   const accruedGross = perRowAccrued.reduce((s, v) => s + (v || 0), 0);
 
   // ─── Loan Schedule (amortization-style by principal event) ───────
-  // One row per principal segment, split by PRINCIPAL_DISBURSE /
-  // PRINCIPAL_REPAY events. Each row carries the notional outstanding
-  // during that segment plus the interest accrued over its days.
-  //
-  //   start    = event.trade_date
-  //   end      = next event.trade_date − 1 day, or null (= LIVE)
-  //   notional = running balance after applying the event
-  //   accrued  = notional × rate × days(start, end_or_accrualDate) / day_basis
-  //
-  // Net Paid Interest = sum of INTEREST cashflows whose trade_date
-  // falls within [start, end] (inclusive). WHT placeholder for now.
-  // If no PRINCIPAL_DISBURSE is linked (legacy data), synthesize one
-  // from loan.trade_date + loan.principal_amount so the schedule still
-  // has a row.
-  const scheduleRows = (() => {
-    if (!loan) return [];
-    const events = [];
-    for (const m of mappings) {
-      if (!m.trade_date) continue;
-      const ms = parseTradeDateMs(m.trade_date);
-      if (Number.isNaN(ms)) continue;
-      // dealRef tracked alongside so each schedule row knows the
-      // triggering cashflow — used as the stable key for comments.
-      if (m.mapping_type === "PRINCIPAL_DISBURSE") {
-        events.push({ ms, type: "DISBURSE", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
-      } else if (m.mapping_type === "PRINCIPAL_REPAY") {
-        events.push({ ms, type: "REPAY", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
-      } else if (m.mapping_type === "INTEREST") {
-        // INTEREST is a soft period boundary: it terminates the prior
-        // accrual segment on its trade_date and starts a fresh segment
-        // the next day with the same notional. Doesn't change notional.
-        events.push({ ms, type: "INTEREST", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
-      }
-    }
-    // Fallback: no disburse cashflow linked → synthesise from the loan
-    // row itself. Has no cashflow dealRef, so its comment uses a sentinel.
-    if (!events.some((e) => e.type === "DISBURSE") && tradeStartMs != null) {
-      events.push({ ms: tradeStartMs, type: "DISBURSE", amount: principalAmount, dealRef: null });
-    }
-    events.sort((a, b) => a.ms - b.ms);
-    if (events.length === 0) return [];
-
-    // Collapse same-day same-type events. Multiple cashflows on the
-    // same trade_date merge into one schedule row. The canonical
-    // dealRef = the alphabetically-earliest contributing cashflow ref
-    // (deterministic across renders).
-    const eventsByDayType = new Map();
-    for (const ev of events) {
-      const key = `${ev.ms}|${ev.type}`;
-      const prior = eventsByDayType.get(key);
-      if (prior) {
-        prior.amount += ev.amount;
-        if (ev.dealRef && (!prior.dealRef || ev.dealRef < prior.dealRef)) {
-          prior.dealRef = ev.dealRef;
-        }
-      } else {
-        eventsByDayType.set(key, { ...ev });
-      }
-    }
-    const collapsedEvents = Array.from(eventsByDayType.values()).sort((a, b) => {
-      if (a.ms !== b.ms) return a.ms - b.ms;
-      // Same-day mixed types: DISBURSE → REPAY → INTEREST so notional
-      // changes apply before the interest-payment boundary is drawn.
-      const order = { DISBURSE: 0, REPAY: 1, INTEREST: 2 };
-      return (order[a.type] ?? 99) - (order[b.type] ?? 99);
-    });
-
-    const periods = [];
-    let notional = 0;
-    for (let i = 0; i < collapsedEvents.length; i++) {
-      const ev = collapsedEvents[i];
-      if (ev.type === "DISBURSE") notional += ev.amount;
-      else if (ev.type === "REPAY") notional -= ev.amount;
-      // INTEREST: notional unchanged (period boundary only)
-      // Convention: each event CLOSES the prior period on its own
-      // trade_date (interest accrues up to and including the event
-      // day) and the next period opens on T+1. So a partial repayment
-      // on Apr 1 closes the prior row on Apr 1 and a fresh row with
-      // the reduced notional starts Apr 2. The first event (initial
-      // disbursement) opens period 0 on its own trade_date — there's
-      // no prior period to close.
-      const startMs = i === 0 ? ev.ms : ev.ms + MS_PER_DAY;
-      const next = collapsedEvents[i + 1];
-      const endMs = next ? next.ms : null; // null = LIVE
-      if (notional <= 0) continue;
-
-      // Days from start to (endMs or accrualEndMs), inclusive.
-      const cutoffMs = endMs != null ? endMs : accrualEndMs;
-      let days = 0;
-      let calcEndMs = null;
-      if (cutoffMs != null && cutoffMs >= startMs) {
-        days = Math.floor((cutoffMs - startMs) / MS_PER_DAY) + 1;
-        calcEndMs = cutoffMs;
-      }
-      const accrued = notional * rate * days / dayBasis;
-
-      // Net Paid Interest = the INTEREST cashflow that closed this
-      // period (the next event after this row, if it's an INTEREST).
-      // Each INTEREST event is its own row-boundary so there is at
-      // most one paying cashflow per row.
-      const netPaid = next && next.type === "INTEREST" ? next.amount : 0;
-
-      periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
-    }
-    return periods;
-  })();
+  // Delegates to the shared `buildLoanScheduleRows` helper above so the
+  // export modal can call the same logic. Returns one row per principal
+  // segment with notional, days, accrued, netPaid, etc.
+  const scheduleRows = buildLoanScheduleRows(loan, accrualDate);
 
   // Date formatter matching the user's "D/M/YYYY" convention for the
   // schedule table. Uses UTC components so the date doesn't shift
@@ -3874,6 +3873,258 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   );
 }
 
+// Walk back one calendar day at a time, skipping Sat (6) and Sun (0).
+// Returns the previous business day relative to `d`.
+function prevBusinessDay(d) {
+  const x = new Date(d);
+  do {
+    x.setDate(x.getDate() - 1);
+  } while (x.getDay() === 0 || x.getDay() === 6);
+  return x;
+}
+
+function fmtDateInput(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ─── TradeBookingsExportModal — date + portfolio filter popup ─────────
+// Triggered from the Deal Enquiry "↓ TRADE BOOKINGS" button. Opens with
+// from = previous business day, to = today, all portfolios pre-selected.
+// Hits GET /api/exports/blotter.csv with the chosen filters; downloads
+// via transient <a download> click. Errors surface to the parent's
+// banner via `onError`.
+function TradeBookingsExportModal({ open, onClose, onError }) {
+  const computeDefaults = () => {
+    // T = yesterday's calendar date (i.e. the most recent day whose
+    // trades are fully booked). T-1 = previous business day before T,
+    // skipping weekends. So on Mon 25 May 2026: To = Sun 24 May,
+    // From = Fri 22 May.
+    const t = new Date();
+    t.setDate(t.getDate() - 1);
+    return {
+      from: fmtDateInput(prevBusinessDay(t)),
+      to: fmtDateInput(t),
+      portfolios: PORTFOLIOS.map((p) => String(p.number)),
+    };
+  };
+
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [portfolios, setPortfolios] = useState([]);
+  const [portfoliosExpanded, setPortfoliosExpanded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  // Re-init defaults each time the modal opens so a closed-then-reopened
+  // modal doesn't carry over the user's last edit. Recomputes today/T-1
+  // so the date band tracks the calendar as time passes.
+  useEffect(() => {
+    if (!open) return;
+    const d = computeDefaults();
+    setFrom(d.from);
+    setTo(d.to);
+    setPortfolios(d.portfolios);
+    setPortfoliosExpanded(false);
+  }, [open]);
+
+  const doDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("type", "all");
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      portfolios.forEach((p) => qs.append("portfolio", p));
+      const probe = await api(`/api/exports/blotter.csv?${qs.toString()}`,
+        { method: "HEAD" });
+      if (!probe.ok) {
+        throw new Error(`HTTP ${probe.status}`);
+      }
+      const a = document.createElement("a");
+      a.href = `/api/exports/blotter.csv?${qs.toString()}`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      onClose();
+    } catch (e) {
+      onError(`Trade Bookings download failed: ${String(e.message || e)}`);
+    } finally {
+      setDownloading(false);
+    }
+  }, [from, to, portfolios, downloading, onClose, onError]);
+
+  const dateInputStyle = {
+    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontSize: 12,
+    padding: "6px 8px",
+    border: "1px solid #d9d4c7",
+    background: "#ffffff",
+    color: "#0d0d0d",
+  };
+
+  return (
+    <ModalShell open={open} onClose={onClose}>
+      <div style={{ padding: "28px 32px", maxWidth: 720 }}>
+        <div
+          className="text-[22px]"
+          style={{
+            fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+            marginBottom: 18,
+          }}
+        >Download Trade Bookings</div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            columnGap: 16,
+            marginBottom: 18,
+          }}
+        >
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+          >
+            <span>Trade Date From</span>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+          >
+            <span>Trade Date To</span>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "#6a665c", marginBottom: 18 }}
+        >
+          <div className="flex items-center justify-between" style={{ minHeight: 18 }}>
+            <span>Portfolios</span>
+            {portfolios.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPortfoliosExpanded((v) => !v)}
+                className="text-[10px] tracking-[0.18em] uppercase"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#6a665c",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {portfoliosExpanded
+                  ? `▾ Hide selected (${portfolios.length})`
+                  : `▸ Show selected (${portfolios.length})`}
+              </button>
+            )}
+          </div>
+          <Select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (portfolios.includes(v)) return;
+              setPortfolios([...portfolios, v]);
+            }}
+          >
+            <option value="">
+              {portfolios.length === 0
+                ? "— Add portfolio —"
+                : `+ Add another (${portfolios.length} selected)`}
+            </option>
+            {PORTFOLIOS.filter((p) => !portfolios.includes(String(p.number))).map((p) => (
+              <option key={p.number} value={String(p.number)}>
+                {p.number} — {p.name}
+              </option>
+            ))}
+          </Select>
+          {portfolios.length > 0 && portfoliosExpanded && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {portfolios.map((num) => {
+                const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                return (
+                  <span
+                    key={num}
+                    className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
+                    style={{
+                      background: "#ffffff",
+                      color: "#0d0d0d",
+                      border: "1px solid #d4cfc2",
+                      textTransform: "none",
+                    }}
+                    title={label}
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${num}`}
+                      onClick={() =>
+                        setPortfolios(portfolios.filter((x) => x !== num))
+                      }
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#a39e90",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                    >×</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2" style={{ marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: "transparent",
+              color: downloading ? "#cdc8bb" : "#1f1f1f",
+              border: "1px solid #d9d4c7",
+              cursor: downloading ? "not-allowed" : "pointer",
+            }}
+          >Cancel</button>
+          <button
+            type="button"
+            onClick={doDownload}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: downloading ? "#cdc8bb" : "#1f1f1f",
+              color: "#f2efe8",
+              border: "1px solid #1f1f1f",
+              cursor: downloading ? "wait" : "pointer",
+            }}
+          >{downloading ? "Preparing…" : "Download"}</button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 // One-line human summary of a cashflow row for the Deal Enquiry "Details"
 // column. All caps; thousands-separators on the amount. Examples:
 //   IPF:     "PTF 8888 TREASURY FUNDS PTF 8041 CENTRAL RISK BOOK 1,000 USDC"
@@ -4327,6 +4578,8 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
     downloadCsv(`deal-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
 
+  const [showTradeBookingsModal, setShowTradeBookingsModal] = useState(false);
+
   const fetchRecent = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -4443,6 +4696,19 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                 cursor: totalRows === 0 ? "not-allowed" : "pointer",
               }}
             >↓ CSV</button>
+            <button
+              type="button"
+              onClick={() => setShowTradeBookingsModal(true)}
+              title="Pick a date range and portfolios, then download a CSV of trade bookings"
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >↓ TRADE BOOKINGS</button>
           </div>
         </div>
 
@@ -4884,7 +5150,370 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         totalRows={totalRows}
         BB={BB}
       />
+
+      <TradeBookingsExportModal
+        open={showTradeBookingsModal}
+        onClose={() => setShowTradeBookingsModal(false)}
+        onError={setError}
+      />
     </div>
+  );
+}
+
+// ─── LoanScheduleExportModal — date + portfolio + accrual filters ────
+// Triggered from the Loan Enquiry "↓ LOAN SCHEDULE" button. Opens with
+// from = T-1 prev biz day, to = T-1 (yesterday), all portfolios selected,
+// accrual date = yesterday UTC. Fetches /api/loan/export, runs each loan
+// through buildLoanScheduleRows, flattens to 20-column CSV, downloads.
+const LOAN_SCHEDULE_COLUMNS = [
+  "DEAL REFERENCE",
+  "START DATE",
+  "MATURITY DATE",
+  "PORTFOLIO",
+  "PORTFOLIO NAME",
+  "ASSET",
+  "AMOUNT",
+  "RATE (USD)",
+  "AMOUNT (USD)",
+  "INTEREST CALCULATION DATE",
+  "INTEREST RATE P.A. (%)",
+  "INTEREST ASSET",
+  "ACCRUED INTEREST",
+  "WHT",
+  "NET PAID INTEREST",
+  "LOAN TYPE",
+  "COUNTERPARTY",
+  "COMMENT",
+  "Hedged Interest",
+  "Hedged Price",
+  "Hedge USDT",
+];
+
+function _fmtScheduleDateForCsv(ms) {
+  if (ms == null) return "";
+  const d = new Date(ms);
+  // YYYY-MM-DD in UTC components to match how trade_date is stored.
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function _fmtNumberForCsv(v, decimals = 8) {
+  if (v == null || v === "" || Number.isNaN(v)) return "";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "";
+  // Strip trailing zeros after decimal; keep up to `decimals` precision.
+  return n
+    .toFixed(decimals)
+    .replace(/\.?0+$/, "");
+}
+
+// Lookup map for comment by trigger_cashflow_deal_ref. Loan rows arrive
+// with `.schedule_comments` already attached when present.
+function _scheduleCommentsByTrigger(loan) {
+  const out = {};
+  const list = Array.isArray(loan?.schedule_comments) ? loan.schedule_comments : [];
+  for (const c of list) {
+    const ref = c.trigger_cashflow_deal_ref;
+    if (ref) out[ref] = c.comment || "";
+  }
+  return out;
+}
+
+// Build the per-period schedule CSV rows for one loan. Returns an array
+// of objects keyed by LOAN_SCHEDULE_COLUMNS headers.
+function loanToScheduleCsvRows(loan, accrualDate) {
+  const periods = buildLoanScheduleRows(loan, accrualDate);
+  if (periods.length === 0) return [];
+  const principal = loan.principal_amount;
+  const rateUsd = loan.hedged_price;
+  const amountUsd =
+    principal != null && rateUsd != null && rateUsd !== ""
+      ? Number(principal) * Number(rateUsd)
+      : "";
+  const whtPct = (parseFloat(loan.wht_pct) || 0) / 100;
+  const commentsByTrigger = _scheduleCommentsByTrigger(loan);
+  return periods.map((p) => {
+    const accrued = p.accrued || 0;
+    const wht = accrued * whtPct;
+    const hedgeUsdt =
+      rateUsd != null && rateUsd !== "" ? accrued * Number(rateUsd) : "";
+    const comment = (p.triggerDealRef && commentsByTrigger[p.triggerDealRef]) || "";
+    return {
+      "DEAL REFERENCE": loan.deal_ref || "",
+      "START DATE": _fmtScheduleDateForCsv(p.startMs),
+      "MATURITY DATE": loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "",
+      "PORTFOLIO": loan.portfolio_id || "",
+      "PORTFOLIO NAME": loan.portfolio_name || "",
+      "ASSET": loan.principal_asset || "",
+      "AMOUNT": _fmtNumberForCsv(principal),
+      "RATE (USD)": _fmtNumberForCsv(rateUsd),
+      "AMOUNT (USD)": _fmtNumberForCsv(amountUsd),
+      "INTEREST CALCULATION DATE": _fmtScheduleDateForCsv(p.calcEndMs),
+      "INTEREST RATE P.A. (%)": _fmtNumberForCsv(loan.interest_rate_pa_pct, 6),
+      "INTEREST ASSET": loan.interest_asset || "",
+      "ACCRUED INTEREST": _fmtNumberForCsv(accrued),
+      "WHT": _fmtNumberForCsv(wht),
+      "NET PAID INTEREST": _fmtNumberForCsv(p.netPaid),
+      "LOAN TYPE": loan.loan_type || "",
+      "COUNTERPARTY": loan.counterparty || "",
+      "COMMENT": comment,
+      "Hedged Interest": _fmtNumberForCsv(accrued),
+      "Hedged Price": _fmtNumberForCsv(rateUsd),
+      "Hedge USDT": _fmtNumberForCsv(hedgeUsdt),
+    };
+  });
+}
+
+function LoanScheduleExportModal({ open, onClose, onError }) {
+  const computeDefaults = () => {
+    // T = yesterday's calendar date. T-1 = prev business day from T.
+    // Matches the Trade Bookings modal's defaults so the two popups
+    // feel consistent. NOTE: with these defaults the loan trade_date
+    // filter narrows the export to loans booked in that 1-3 day window.
+    // To export all active loans, clear the from/to inputs.
+    const t = new Date();
+    t.setDate(t.getDate() - 1);
+    return {
+      from: fmtDateInput(prevBusinessDay(t)),
+      to: fmtDateInput(t),
+      accrual: fmtDateInput(t),
+      portfolios: PORTFOLIOS.map((p) => String(p.number)),
+    };
+  };
+
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [accrual, setAccrual] = useState("");
+  const [portfolios, setPortfolios] = useState([]);
+  const [portfoliosExpanded, setPortfoliosExpanded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const d = computeDefaults();
+    setFrom(d.from);
+    setTo(d.to);
+    setAccrual(d.accrual);
+    setPortfolios(d.portfolios);
+    setPortfoliosExpanded(false);
+  }, [open]);
+
+  const doDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      portfolios.forEach((p) => qs.append("portfolio", p));
+      const r = await api(`/api/loan/export?${qs.toString()}`);
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}`);
+      }
+      const body = await r.json();
+      if (!body.ok) {
+        throw new Error(body.error || "loan export failed");
+      }
+      const loans = body.rows || [];
+      const csvRows = [];
+      for (const loan of loans) {
+        csvRows.push(...loanToScheduleCsvRows(loan, accrual || null));
+      }
+      const csv = rowsToCsv(
+        csvRows,
+        LOAN_SCHEDULE_COLUMNS.map((h) => ({ header: h, key: h })),
+      );
+      downloadCsv(`loan-schedule-${todayStampLocal()}.csv`, csv);
+      onClose();
+    } catch (e) {
+      onError(`Loan Schedule download failed: ${String(e.message || e)}`);
+    } finally {
+      setDownloading(false);
+    }
+  }, [from, to, accrual, portfolios, downloading, onClose, onError]);
+
+  const dateInputStyle = {
+    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontSize: 12,
+    padding: "6px 8px",
+    border: "1px solid #d9d4c7",
+    background: "#ffffff",
+    color: "#0d0d0d",
+  };
+
+  return (
+    <ModalShell open={open} onClose={onClose}>
+      <div style={{ padding: "28px 32px", maxWidth: 720 }}>
+        <div
+          className="text-[22px]"
+          style={{
+            fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+            marginBottom: 18,
+          }}
+        >Download Loan Schedule</div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            columnGap: 16,
+            marginBottom: 18,
+          }}
+        >
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+            title="Loan booked on or after this date. Empty = no lower bound."
+          >
+            <span>Loan Booked From</span>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+            title="Loan booked on or before this date. Empty = no upper bound."
+          >
+            <span>Loan Booked To</span>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+            title="As-of date for LIVE (still-open) period accrual"
+          >
+            <span>Accrual Date</span>
+            <input
+              type="date"
+              value={accrual}
+              onChange={(e) => setAccrual(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "#6a665c", marginBottom: 18 }}
+        >
+          <div className="flex items-center justify-between" style={{ minHeight: 18 }}>
+            <span>Portfolios</span>
+            {portfolios.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPortfoliosExpanded((v) => !v)}
+                className="text-[10px] tracking-[0.18em] uppercase"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#6a665c",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {portfoliosExpanded
+                  ? `▾ Hide selected (${portfolios.length})`
+                  : `▸ Show selected (${portfolios.length})`}
+              </button>
+            )}
+          </div>
+          <Select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (portfolios.includes(v)) return;
+              setPortfolios([...portfolios, v]);
+            }}
+          >
+            <option value="">
+              {portfolios.length === 0
+                ? "— Add portfolio —"
+                : `+ Add another (${portfolios.length} selected)`}
+            </option>
+            {PORTFOLIOS.filter((p) => !portfolios.includes(String(p.number))).map((p) => (
+              <option key={p.number} value={String(p.number)}>
+                {p.number} — {p.name}
+              </option>
+            ))}
+          </Select>
+          {portfolios.length > 0 && portfoliosExpanded && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {portfolios.map((num) => {
+                const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                return (
+                  <span
+                    key={num}
+                    className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
+                    style={{
+                      background: "#ffffff",
+                      color: "#0d0d0d",
+                      border: "1px solid #d4cfc2",
+                      textTransform: "none",
+                    }}
+                    title={label}
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${num}`}
+                      onClick={() =>
+                        setPortfolios(portfolios.filter((x) => x !== num))
+                      }
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#a39e90",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                    >×</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2" style={{ marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: "transparent",
+              color: downloading ? "#cdc8bb" : "#1f1f1f",
+              border: "1px solid #d9d4c7",
+              cursor: downloading ? "not-allowed" : "pointer",
+            }}
+          >Cancel</button>
+          <button
+            type="button"
+            onClick={doDownload}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: downloading ? "#cdc8bb" : "#1f1f1f",
+              color: "#f2efe8",
+              border: "1px solid #1f1f1f",
+              cursor: downloading ? "wait" : "pointer",
+            }}
+          >{downloading ? "Preparing…" : "Download"}</button>
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -4964,6 +5593,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     const csv = rowsToCsv(filteredRows, LOAN_CSV_COLUMNS);
     downloadCsv(`loan-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
+
+  const [showLoanScheduleModal, setShowLoanScheduleModal] = useState(false);
 
   const fetchRecent = useCallback(async () => {
     setLoading(true);
@@ -5072,6 +5703,19 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 cursor: totalRows === 0 ? "not-allowed" : "pointer",
               }}
             >↓ CSV</button>
+            <button
+              type="button"
+              onClick={() => setShowLoanScheduleModal(true)}
+              title="Pick filters and download the per-period loan schedule CSV (one row per accrual segment per loan)"
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >↓ LOAN SCHEDULE</button>
           </div>
         </div>
 
@@ -5473,6 +6117,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         totalRows={totalRows}
         BB={BB}
       />
+
+      <LoanScheduleExportModal
+        open={showLoanScheduleModal}
+        onClose={() => setShowLoanScheduleModal(false)}
+        onError={setError}
+      />
     </div>
   );
 }
@@ -5795,6 +6445,23 @@ export default function TradeBookingForm() {
   const [categoryCache, setCategoryCache] = useState({});
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v, last_modified_at: isoNow() }));
   const setMany = (patch) => setForm((f) => ({ ...f, ...patch, last_modified_at: isoNow() }));
+
+  // Auto-flip loan status to MATURED when the maturity date is today or
+  // in the past. Only kicks in for LOAN category with status LIVE — an
+  // explicit CANCELLED is never overridden, and an already-MATURED form
+  // stays MATURED. Reverse direction (date moved into the future →
+  // status back to LIVE) is intentionally NOT automated: the user pulls
+  // it back manually if they need to.
+  useEffect(() => {
+    if (form.category !== "LOAN") return;
+    if (form.status !== "LIVE") return;
+    if (!form.value_date) return;
+    const maturityIso = String(form.value_date).slice(0, 10);
+    const today = fmtDateInput(new Date());
+    if (maturityIso <= today) {
+      setForm((f) => ({ ...f, status: "MATURED", last_modified_at: isoNow() }));
+    }
+  }, [form.category, form.value_date, form.status]);
 
   // Cashflow tx-hash fetch handler (Task 7).
   async function handleFetchTx() {
