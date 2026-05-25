@@ -6446,6 +6446,23 @@ export default function TradeBookingForm() {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v, last_modified_at: isoNow() }));
   const setMany = (patch) => setForm((f) => ({ ...f, ...patch, last_modified_at: isoNow() }));
 
+  // Auto-flip loan status to MATURED when the maturity date is today or
+  // in the past. Only kicks in for LOAN category with status LIVE — an
+  // explicit CANCELLED is never overridden, and an already-MATURED form
+  // stays MATURED. Reverse direction (date moved into the future →
+  // status back to LIVE) is intentionally NOT automated: the user pulls
+  // it back manually if they need to.
+  useEffect(() => {
+    if (form.category !== "LOAN") return;
+    if (form.status !== "LIVE") return;
+    if (!form.value_date) return;
+    const maturityIso = String(form.value_date).slice(0, 10);
+    const today = fmtDateInput(new Date());
+    if (maturityIso <= today) {
+      setForm((f) => ({ ...f, status: "MATURED", last_modified_at: isoNow() }));
+    }
+  }, [form.category, form.value_date, form.status]);
+
   // Cashflow tx-hash fetch handler (Task 7).
   async function handleFetchTx() {
     setTxFetchError(null);
