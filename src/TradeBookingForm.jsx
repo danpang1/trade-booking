@@ -3896,7 +3896,12 @@ function fmtDateInput(d) {
 // banner via `onError`.
 function TradeBookingsExportModal({ open, onClose, onError }) {
   const computeDefaults = () => {
+    // T = yesterday's calendar date (i.e. the most recent day whose
+    // trades are fully booked). T-1 = previous business day before T,
+    // skipping weekends. So on Mon 25 May 2026: To = Sun 24 May,
+    // From = Fri 22 May.
     const t = new Date();
+    t.setDate(t.getDate() - 1);
     return {
       from: fmtDateInput(prevBusinessDay(t)),
       to: fmtDateInput(t),
