@@ -3912,6 +3912,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [portfolios, setPortfolios] = useState([]);
+  const [portfoliosExpanded, setPortfoliosExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   // Re-init defaults each time the modal opens so a closed-then-reopened
@@ -3923,6 +3924,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
     setFrom(d.from);
     setTo(d.to);
     setPortfolios(d.portfolios);
+    setPortfoliosExpanded(false);
   }, [open]);
 
   const doDownload = useCallback(async () => {
@@ -4011,7 +4013,27 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
           className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
           style={{ color: "#6a665c", marginBottom: 18 }}
         >
-          <span>Portfolios</span>
+          <div className="flex items-center justify-between" style={{ minHeight: 18 }}>
+            <span>Portfolios</span>
+            {portfolios.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPortfoliosExpanded((v) => !v)}
+                className="text-[10px] tracking-[0.18em] uppercase"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#6a665c",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {portfoliosExpanded
+                  ? `▾ Hide selected (${portfolios.length})`
+                  : `▸ Show selected (${portfolios.length})`}
+              </button>
+            )}
+          </div>
           <Select
             value=""
             onChange={(e) => {
@@ -4032,7 +4054,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
               </option>
             ))}
           </Select>
-          {portfolios.length > 0 && (
+          {portfolios.length > 0 && portfoliosExpanded && (
             <div className="flex flex-wrap gap-1 mt-1.5">
               {portfolios.map((num) => {
                 const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
