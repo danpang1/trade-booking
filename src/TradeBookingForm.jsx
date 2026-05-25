@@ -5166,6 +5166,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
 // accrual date = yesterday UTC. Fetches /api/loan/export, runs each loan
 // through buildLoanScheduleRows, flattens to 20-column CSV, downloads.
 const LOAN_SCHEDULE_COLUMNS = [
+  "DEAL REFERENCE",
   "START DATE",
   "MATURITY DATE",
   "PORTFOLIO",
@@ -5237,6 +5238,7 @@ function loanToScheduleCsvRows(loan, accrualDate) {
       rateUsd != null && rateUsd !== "" ? accrued * Number(rateUsd) : "";
     const comment = (p.triggerDealRef && commentsByTrigger[p.triggerDealRef]) || "";
     return {
+      "DEAL REFERENCE": loan.deal_ref || "",
       "START DATE": _fmtScheduleDateForCsv(p.startMs),
       "MATURITY DATE": loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "",
       "PORTFOLIO": loan.portfolio_id || "",
