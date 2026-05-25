@@ -53,18 +53,18 @@ def _parse_params(raw: str) -> dict:
     return out
 
 
-def _where_clause(params: dict, alias: str = "t") -> tuple[str, list]:
-    clauses = [f"{alias}.effective_end IS NULL"]
+def _where_clause(params: dict) -> tuple[str, list]:
+    clauses = ["t.effective_end IS NULL"]
     args: list = []
     if params["from"]:
-        clauses.append(f"{alias}.trade_date >= %s")
+        clauses.append("t.trade_date >= %s")
         args.append(params["from"])
     if params["to"]:
-        clauses.append(f"{alias}.trade_date <= %s")
+        clauses.append("t.trade_date <= %s")
         args.append(params["to"])
     if params["portfolio_ids"]:
         placeholders = ",".join(["%s"] * len(params["portfolio_ids"]))
-        clauses.append(f"{alias}.portfolio_id IN ({placeholders})")
+        clauses.append(f"t.portfolio_id IN ({placeholders})")
         args.extend(params["portfolio_ids"])
     return " AND ".join(clauses), args
 
