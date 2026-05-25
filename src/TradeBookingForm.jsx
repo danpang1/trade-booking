@@ -4327,6 +4327,43 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
     downloadCsv(`deal-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
 
+  const [downloadingBlotter, setDownloadingBlotter] = useState(false);
+  const downloadBlotter = useCallback(async () => {
+    if (downloadingBlotter) return;
+    setDownloadingBlotter(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams();
+      const from = (filters.trade_date_from || "").slice(0, 10);
+      const to = (filters.trade_date_to || "").slice(0, 10);
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      qs.set("type", "all");
+      // HEAD probe so errors surface in the page banner rather than
+      // a download dialog full of error JSON.
+      const probe = await api(`/api/exports/blotter.csv?${qs.toString()}`,
+        { method: "HEAD" });
+      if (!probe.ok) {
+        let detail = `HTTP ${probe.status}`;
+        try {
+          const body = await probe.text();
+          if (body) detail += ` — ${body.slice(0, 200)}`;
+        } catch { /* ignore */ }
+        throw new Error(detail);
+      }
+      const a = document.createElement("a");
+      a.href = `/api/exports/blotter.csv?${qs.toString()}`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      setError(`Blotter download failed: ${String(e.message || e)}`);
+    } finally {
+      setDownloadingBlotter(false);
+    }
+  }, [filters.trade_date_from, filters.trade_date_to, downloadingBlotter]);
+
   const fetchRecent = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -4443,6 +4480,20 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                 cursor: totalRows === 0 ? "not-allowed" : "pointer",
               }}
             >↓ CSV</button>
+            <button
+              type="button"
+              onClick={downloadBlotter}
+              disabled={downloadingBlotter}
+              title="Download all live trades from the database in the MO blotter format (cashflow + spot legs)"
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: downloadingBlotter ? "#cdc8bb" : "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: downloadingBlotter ? "wait" : "pointer",
+              }}
+            >{downloadingBlotter ? "↓ PREPARING…" : "↓ FULL BLOTTER"}</button>
           </div>
         </div>
 
