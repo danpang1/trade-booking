@@ -1,0 +1,117 @@
+{
+  "planPath": "docs/plans/2026-05-25-claude-code-trade-booking-phase-1a-server-ui.md",
+  "lastUpdated": "2026-05-25T00:00:00Z",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Schema migration for bookings_draft",
+      "status": "pending",
+      "description": "**Goal:** Create the bookings_draft table on UAT.\n\n**Files:**\n- Create: scripts/apply_schema_drafts.py\n\n```json:metadata\n{\"files\": [\"scripts/apply_schema_drafts.py\"], \"verifyCommand\": \"python scripts/apply_schema_drafts.py\", \"acceptanceCriteria\": [\"exit 0 + ok message\", \"16 columns + 3 indexes present\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: draft_db.py pure logic + tests (TDD)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Validators + DB connect helper, DB-free for unit testing.\n\n**Files:**\n- Create: scripts/draft_db.py\n- Test: tests/test_draft_db.py\n\n```json:metadata\n{\"files\": [\"scripts/draft_db.py\", \"tests/test_draft_db.py\"], \"verifyCommand\": \"python -m pytest tests/test_draft_db.py -v\", \"acceptanceCriteria\": [\"all tests pass\", \"flake8 clean\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: draft_insert.py (single)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** POST /api/bookings/draft handler.\n\n```json:metadata\n{\"files\": [\"scripts/draft_insert.py\"], \"verifyCommand\": \"manual smoke\", \"acceptanceCriteria\": [\"insert + dedupe + reject invalid\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: draft_batch_insert.py (atomic)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** POST /api/bookings/draft/batch handler. All-or-nothing.\n\n```json:metadata\n{\"files\": [\"scripts/draft_batch_insert.py\"], \"verifyCommand\": \"manual smoke\", \"acceptanceCriteria\": [\"batch happy + atomic rollback + dedupe\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: draft_list.py + draft_get.py (read endpoints)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** GET handlers with per-user isolation.\n\n```json:metadata\n{\"files\": [\"scripts/draft_list.py\", \"scripts/draft_get.py\"], \"verifyCommand\": \"manual smoke\", \"acceptanceCriteria\": [\"list filters work\", \"get isolation enforced\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: draft_patch.py",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** PATCH handler. Pending-only, owner-only, re-validates.\n\n```json:metadata\n{\"files\": [\"scripts/draft_patch.py\"], \"verifyCommand\": \"manual smoke\", \"acceptanceCriteria\": [\"patch + conflict + isolation + validation\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: draft_approve.py (atomic claim + cashflow_insert)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** ONE BEGIN/COMMIT: claim draft + cashflow_insert._insert_one in-process.\n\n```json:metadata\n{\"files\": [\"scripts/draft_approve.py\"], \"verifyCommand\": \"manual smoke + DB check\", \"acceptanceCriteria\": [\"approve happy + trade landed + double-approve 409 + rollback\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: draft_reject.py",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Soft reject with reason. Owner only.\n\n```json:metadata\n{\"files\": [\"scripts/draft_reject.py\"], \"verifyCommand\": \"manual smoke\", \"acceptanceCriteria\": [\"reject + re-reject conflict\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: server.js — script constants + exit-7 mapping + draft routes",
+      "status": "pending",
+      "blockedBy": [3, 4, 5, 6, 7, 8],
+      "description": "**Goal:** 7 script constants, exit-7 to 409 mapping, /api/bookings/draft(s) route block.\n\n```json:metadata\n{\"files\": [\"server.js\"], \"verifyCommand\": \"curl tests + existing smokes\", \"acceptanceCriteria\": [\"all 7 routes work with cookie + bearer\", \"no regressions\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: src/auth/api.js draft helpers",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** 7 helpers (listDrafts, getDraft, createDraft, createDraftBatch, patchDraft, approveDraft, rejectDraft).\n\n```json:metadata\n{\"files\": [\"src/auth/api.js\"], \"verifyCommand\": \"npm run build\", \"acceptanceCriteria\": [\"7 helpers exported\", \"build succeeds\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: DraftEditModal component",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Modal for in-place draft editing. Save/Approve/Reject buttons.\n\n```json:metadata\n{\"files\": [\"src/pending/DraftEditModal.jsx\"], \"verifyCommand\": \"npm run build\", \"acceptanceCriteria\": [\"load + save + approve + reject + inline errors\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: PendingDrafts page",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Drafts inbox with batch grouping, approve-all, collapsed approved/rejected sections.\n\n```json:metadata\n{\"files\": [\"src/pending/PendingDrafts.jsx\"], \"verifyCommand\": \"npm run build\", \"acceptanceCriteria\": [\"sections + grouping + actions + approve-all + open-in-form\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Wire PendingDrafts + sidebar badge polling",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Mount via appView==='pending'. Sidebar PENDING (N) row + 30s polling.\n\n```json:metadata\n{\"files\": [\"src/TradeBookingForm.jsx\"], \"verifyCommand\": \"manual UI smoke\", \"acceptanceCriteria\": [\"mount + nav + badge polling\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Draft mode in TradeBookingForm.jsx",
+      "status": "pending",
+      "blockedBy": [13],
+      "description": "**Goal:** /?draft=<id> URL param loads draft into form. Save Draft + Approve & Book buttons.\n\n```json:metadata\n{\"files\": [\"src/TradeBookingForm.jsx\"], \"verifyCommand\": \"manual UI smoke\", \"acceptanceCriteria\": [\"URL param load + save + approve + no regressions\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: smoke_drafts.py end-to-end smoke",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** End-to-end smoke mirroring smoke_auth.py + smoke_tokens.py.\n\n```json:metadata\n{\"files\": [\"scripts/smoke_drafts.py\"], \"verifyCommand\": \"python scripts/smoke_drafts.py --username ... --password ...\", \"acceptanceCriteria\": [\"PASS + Phase 0 regressions still pass\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: README + Helm bump + PROD migration",
+      "status": "pending",
+      "blockedBy": [14, 15],
+      "description": "**Goal:** Document endpoints, bump chart, apply PROD schema, smoke PROD, tag release.\n\n```json:metadata\n{\"files\": [\"README.md\", \"version.yml\", \"helm/Chart.yaml\"], \"verifyCommand\": \"smoke_drafts.py against PROD\", \"acceptanceCriteria\": [\"README + bump + PROD apply + PROD smoke + tag\"]}\n```"
+    }
+  ]
+}
