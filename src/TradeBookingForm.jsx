@@ -2809,14 +2809,16 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
       if (ev.type === "DISBURSE") notional += ev.amount;
       else if (ev.type === "REPAY") notional -= ev.amount;
       // INTEREST: notional unchanged (period boundary only)
-      // Convention: each event STARTS its own period on its own
-      // trade_date. The prior period (if any) ends T-1 of this event.
-      // So on the event day itself: the NEW notional / fresh accrual
-      // applies. This means an interest payment on Apr 1 closes the
-      // prior row on Mar 31 and opens a new row starting Apr 1.
-      const startMs = ev.ms;
+      // Convention: each event CLOSES the prior period on its own
+      // trade_date (interest accrues up to and including the event
+      // day) and the next period opens on T+1. So a partial repayment
+      // on Apr 1 closes the prior row on Apr 1 and a fresh row with
+      // the reduced notional starts Apr 2. The first event (initial
+      // disbursement) opens period 0 on its own trade_date — there's
+      // no prior period to close.
+      const startMs = i === 0 ? ev.ms : ev.ms + MS_PER_DAY;
       const next = collapsedEvents[i + 1];
-      const endMs = next ? next.ms - MS_PER_DAY : null; // null = LIVE
+      const endMs = next ? next.ms : null; // null = LIVE
       if (notional <= 0) continue;
 
       // Days from start to (endMs or accrualEndMs), inclusive.
