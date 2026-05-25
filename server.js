@@ -810,6 +810,29 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/loan/export?from=&to=&portfolio=...
+  // Returns all live loans (with mappings + schedule_comments) matching
+  // the optional filters. Frontend builds the per-period schedule CSV
+  // by calling buildLoanScheduleRows() on each loan. See loan_export.py.
+  // MUST come before the /api/loan/:deal_ref catch-all so "export" isn't
+  // interpreted as a deal_ref.
+  if (req.method === "GET" && req.url.startsWith("/api/loan/export")) {
+    const url = new URL(req.url, "http://localhost");
+    const from = url.searchParams.get("from") || null;
+    const to   = url.searchParams.get("to")   || null;
+    const portfolioIds = url.searchParams.getAll("portfolio").filter(Boolean);
+    const stdin = JSON.stringify({ from, to, portfolio_ids: portfolioIds });
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(LOAN_EXPORT_SCRIPT, stdin);
+    if (stderr) console.error(`[loan:export:err] ${stderr.trim()}`);
+    const rowCount = json && json.rows ? json.rows.length : 0;
+    console.log(`[loan] export ${rowCount} loans (${Date.now() - t0}ms)`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // GET /api/loan/:deal_ref/history  (must come BEFORE the bare :deal_ref route)
   if (req.method === "GET" && /^\/api\/loan\/[^/]+\/history$/.test(req.url)) {
     const segments = req.url.split("/");
@@ -936,27 +959,6 @@ const server = createServer(async (req, res) => {
     // UTF-8 BOM so Excel opens the file in the correct codepage. Matches
     // the client-side downloadCsv helper convention in TradeBookingForm.jsx.
     res.end("﻿" + json.csv);
-    return;
-  }
-
-  // GET /api/loan/export?from=&to=&portfolio=...
-  // Returns all live loans (with mappings + schedule_comments) matching
-  // the optional filters. Frontend builds the per-period schedule CSV
-  // by calling buildLoanScheduleRows() on each loan. See loan_export.py.
-  if (req.method === "GET" && req.url.startsWith("/api/loan/export")) {
-    const url = new URL(req.url, "http://localhost");
-    const from = url.searchParams.get("from") || null;
-    const to   = url.searchParams.get("to")   || null;
-    const portfolioIds = url.searchParams.getAll("portfolio").filter(Boolean);
-    const stdin = JSON.stringify({ from, to, portfolio_ids: portfolioIds });
-    const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_EXPORT_SCRIPT, stdin);
-    if (stderr) console.error(`[loan:export:err] ${stderr.trim()}`);
-    const rowCount = json && json.rows ? json.rows.length : 0;
-    console.log(`[loan] export ${rowCount} loans (${Date.now() - t0}ms)`);
-    res.statusCode = httpStatusFor(code, json);
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(json));
     return;
   }
 
