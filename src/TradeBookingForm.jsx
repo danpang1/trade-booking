@@ -3874,6 +3874,231 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
   );
 }
 
+// Walk back one calendar day at a time, skipping Sat (6) and Sun (0).
+// Returns the previous business day relative to `d`.
+function prevBusinessDay(d) {
+  const x = new Date(d);
+  do {
+    x.setDate(x.getDate() - 1);
+  } while (x.getDay() === 0 || x.getDay() === 6);
+  return x;
+}
+
+function fmtDateInput(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ─── TradeBookingsExportModal — date + portfolio filter popup ─────────
+// Triggered from the Deal Enquiry "↓ TRADE BOOKINGS" button. Opens with
+// from = previous business day, to = today, all portfolios pre-selected.
+// Hits GET /api/exports/blotter.csv with the chosen filters; downloads
+// via transient <a download> click. Errors surface to the parent's
+// banner via `onError`.
+function TradeBookingsExportModal({ open, onClose, onError }) {
+  const computeDefaults = () => {
+    const t = new Date();
+    return {
+      from: fmtDateInput(prevBusinessDay(t)),
+      to: fmtDateInput(t),
+      portfolios: PORTFOLIOS.map((p) => String(p.number)),
+    };
+  };
+
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [portfolios, setPortfolios] = useState([]);
+  const [downloading, setDownloading] = useState(false);
+
+  // Re-init defaults each time the modal opens so a closed-then-reopened
+  // modal doesn't carry over the user's last edit. Recomputes today/T-1
+  // so the date band tracks the calendar as time passes.
+  useEffect(() => {
+    if (!open) return;
+    const d = computeDefaults();
+    setFrom(d.from);
+    setTo(d.to);
+    setPortfolios(d.portfolios);
+  }, [open]);
+
+  const doDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("type", "all");
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      portfolios.forEach((p) => qs.append("portfolio", p));
+      const probe = await api(`/api/exports/blotter.csv?${qs.toString()}`,
+        { method: "HEAD" });
+      if (!probe.ok) {
+        throw new Error(`HTTP ${probe.status}`);
+      }
+      const a = document.createElement("a");
+      a.href = `/api/exports/blotter.csv?${qs.toString()}`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      onClose();
+    } catch (e) {
+      onError(`Trade Bookings download failed: ${String(e.message || e)}`);
+    } finally {
+      setDownloading(false);
+    }
+  }, [from, to, portfolios, downloading, onClose, onError]);
+
+  const dateInputStyle = {
+    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontSize: 12,
+    padding: "6px 8px",
+    border: "1px solid #d9d4c7",
+    background: "#ffffff",
+    color: "#0d0d0d",
+  };
+
+  return (
+    <ModalShell open={open} onClose={onClose}>
+      <div style={{ padding: "28px 32px", maxWidth: 720 }}>
+        <div
+          className="text-[22px]"
+          style={{
+            fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+            marginBottom: 18,
+          }}
+        >Download Trade Bookings</div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            columnGap: 16,
+            marginBottom: 18,
+          }}
+        >
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+          >
+            <span>Trade Date From</span>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label
+            className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+            style={{ color: "#6a665c" }}
+          >
+            <span>Trade Date To</span>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "#6a665c", marginBottom: 18 }}
+        >
+          <span>Portfolios</span>
+          <Select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (portfolios.includes(v)) return;
+              setPortfolios([...portfolios, v]);
+            }}
+          >
+            <option value="">
+              {portfolios.length === 0
+                ? "— Add portfolio —"
+                : `+ Add another (${portfolios.length} selected)`}
+            </option>
+            {PORTFOLIOS.filter((p) => !portfolios.includes(String(p.number))).map((p) => (
+              <option key={p.number} value={String(p.number)}>
+                {p.number} — {p.name}
+              </option>
+            ))}
+          </Select>
+          {portfolios.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {portfolios.map((num) => {
+                const p = PORTFOLIOS.find((pp) => String(pp.number) === num);
+                const label = p ? `${p.number} — ${p.name.split(" - ").pop()}` : num;
+                return (
+                  <span
+                    key={num}
+                    className="inline-flex items-center gap-1 text-[10px] tracking-[0.12em] px-2 py-0.5"
+                    style={{
+                      background: "#ffffff",
+                      color: "#0d0d0d",
+                      border: "1px solid #d4cfc2",
+                      textTransform: "none",
+                    }}
+                    title={label}
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${num}`}
+                      onClick={() =>
+                        setPortfolios(portfolios.filter((x) => x !== num))
+                      }
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#a39e90",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                    >×</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2" style={{ marginTop: 24 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: "transparent",
+              color: downloading ? "#cdc8bb" : "#1f1f1f",
+              border: "1px solid #d9d4c7",
+              cursor: downloading ? "not-allowed" : "pointer",
+            }}
+          >Cancel</button>
+          <button
+            type="button"
+            onClick={doDownload}
+            disabled={downloading}
+            className="px-3 py-1.5 text-[10px] tracking-[0.22em] uppercase"
+            style={{
+              background: downloading ? "#cdc8bb" : "#1f1f1f",
+              color: "#f2efe8",
+              border: "1px solid #1f1f1f",
+              cursor: downloading ? "wait" : "pointer",
+            }}
+          >{downloading ? "Preparing…" : "Download"}</button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 // One-line human summary of a cashflow row for the Deal Enquiry "Details"
 // column. All caps; thousands-separators on the amount. Examples:
 //   IPF:     "PTF 8888 TREASURY FUNDS PTF 8041 CENTRAL RISK BOOK 1,000 USDC"
@@ -4327,42 +4552,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
     downloadCsv(`deal-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
 
-  const [downloadingBlotter, setDownloadingBlotter] = useState(false);
-  const downloadBlotter = useCallback(async () => {
-    if (downloadingBlotter) return;
-    setDownloadingBlotter(true);
-    setError(null);
-    try {
-      const qs = new URLSearchParams();
-      const from = (filters.trade_date_from || "").slice(0, 10);
-      const to = (filters.trade_date_to || "").slice(0, 10);
-      if (from) qs.set("from", from);
-      if (to) qs.set("to", to);
-      qs.set("type", "all");
-      // HEAD probe so errors surface in the page banner rather than
-      // a download dialog full of error JSON.
-      const probe = await api(`/api/exports/blotter.csv?${qs.toString()}`,
-        { method: "HEAD" });
-      if (!probe.ok) {
-        let detail = `HTTP ${probe.status}`;
-        try {
-          const body = await probe.text();
-          if (body) detail += ` — ${body.slice(0, 200)}`;
-        } catch { /* ignore */ }
-        throw new Error(detail);
-      }
-      const a = document.createElement("a");
-      a.href = `/api/exports/blotter.csv?${qs.toString()}`;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (e) {
-      setError(`Blotter download failed: ${String(e.message || e)}`);
-    } finally {
-      setDownloadingBlotter(false);
-    }
-  }, [filters.trade_date_from, filters.trade_date_to, downloadingBlotter]);
+  const [showTradeBookingsModal, setShowTradeBookingsModal] = useState(false);
 
   const fetchRecent = useCallback(async () => {
     setLoading(true);
@@ -4482,18 +4672,17 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
             >↓ CSV</button>
             <button
               type="button"
-              onClick={downloadBlotter}
-              disabled={downloadingBlotter}
-              title="Download all live trades from the database in the MO blotter format (cashflow + spot legs)"
+              onClick={() => setShowTradeBookingsModal(true)}
+              title="Pick a date range and portfolios, then download a CSV of trade bookings"
               className="text-[10px] tracking-[0.22em] uppercase transition-colors"
               style={{
                 background: "transparent",
-                color: downloadingBlotter ? "#cdc8bb" : "#1f1f1f",
+                color: "#1f1f1f",
                 border: "none",
                 padding: "4px 0",
-                cursor: downloadingBlotter ? "wait" : "pointer",
+                cursor: "pointer",
               }}
-            >{downloadingBlotter ? "↓ PREPARING…" : "↓ FULL BLOTTER"}</button>
+            >↓ TRADE BOOKINGS</button>
           </div>
         </div>
 
@@ -4934,6 +5123,12 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         pageEnd={pageEnd}
         totalRows={totalRows}
         BB={BB}
+      />
+
+      <TradeBookingsExportModal
+        open={showTradeBookingsModal}
+        onClose={() => setShowTradeBookingsModal(false)}
+        onError={setError}
       />
     </div>
   );
