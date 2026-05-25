@@ -5265,15 +5265,16 @@ function loanToScheduleCsvRows(loan, accrualDate) {
 
 function LoanScheduleExportModal({ open, onClose, onError }) {
   const computeDefaults = () => {
-    // Loan trade_date filter defaults to empty — include every active
-    // loan regardless of when it was booked (most loans run for months,
-    // so a narrow recency window would exclude almost all of them).
-    // Accrual Date defaults to yesterday UTC (the LIVE period cutoff).
+    // T = yesterday's calendar date. T-1 = prev business day from T.
+    // Matches the Trade Bookings modal's defaults so the two popups
+    // feel consistent. NOTE: with these defaults the loan trade_date
+    // filter narrows the export to loans booked in that 1-3 day window.
+    // To export all active loans, clear the from/to inputs.
     const t = new Date();
     t.setDate(t.getDate() - 1);
     return {
-      from: "",
-      to: "",
+      from: fmtDateInput(prevBusinessDay(t)),
+      to: fmtDateInput(t),
       accrual: fmtDateInput(t),
       portfolios: PORTFOLIOS.map((p) => String(p.number)),
     };
