@@ -2563,6 +2563,107 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 // Fetches /api/loan/:deal_ref on open, renders the loan contract
 // summary + computed running balances + chronological table of mapped
 // cashflows. Buttons inline let the user jump to amend or audit history.
+// Parse a stored trade_date as a UTC date-only timestamp. Trade dates are
+// "YYYY-MM-DDTHH:MM:SS" with no zone; naive Date.parse treats them as local
+// time which shifts fmtScheduleDate one day earlier in zones east of UTC.
+// Slicing the date portion and appending T00:00:00Z forces UTC midnight.
+const _LOAN_MS_PER_DAY = 86400000;
+function _parseLoanTradeDateMs(s) {
+  if (!s) return NaN;
+  return Date.parse(String(s).slice(0, 10) + "T00:00:00Z");
+}
+
+// Compute the amortization-by-event schedule rows for one loan.
+//
+// Inputs:
+//   loan         — loan row (with `.mappings` already attached)
+//   accrualDate  — YYYY-MM-DD cutoff for the LIVE (still-open) period's
+//                  accrual, or null/undefined to skip LIVE accrual
+//
+// Returns: array of period objects { startMs, endMs, notional, calcEndMs,
+//   days, accrued, netPaid, triggerDealRef }. Same shape the LoanScheduleModal
+//   has used since the schedule view was introduced.
+//
+// Pure: no React, no I/O, no DOM. Safe to call from the export pipeline.
+function buildLoanScheduleRows(loan, accrualDate) {
+  if (!loan) return [];
+  const mappings = [...(loan.mappings || [])].sort((a, b) => {
+    const ta = String(a.trade_date || "");
+    const tb = String(b.trade_date || "");
+    return ta.localeCompare(tb);
+  });
+  const dayBasis = parseInt(loan.day_count_basis, 10) || 365;
+  const rate = (parseFloat(loan.interest_rate_pa_pct) || 0) / 100;
+  const principalAmount = parseFloat(loan.principal_amount) || 0;
+  const accrualEndMs = accrualDate ? Date.parse(accrualDate + "T23:59:59Z") : null;
+  const tradeStartMs = loan.trade_date ? _parseLoanTradeDateMs(loan.trade_date) : null;
+
+  const events = [];
+  for (const m of mappings) {
+    if (!m.trade_date) continue;
+    const ms = _parseLoanTradeDateMs(m.trade_date);
+    if (Number.isNaN(ms)) continue;
+    if (m.mapping_type === "PRINCIPAL_DISBURSE") {
+      events.push({ ms, type: "DISBURSE", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+    } else if (m.mapping_type === "PRINCIPAL_REPAY") {
+      events.push({ ms, type: "REPAY", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+    } else if (m.mapping_type === "INTEREST") {
+      events.push({ ms, type: "INTEREST", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
+    }
+  }
+  // Fallback: no disburse cashflow linked → synthesise from the loan row itself.
+  if (!events.some((e) => e.type === "DISBURSE") && tradeStartMs != null) {
+    events.push({ ms: tradeStartMs, type: "DISBURSE", amount: principalAmount, dealRef: null });
+  }
+  events.sort((a, b) => a.ms - b.ms);
+  if (events.length === 0) return [];
+
+  // Collapse same-day same-type events.
+  const eventsByDayType = new Map();
+  for (const ev of events) {
+    const key = `${ev.ms}|${ev.type}`;
+    const prior = eventsByDayType.get(key);
+    if (prior) {
+      prior.amount += ev.amount;
+      if (ev.dealRef && (!prior.dealRef || ev.dealRef < prior.dealRef)) {
+        prior.dealRef = ev.dealRef;
+      }
+    } else {
+      eventsByDayType.set(key, { ...ev });
+    }
+  }
+  const collapsedEvents = Array.from(eventsByDayType.values()).sort((a, b) => {
+    if (a.ms !== b.ms) return a.ms - b.ms;
+    const order = { DISBURSE: 0, REPAY: 1, INTEREST: 2 };
+    return (order[a.type] ?? 99) - (order[b.type] ?? 99);
+  });
+
+  const periods = [];
+  let notional = 0;
+  for (let i = 0; i < collapsedEvents.length; i++) {
+    const ev = collapsedEvents[i];
+    if (ev.type === "DISBURSE") notional += ev.amount;
+    else if (ev.type === "REPAY") notional -= ev.amount;
+    const startMs = i === 0 ? ev.ms : ev.ms + _LOAN_MS_PER_DAY;
+    const next = collapsedEvents[i + 1];
+    const endMs = next ? next.ms : null;
+    if (notional <= 0) continue;
+
+    const cutoffMs = endMs != null ? endMs : accrualEndMs;
+    let days = 0;
+    let calcEndMs = null;
+    if (cutoffMs != null && cutoffMs >= startMs) {
+      days = Math.floor((cutoffMs - startMs) / _LOAN_MS_PER_DAY) + 1;
+      calcEndMs = cutoffMs;
+    }
+    const accrued = notional * rate * days / dayBasis;
+    const netPaid = next && next.type === "INTEREST" ? next.amount : 0;
+
+    periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
+  }
+  return periods;
+}
+
 function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend, onHistory, onCashflowSelect, onBookCashflow }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -2735,112 +2836,10 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
   const accruedGross = perRowAccrued.reduce((s, v) => s + (v || 0), 0);
 
   // ─── Loan Schedule (amortization-style by principal event) ───────
-  // One row per principal segment, split by PRINCIPAL_DISBURSE /
-  // PRINCIPAL_REPAY events. Each row carries the notional outstanding
-  // during that segment plus the interest accrued over its days.
-  //
-  //   start    = event.trade_date
-  //   end      = next event.trade_date − 1 day, or null (= LIVE)
-  //   notional = running balance after applying the event
-  //   accrued  = notional × rate × days(start, end_or_accrualDate) / day_basis
-  //
-  // Net Paid Interest = sum of INTEREST cashflows whose trade_date
-  // falls within [start, end] (inclusive). WHT placeholder for now.
-  // If no PRINCIPAL_DISBURSE is linked (legacy data), synthesize one
-  // from loan.trade_date + loan.principal_amount so the schedule still
-  // has a row.
-  const scheduleRows = (() => {
-    if (!loan) return [];
-    const events = [];
-    for (const m of mappings) {
-      if (!m.trade_date) continue;
-      const ms = parseTradeDateMs(m.trade_date);
-      if (Number.isNaN(ms)) continue;
-      // dealRef tracked alongside so each schedule row knows the
-      // triggering cashflow — used as the stable key for comments.
-      if (m.mapping_type === "PRINCIPAL_DISBURSE") {
-        events.push({ ms, type: "DISBURSE", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
-      } else if (m.mapping_type === "PRINCIPAL_REPAY") {
-        events.push({ ms, type: "REPAY", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
-      } else if (m.mapping_type === "INTEREST") {
-        // INTEREST is a soft period boundary: it terminates the prior
-        // accrual segment on its trade_date and starts a fresh segment
-        // the next day with the same notional. Doesn't change notional.
-        events.push({ ms, type: "INTEREST", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
-      }
-    }
-    // Fallback: no disburse cashflow linked → synthesise from the loan
-    // row itself. Has no cashflow dealRef, so its comment uses a sentinel.
-    if (!events.some((e) => e.type === "DISBURSE") && tradeStartMs != null) {
-      events.push({ ms: tradeStartMs, type: "DISBURSE", amount: principalAmount, dealRef: null });
-    }
-    events.sort((a, b) => a.ms - b.ms);
-    if (events.length === 0) return [];
-
-    // Collapse same-day same-type events. Multiple cashflows on the
-    // same trade_date merge into one schedule row. The canonical
-    // dealRef = the alphabetically-earliest contributing cashflow ref
-    // (deterministic across renders).
-    const eventsByDayType = new Map();
-    for (const ev of events) {
-      const key = `${ev.ms}|${ev.type}`;
-      const prior = eventsByDayType.get(key);
-      if (prior) {
-        prior.amount += ev.amount;
-        if (ev.dealRef && (!prior.dealRef || ev.dealRef < prior.dealRef)) {
-          prior.dealRef = ev.dealRef;
-        }
-      } else {
-        eventsByDayType.set(key, { ...ev });
-      }
-    }
-    const collapsedEvents = Array.from(eventsByDayType.values()).sort((a, b) => {
-      if (a.ms !== b.ms) return a.ms - b.ms;
-      // Same-day mixed types: DISBURSE → REPAY → INTEREST so notional
-      // changes apply before the interest-payment boundary is drawn.
-      const order = { DISBURSE: 0, REPAY: 1, INTEREST: 2 };
-      return (order[a.type] ?? 99) - (order[b.type] ?? 99);
-    });
-
-    const periods = [];
-    let notional = 0;
-    for (let i = 0; i < collapsedEvents.length; i++) {
-      const ev = collapsedEvents[i];
-      if (ev.type === "DISBURSE") notional += ev.amount;
-      else if (ev.type === "REPAY") notional -= ev.amount;
-      // INTEREST: notional unchanged (period boundary only)
-      // Convention: each event CLOSES the prior period on its own
-      // trade_date (interest accrues up to and including the event
-      // day) and the next period opens on T+1. So a partial repayment
-      // on Apr 1 closes the prior row on Apr 1 and a fresh row with
-      // the reduced notional starts Apr 2. The first event (initial
-      // disbursement) opens period 0 on its own trade_date — there's
-      // no prior period to close.
-      const startMs = i === 0 ? ev.ms : ev.ms + MS_PER_DAY;
-      const next = collapsedEvents[i + 1];
-      const endMs = next ? next.ms : null; // null = LIVE
-      if (notional <= 0) continue;
-
-      // Days from start to (endMs or accrualEndMs), inclusive.
-      const cutoffMs = endMs != null ? endMs : accrualEndMs;
-      let days = 0;
-      let calcEndMs = null;
-      if (cutoffMs != null && cutoffMs >= startMs) {
-        days = Math.floor((cutoffMs - startMs) / MS_PER_DAY) + 1;
-        calcEndMs = cutoffMs;
-      }
-      const accrued = notional * rate * days / dayBasis;
-
-      // Net Paid Interest = the INTEREST cashflow that closed this
-      // period (the next event after this row, if it's an INTEREST).
-      // Each INTEREST event is its own row-boundary so there is at
-      // most one paying cashflow per row.
-      const netPaid = next && next.type === "INTEREST" ? next.amount : 0;
-
-      periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
-    }
-    return periods;
-  })();
+  // Delegates to the shared `buildLoanScheduleRows` helper above so the
+  // export modal can call the same logic. Returns one row per principal
+  // segment with notional, days, accrued, netPaid, etc.
+  const scheduleRows = buildLoanScheduleRows(loan, accrualDate);
 
   // Date formatter matching the user's "D/M/YYYY" convention for the
   // schedule table. Uses UTC components so the date doesn't shift
