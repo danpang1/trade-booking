@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/plans/2026-05-25-blotter-csv-export.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: Pure-logic CSV transforms module + tests",
+      "status": "pending",
+      "description": "**Goal:** New `scripts/export_csv.py` with pure transforms (sign by direction, spot explosion, month-year fmt, INTER PTF FUNDING counterparty resolution), fully unit-tested.\n\n**Files:**\n- Create: `trade-booking/scripts/export_csv.py`\n- Create: `trade-booking/tests/test_export_csv.py`\n\n**Acceptance Criteria:**\n- Cashflow INCOMING → +amount, OUTGOING → -amount\n- SPOT LONG explodes to [base+, quote-, fee-]; SHORT to [base-, quote+, fee-]\n- Fee row only emitted when fee_amount > 0\n- INTER PTF FUNDING counterparty (portfolio#) resolved to portfolio_name; non-INTER untouched\n- fmt_month_year(\"2026-05-19T08:42+00\") == \"May 2026\"\n- CSV column order matches spec exactly\n\n**Verify:** `cd trade-booking && bash scripts/test_python.sh tests/test_export_csv.py`\n\n```json:metadata\n{\"files\": [\"trade-booking/scripts/export_csv.py\", \"trade-booking/tests/test_export_csv.py\"], \"verifyCommand\": \"cd trade-booking && bash scripts/test_python.sh\", \"acceptanceCriteria\": [\"cashflow signing\", \"spot explosion LONG/SHORT\", \"fee row only when > 0\", \"INTER PTF counterparty resolution\", \"month-year format\", \"column order\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: DB-querying export script (export_blotter.py)",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** New `scripts/export_blotter.py` reads `{from, to, type, portfolio_ids}` from stdin, queries trades_cashflow + trades_spot live rows (with first_effective_start subquery), runs each through export_csv transforms, returns `{ok, csv, row_count}` envelope.\n\n**Files:**\n- Create: `trade-booking/scripts/export_blotter.py`\n\n**Acceptance Criteria:**\n- Reads `{from, to, type, portfolio_ids}` from stdin; all optional\n- `type` filter: \"all\" | \"cashflow\" | \"spot\" (default \"all\")\n- `from`/`to` filter on trade_date (inclusive)\n- `portfolio_ids` filter (list of strings) on portfolio_id\n- Loads portfolios.json for INTER PTF FUNDING name lookup\n- Emits `{ok: true, csv: \"...\", row_count: N}` JSON envelope on success\n- Exit code 0 success, 2 invalid JSON, 3 bad params, 5 DB error\n\n**Verify:** `echo '{\"type\":\"spot\",\"portfolio_ids\":[\"8041\"]}' | python trade-booking/scripts/export_blotter.py | python -c \"import json,sys; d=json.load(sys.stdin); print(d['row_count'])\"`\n\n```json:metadata\n{\"files\": [\"trade-booking/scripts/export_blotter.py\"], \"verifyCommand\": \"echo '{}' | python trade-booking/scripts/export_blotter.py\", \"acceptanceCriteria\": [\"stdin params parsed\", \"type filter works\", \"date range filter works\", \"portfolio filter works\", \"portfolios.json loaded\", \"JSON envelope correct\", \"exit codes match convention\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Node server route GET /api/exports/blotter.csv",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Wire `GET /api/exports/blotter.csv?from=&to=&type=&portfolio=` in server.js — auth-gated like other routes, shells to export_blotter.py, writes CSV with Content-Disposition attachment header.\n\n**Files:**\n- Modify: `trade-booking/server.js` (add EXPORT_BLOTTER_SCRIPT const + route handler + /help log line)\n\n**Acceptance Criteria:**\n- Auth-gated (returns 401 if no session)\n- Accepts query params: from, to, type, portfolio (repeatable for multi-select)\n- Returns `Content-Type: text/csv; charset=utf-8`\n- Returns `Content-Disposition: attachment; filename=\"blotter_<from>_<to>.csv\"`\n- On script error returns JSON envelope as 5xx\n- Filename defaults: from='all', to=<today> if unspecified\n- HEAD requests handled (for the UI probe)\n\n**Verify:** `curl -b \"sid=<valid>\" \"http://localhost:5181/api/exports/blotter.csv?type=spot\" -i`\n\n```json:metadata\n{\"files\": [\"trade-booking/server.js\"], \"verifyCommand\": \"curl -b 'sid=test' 'http://localhost:5181/api/exports/blotter.csv?type=spot' -i\", \"acceptanceCriteria\": [\"auth-gated\", \"query params parsed\", \"csv content-type\", \"attachment header\", \"error handling\", \"HEAD handled\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: UI — Deal Enquiry Download Full Blotter button",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Add new \"Download Full Blotter\" button next to existing Export CSV in Deal Enquiry header — passes current trade_date_from/to filters + type filter (default 'all') to /api/exports/blotter.csv, triggers download via transient anchor click. Existing client-side \"↓ CSV\" stays as-is.\n\n**Files:**\n- Modify: `trade-booking/src/TradeBookingForm.jsx` (DealEnquiry component, around line 4323 for callback and line 4445 for button)\n\n**Acceptance Criteria:**\n- New button labeled \"↓ FULL BLOTTER\"\n- Reads filters.trade_date_from / .trade_date_to (already in component state)\n- Builds query string with from/to params if set\n- Triggers download via temporary `<a download>` click\n- Button disabled while previous request in-flight\n- On HTTP error (HEAD probe), shows error in existing error banner\n- Existing \"↓ CSV\" button stays as-is\n\n**Verify:** Manual: load Deal Enquiry, set a date range, click \"↓ FULL BLOTTER\", confirm CSV downloads with correct rows + header `Input Date,Month Year,Deal Reference,...`\n\n```json:metadata\n{\"files\": [\"trade-booking/src/TradeBookingForm.jsx\"], \"verifyCommand\": \"manual: click button in Deal Enquiry\", \"acceptanceCriteria\": [\"button rendered\", \"filters propagated\", \"triggers download\", \"error handling\", \"existing export untouched\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Lint, version bump, commit",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Run flake8, bump version per project convention, single chore commit.\n\n**Files:**\n- Modify: `trade-booking/version.yml` (via `scripts/update_version.py`)\n\n**Acceptance Criteria:**\n- `bash scripts/lint_python.sh` passes\n- `bash scripts/test_python.sh` passes (includes new tests)\n- `python scripts/update_version.py` bumps version\n- Chore commit lands on top of feature commits\n\n**Verify:** `git log --oneline -5` shows the commits in order\n\n```json:metadata\n{\"files\": [\"trade-booking/version.yml\"], \"verifyCommand\": \"cd trade-booking && bash scripts/lint_python.sh && bash scripts/test_python.sh\", \"acceptanceCriteria\": [\"lint passes\", \"tests pass\", \"version bumped\", \"commits ordered\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-25T00:00:00Z"
+}
