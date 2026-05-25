@@ -7214,12 +7214,6 @@ export default function TradeBookingForm() {
               onClick={() => setView("PENDING_BOOKINGS")}
             />
 
-            <NavTabRow
-              label="API Tokens"
-              active={appView === "tokens"}
-              onClick={() => setAppView("tokens")}
-            />
-
             {user?.role === "admin" && (
               <>
                 {/* Separator before the admin-only section */}
@@ -7234,6 +7228,12 @@ export default function TradeBookingForm() {
                 />
               </>
             )}
+
+            <NavTabRow
+              label="API Tokens"
+              active={appView === "tokens"}
+              onClick={() => setAppView("tokens")}
+            />
           </div>
 
           {/* ─── User profile footer (clock lives in the top banner) ─── */}
