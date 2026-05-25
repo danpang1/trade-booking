@@ -72,6 +72,8 @@ def _sign_amount(amount, direction: str, *, positive: str, negative: str) -> str
         d = Decimal(str(amount))
     except (InvalidOperation, TypeError, ValueError):
         return str(amount)
+    if not d.is_finite():
+        return str(amount)
     if d == 0:
         return "0"
     abs_d = abs(d)
@@ -109,7 +111,11 @@ def _resolve_inter_ptf_counterparty(raw, portfolios: Sequence[dict]) -> str:
     except (ValueError, AttributeError):
         return str(raw)
     for p in portfolios:
-        if int(p.get("number", -1)) == target:
+        try:
+            p_num = int(p.get("number", -1))
+        except (ValueError, TypeError):
+            continue
+        if p_num == target:
             return str(p.get("name", raw))
     return str(raw)
 
@@ -232,6 +238,7 @@ def serialize_csv(rows: Iterable[dict]) -> str:
         fieldnames=list(BLOTTER_COLUMNS),
         quoting=csv.QUOTE_MINIMAL,
         extrasaction="ignore",
+        restval="",
     )
     writer.writeheader()
     for r in rows:

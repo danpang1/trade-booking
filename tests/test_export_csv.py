@@ -163,6 +163,31 @@ def test_cashflow_all_expected_keys_present():
     assert set(row.keys()) == set(export_csv.BLOTTER_COLUMNS)
 
 
+def test_cashflow_inter_ptf_funding_skips_malformed_portfolio_entries():
+    """A bad entry mid-list must not abort the lookup for valid ones after it."""
+    bad_portfolios = [
+        {"number": "not-an-int", "name": "BAD"},
+        {"number": 8000, "name": "TOKKA LABS - MM PMM - RFQ"},
+    ]
+    row = export_csv.cashflow_to_row(
+        _cashflow(cashflow_type="INTER PTF FUNDING", counterparty="8000"),
+        portfolios=bad_portfolios,
+    )
+    assert row["Counterparty"] == "TOKKA LABS - MM PMM - RFQ"
+
+
+def test_cashflow_amount_nan_falls_back_to_raw_string():
+    row = export_csv.cashflow_to_row(_cashflow(direction="INCOMING", amount="NaN"),
+                                     portfolios=PORTFOLIOS)
+    assert row["Amount"] == "NaN"
+
+
+def test_cashflow_amount_infinity_falls_back_to_raw_string():
+    row = export_csv.cashflow_to_row(_cashflow(direction="OUTGOING", amount="Infinity"),
+                                     portfolios=PORTFOLIOS)
+    assert row["Amount"] == "Infinity"
+
+
 # ── §4: Spot → rows ──────────────────────────────────────────────
 
 def test_spot_long_explodes_to_three_rows():
