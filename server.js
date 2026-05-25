@@ -924,8 +924,9 @@ const server = createServer(async (req, res) => {
       return;
     }
     const today = new Date().toISOString().slice(0, 10);
-    const fromTag = (from || "all").slice(0, 10);
-    const toTag = (to || today).slice(0, 10);
+    const safeTag = (s) => String(s).replace(/[^A-Za-z0-9\-]/g, "").slice(0, 10) || "x";
+    const fromTag = safeTag(from || "all");
+    const toTag = safeTag(to || today);
     const filename = `blotter_${fromTag}_${toTag}.csv`;
     console.log(`[exports] blotter ${json.row_count} rows (${Date.now() - t0}ms)`);
     res.statusCode = 200;
