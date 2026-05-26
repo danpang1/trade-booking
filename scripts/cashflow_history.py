@@ -34,12 +34,23 @@ def main() -> int:
             # attached — the map table isn't bitemporal so historical
             # mapping sets aren't recoverable. UI can still render
             # "currently linked to MLA…" alongside the SCD2 timeline.
+            # LEFT JOIN bookings_draft on approved_deal_ref so the
+            # audit-trail UI can display "approved by <human>" for the
+            # initial booking when the trade came through the Claude
+            # Code draft pipeline. trades_cashflow.user_id captures the
+            # booker ("claude:<username>"), bookings_draft.approved_by
+            # captures the human reviewer who clicked approve.
             cur.execute(
-                f"SELECT t.*, {loan_cashflow_map_db.CASHFLOW_MAPPINGS_JSON_AGG} "
+                f"SELECT t.*, {loan_cashflow_map_db.CASHFLOW_MAPPINGS_JSON_AGG}, "
+                "       d.id          AS draft_id, "
+                "       d.approved_by AS draft_approved_by, "
+                "       d.approved_at AS draft_approved_at, "
+                "       d.source      AS draft_source "
                 "  FROM trades_cashflow t "
                 "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
+                "  LEFT JOIN bookings_draft d ON d.approved_deal_ref = t.deal_ref "
                 " WHERE t.deal_ref = %s "
-                " GROUP BY t.deal_ref, t.effective_start "
+                " GROUP BY t.deal_ref, t.effective_start, d.id "
                 " ORDER BY t.effective_start ASC",
                 (deal_ref,),
             )

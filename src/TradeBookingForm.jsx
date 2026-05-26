@@ -2484,7 +2484,12 @@ function HistoryModal({ open, dealRef, state, onClose }) {
                         {isLive && <span className="ml-2 px-1.5 py-0.5 text-[10px]" style={{background: "#1f4a1f", color: "#e8f5e2"}}>LIVE</span>}
                         {!isLive && d.initial && <span className="ml-2 opacity-60">initial</span>}
                       </span>
-                      <span className="opacity-70">by {row.user_id || "—"}</span>
+                      <span className="opacity-70">
+                        by {row.user_id || "—"}
+                        {d.initial && row.draft_approved_by && (
+                          <> · approved by <strong>{row.draft_approved_by}</strong></>
+                        )}
+                      </span>
                     </div>
                     <div className="text-[10px] opacity-60 mt-1">
                       effective {String(row.effective_start).replace("T", " ").slice(0, 19)} UTC
