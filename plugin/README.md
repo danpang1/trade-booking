@@ -37,6 +37,36 @@ cd %USERPROFILE%\Projects\middle-office-tools\plugin
 install.bat
 ```
 
+## Lightweight install (plugin only — for non-engineers)
+
+If you don't need the rest of the `middle-office-tools` repo (e.g. you're a non-engineering team member who just wants the plugin), use Git's sparse-checkout to pull **only** the `plugin/` folder (~50 KB instead of the full repo):
+
+**macOS / Linux:**
+```bash
+mkdir -p ~/.claude/plugins/tokka-mo-src
+cd ~/.claude/plugins/tokka-mo-src
+git clone --depth 1 --filter=blob:none --sparse \
+  ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git .
+git sparse-checkout set plugin
+cd plugin && ./install.sh
+```
+
+**Windows:**
+```cmd
+mkdir "%USERPROFILE%\.claude\plugins\tokka-mo-src"
+cd /d "%USERPROFILE%\.claude\plugins\tokka-mo-src"
+git clone --depth 1 --filter=blob:none --sparse ^
+  ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git .
+git sparse-checkout set plugin
+cd plugin
+install.bat
+```
+
+Updates work the same as the full install:
+```bash
+cd ~/.claude/plugins/tokka-mo-src && git pull
+```
+
 ## First-time login
 
 ```bash
