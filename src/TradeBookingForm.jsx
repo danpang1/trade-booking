@@ -5497,23 +5497,44 @@ function useClock() {
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
   const [appView, setAppView] = useState("booking"); // "booking" | "users" | "tokens" | "pending"
-  // Pending-drafts count for the sidebar badge. Polled every 30s while
-  // the user is anywhere in the app. Failures are silent (the badge
-  // simply doesn't update); listDrafts emits 401 events via apiJson if
-  // the session has expired.
+  // Pending-drafts count for the sidebar badge. Polled every 60s while
+  // the tab is focused; paused when the tab is hidden so background
+  // tabs don't burn Python subprocess spawns. Failures are silent.
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    let h = null;
     async function tick() {
+      if (document.visibilityState !== "visible") return;
       const { status, body } = await listDrafts({ status: "PENDING_REVIEW" });
       if (cancelled) return;
       if (status === 200 && body?.ok) {
         setPendingCount((body.drafts || []).length);
       }
     }
-    tick();
-    const h = setInterval(tick, 30000);
-    return () => { cancelled = true; clearInterval(h); };
+    function start() {
+      if (h !== null) return;
+      tick();
+      h = setInterval(tick, 60000);
+    }
+    function stop() {
+      if (h !== null) { clearInterval(h); h = null; }
+    }
+    function onVis() {
+      if (document.visibilityState === "visible") {
+        tick();        // immediate refresh on focus-return
+        start();
+      } else {
+        stop();
+      }
+    }
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   // Tracks whether the draft modal was opened from PendingDrafts (so
@@ -5525,6 +5546,12 @@ export default function TradeBookingForm() {
   // Used by (a) the URL ?draft=<id> mount effect for deep links, and
   // (b) the PendingDrafts inbox "FORM" button via the onOpenDraft callback.
   // Only handles CASHFLOW for Plan 1a.
+  // Tracks whether a draft fetch is in flight so the form modal can
+  // open optimistically (instant feedback on click) and show a loading
+  // state while getDraft runs (~1s on Windows due to Python subprocess
+  // spawn + Postgres connect).
+  const [draftLoading, setDraftLoading] = useState(false);
+
   async function loadDraftIntoForm(id) {
     setDraftLoadError("");
     // Snapshot the user's in-progress form (if no snapshot exists yet)
@@ -5534,14 +5561,23 @@ export default function TradeBookingForm() {
     if (!formSnapshotRef.current) {
       formSnapshotRef.current = { form, categoryCache };
     }
+    // Optimistic UI: set draftId + draftLoading immediately so the
+    // ModalShell opens right away (driven by `open={... draftId}`).
+    // The form fields stay snapshot-state until the fetch returns —
+    // the loading banner makes the in-flight state explicit and the
+    // Save / Approve buttons are disabled while draftLoading is true.
+    setDraftLoading(true);
+    setDraftId(id);
     const { status, body } = await getDraft(id);
     if (status !== 200 || !body?.ok) {
       setDraftLoadError(body?.error || `Failed to load draft #${id} (HTTP ${status})`);
+      setDraftLoading(false);
       return false;
     }
     const d = body.draft;
     if (d.category !== "CASHFLOW") {
       setDraftLoadError(`Draft #${id} is ${d.category}; Phase 1a supports CASHFLOW only`);
+      setDraftLoading(false);
       return false;
     }
     const p = d.payload || {};
@@ -5565,7 +5601,10 @@ export default function TradeBookingForm() {
       created_by: p.user_id ?? cur.created_by,
       status: p.status ?? cur.status,
     }));
-    setDraftId(id);
+    // draftId was already set at the top (optimistic open) — just flip
+    // the loading flag so the banner switches from "Loading…" to
+    // "Editing…" and Save / Approve become clickable.
+    setDraftLoading(false);
     return true;
   }
 
@@ -7549,6 +7588,7 @@ export default function TradeBookingForm() {
           // If we entered from the Pending Drafts inbox, return there.
           setDraftId(null);
           setDraftLoadError("");
+          setDraftLoading(false);
           if (window.location.search.includes("draft=")) {
             window.history.replaceState(null, "", "/");
           }
@@ -7588,7 +7628,9 @@ export default function TradeBookingForm() {
               color: "#FA8C16", border: "1px solid #FA8C16",
               fontSize: 12, marginBottom: 12,
             }}>
-              Editing draft #{draftId}. Save Draft to keep editing later, or Approve & Book to insert into trades_cashflow.
+              {draftLoading
+                ? `Loading draft #${draftId}…`
+                : `Editing draft #${draftId}. Save Draft to keep editing later, or Approve & Book to insert into trades_cashflow.`}
             </div>
           )}
           {/* ═════ 1. SUMMARY (category-specific title) ═════ */}
@@ -8801,13 +8843,15 @@ export default function TradeBookingForm() {
                 <button
                   type="button"
                   onClick={() => submitDraft("patch")}
+                  disabled={draftLoading}
                   className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
                   style={{
                     background: BB.surface2,
                     color: BB.dim,
                     border: `1px solid ${BB.border}`,
                     letterSpacing: "0.28em",
-                    cursor: "pointer",
+                    cursor: draftLoading ? "not-allowed" : "pointer",
+                    opacity: draftLoading ? 0.5 : 1,
                   }}
                 >
                   Save Draft #{draftId}
@@ -8815,13 +8859,15 @@ export default function TradeBookingForm() {
                 <button
                   type="button"
                   onClick={() => submitDraft("approve")}
+                  disabled={draftLoading}
                   className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
                   style={{
                     background: BB.orange,
                     color: "#ffffff",
                     border: `1px solid ${BB.orange}`,
                     letterSpacing: "0.28em",
-                    cursor: "pointer",
+                    cursor: draftLoading ? "not-allowed" : "pointer",
+                    opacity: draftLoading ? 0.5 : 1,
                   }}
                 >
                   Approve & Book #{draftId}
