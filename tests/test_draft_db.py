@@ -63,6 +63,7 @@ def test_validate_payload_for_category_cashflow_passes_through():
         "portfolio_id": 8006,
         "portfolio_name": "CDA",
         "counterparty": "Galaxy",
+        "account": "WALLET_CDA_EVM_04",
         "asset": "USDC",
         "amount": "1.00",
         "trade_date": "2026-05-15T12:00:00+00:00",
@@ -71,6 +72,51 @@ def test_validate_payload_for_category_cashflow_passes_through():
         "status": "PENDING",
     }
     draft_db.validate_payload_for_category("CASHFLOW", payload)  # no raise
+
+
+def test_validate_payload_for_category_cashflow_blank_account_raises():
+    """The form requires account_name; the server now mirrors that.
+    Before the cashflow_db.REQUIRED_FIELDS_INSERT change, a draft
+    submission with blank account silently approved into a trades_cashflow
+    row with NULL account (e.g. MCF00000034). Regression test."""
+    payload = {
+        "cashflow_type": "OPEX",
+        "direction": "OUTGOING",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "BEBOP LTD",
+        # "account": missing on purpose
+        "asset": "USDC",
+        "amount": "-88",
+        "trade_date": "2026-05-26T12:00:00+00:00",
+        "value_date": "2026-05-26T12:00:00+00:00",
+        "user_id": "claude:danny.pang",
+        "status": "PENDING",
+    }
+    with pytest.raises(draft_db.ValidationError, match="account"):
+        draft_db.validate_payload_for_category("CASHFLOW", payload)
+
+
+def test_validate_payload_for_category_cashflow_zero_amount_raises():
+    """Mirror the form's 'Notional amount must be > 0' rule."""
+    payload = {
+        "cashflow_type": "OPEX",
+        "direction": "OUTGOING",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "BEBOP LTD",
+        "account": "WALLET_X",
+        "asset": "USDC",
+        "amount": "0",
+        "trade_date": "2026-05-26T12:00:00+00:00",
+        "value_date": "2026-05-26T12:00:00+00:00",
+        "user_id": "claude:danny.pang",
+        "status": "PENDING",
+    }
+    with pytest.raises(draft_db.ValidationError, match="non-zero"):
+        draft_db.validate_payload_for_category("CASHFLOW", payload)
 
 
 def test_validate_payload_for_category_cashflow_missing_field_raises():

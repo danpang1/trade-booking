@@ -93,7 +93,7 @@ def connect():
 
 REQUIRED_FIELDS_INSERT = (
     "cashflow_type", "direction", "entity", "portfolio_id",
-    "portfolio_name", "counterparty", "asset", "amount",
+    "portfolio_name", "counterparty", "account", "asset", "amount",
     "trade_date", "value_date", "user_id", "status",
 )
 REQUIRED_FIELDS_AMEND = REQUIRED_FIELDS_INSERT + ("deal_ref",)
@@ -121,9 +121,16 @@ def _validate_one(p: dict, mode: str) -> None:
             f"status must be one of {sorted(VALID_STATUSES)}, got {p['status']!r}"
         )
     try:
-        Decimal(str(p["amount"]))
+        amount_dec = Decimal(str(p["amount"]))
     except (InvalidOperation, TypeError, ValueError) as e:
         raise ValidationError(f"amount must be numeric, got {p['amount']!r}") from e
+    # Mirrors the form's "Notional amount must be > 0" rule (the form
+    # stores cf_amount as a positive magnitude with direction separate;
+    # the payload's amount carries the sign). Zero is a no-op booking.
+    if abs(amount_dec) == 0:
+        raise ValidationError(
+            f"amount must be non-zero, got {p['amount']!r}"
+        )
     if p.get("fee_amount") not in (None, "", 0):
         try:
             Decimal(str(p["fee_amount"]))
