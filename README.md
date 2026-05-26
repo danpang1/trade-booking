@@ -88,6 +88,92 @@ Defaults: 30/90/365-day expiry (your choice), sha256-hashed at rest, plaintext s
 
 End-to-end smoke: `python scripts/smoke_tokens.py --username <you> --password <yourpw>`.
 
+## Bookings Drafts (Phase 1a)
+
+A draft-and-approve pipeline for CASHFLOW bookings, intended to back the
+Claude Code plugin (Phase 1b, separate repo). Any Bearer-auth client can
+submit a CASHFLOW as a draft; the human reviewer approves or rejects in
+the in-app **Pending Drafts** sidebar page. Approval inserts into the
+live `trades_cashflow` table via the exact same code path the booking
+form uses — no schema divergence.
+
+### Endpoints
+
+All accept cookie session **OR** `Authorization: Bearer <token>`. Per-user
+isolation enforced server-side: list/get/patch/approve/reject only see
+drafts where `created_by = req.sessionUser.username`. Other users' drafts
+return 404 (not 403 — avoids existence leak).
+
+| Method | Path                                | Notes |
+|--------|-------------------------------------|-------|
+| POST   | `/api/bookings/draft`               | Create one draft. Idempotent on `client_request_id` |
+| POST   | `/api/bookings/draft/batch`         | Create N drafts atomically (all-or-nothing). Max 50/batch. |
+| GET    | `/api/bookings/drafts`              | List acting user's drafts. Filters: `?status=`, `?batch_id=` |
+| GET    | `/api/bookings/drafts/:id`          | Fetch a single draft |
+| PATCH  | `/api/bookings/drafts/:id`          | Edit payload — only when `PENDING_REVIEW` |
+| POST   | `/api/bookings/drafts/:id/approve`  | Atomic claim + insert into `trades_cashflow` |
+| POST   | `/api/bookings/drafts/:id/reject`   | Soft reject with optional `{reason}` |
+
+### Provenance & audit
+
+- Draft creation stamps `payload.user_id` with **`claude:<username>`** so
+  every approved trade is attributable to the Claude Code path. The
+  bare `<username>` is recorded separately on `bookings_draft.approved_by`
+  (the human reviewer).
+- The cashflow audit-trail UI (`HistoryModal`) joins `trades_cashflow`
+  against `bookings_draft` on `approved_deal_ref` and surfaces
+  `by claude:danny.pang · approved by danny.pang` on the initial version.
+- Approval is a **single Postgres transaction**: the draft-status flip
+  and the `cashflow_insert._insert_one(cur, payload)` call run on the
+  same cursor. If the live insert fails for any reason, the draft stays
+  `PENDING_REVIEW` — no orphan row possible.
+
+### Validation (layered defense)
+
+Three-tier validation so bad values can't slip into `trades_cashflow`:
+
+1. **Plugin (Claude / future CLIs)** — validates every refdata-bound field
+   (`cashflow_type`, `counterparty`, `portfolio_id`, `account`, `asset`,
+   `network`, `account_type`) against the live dropdown/refdata before
+   posting. See `claude/feedback_claude_plugin_validate_refdata`.
+2. **Server (`cashflow_db.validate_payload`)** — same enums + refdata
+   lookups, fail-open on refdata-sync outage. Returns HTTP 400 with the
+   valid set enumerated when a client sends a non-standard value.
+3. **Postgres** — CHECK constraints on `bookings_draft.{category, source,
+   status}` + UNIQUE on `client_request_id` (idempotent retries).
+
+The server enforces 14 required CASHFLOW fields (`cashflow_type`,
+`direction`, `entity`, `portfolio_id`, `portfolio_name`, `counterparty`,
+`account`, `account_type`, `asset`, `amount`, `trade_date`, `value_date`,
+`user_id`, `status`). `trade_date`/`value_date` default to draft-creation
+time (UTC) when omitted, so simple bookings can skip them.
+
+### React UX
+
+- **`PENDING DRAFTS`** sidebar row (with `(N)` badge polled every 60s
+  when the tab is focused, paused when hidden).
+- Per-row: `FORM` opens the full booking form as a modal overlay (same
+  `ModalShell` used by Amend). `✓` / `✗` approve / reject inline.
+- Per-batch: `APPROVE ALL N` button. Per-row errors surface inline.
+- `?draft=<id>` URL deep-link opens the modal directly — works for
+  sharing draft links.
+- Modal opens optimistically (instant) with "Loading draft #N…" banner;
+  fields populate when `getDraft` returns. Save / Approve buttons are
+  disabled while loading.
+- `APPROVED` / `REJECTED` sections collapsed by default; show
+  `APPROVED BY` / `REJECTED BY` columns when expanded.
+
+### End-to-end smoke
+
+```powershell
+node server.js   # in another terminal
+python scripts/smoke_drafts.py --username <you> --password <yourpw>
+```
+
+Exercises login → POST single → dedupe → POST batch (3 rows) → GET list
+filters → PATCH → approve (single + batch) → reject → re-reject 409.
+Prints `PASS` and a cleanup `DELETE FROM trades_cashflow ...` line.
+
 ## Theme
 
 Bloomberg-terminal aesthetic — black canvas, orange (`#FA8C16`) primary accent, cyan/amber/green/red data colors, sharp rectangular inputs, JetBrains Mono throughout. All theme tokens live in the `BB` constants block at the top of `src/TradeBookingForm.jsx` — nothing leaks to global CSS.
