@@ -5522,6 +5522,13 @@ export default function TradeBookingForm() {
   // Only handles CASHFLOW for Plan 1a.
   async function loadDraftIntoForm(id) {
     setDraftLoadError("");
+    // Snapshot the user's in-progress form (if no snapshot exists yet)
+    // before clobbering with draft data. ModalShell.onClose restores
+    // this on close so the "claude:" prefix and other draft fields
+    // don't leak into a subsequent non-draft booking.
+    if (!formSnapshotRef.current) {
+      formSnapshotRef.current = { form, categoryCache };
+    }
     const { status, body } = await getDraft(id);
     if (status !== 200 || !body?.ok) {
       setDraftLoadError(body?.error || `Failed to load draft #${id} (HTTP ${status})`);
