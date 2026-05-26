@@ -55,12 +55,20 @@ The CLI talks to the MO server using a Bearer token. First time, run:
 /tokka-mo:login
 ```
 
-…and follow the prompt. Or from a terminal directly (advanced):
+…and follow the prompt. Or from a terminal directly (recommended — keeps password out of Claude Code chat history):
 
 ```bash
-# Find the CLI inside the installed plugin:
-~/.claude/plugins/cache/tokka-mo-marketplace/tokka-mo/bin/tokka-mo \
-  login --api-url https://mo-tools.tokkalabs.com
+# Find the installed CLI (the version number is in the path):
+TOKKA_MO=$(ls -d ~/.claude/plugins/cache/tokka-mo-marketplace/tokka-mo/*/bin/tokka-mo | tail -1)
+
+$TOKKA_MO login --api-url https://mo-tools.tokkalabs.com
+```
+
+For convenience, alias it once:
+```bash
+echo 'alias tokka-mo="$(ls -d $HOME/.claude/plugins/cache/tokka-mo-marketplace/tokka-mo/*/bin/tokka-mo | tail -1)"' >> ~/.zshrc
+source ~/.zshrc
+# now you can just: tokka-mo login --api-url ...
 ```
 
 For UAT/staging: use `--api-url https://mo-tools-uat.tokkalabs.com` instead.
