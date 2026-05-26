@@ -5600,6 +5600,11 @@ export default function TradeBookingForm() {
       // status into the form so the UI shows what'll be approved.
       created_by: p.user_id ?? cur.created_by,
       status: p.status ?? cur.status,
+      // Account fields: handleSubmit serializes form.account_name -> payload.account
+      // and form.account_venue_type -> payload.account_type (see line ~6314),
+      // so the load effect inverts that mapping to repopulate the dropdowns.
+      account_name: p.account ?? cur.account_name,
+      account_venue_type: p.account_type ?? cur.account_venue_type,
     }));
     // draftId was already set at the top (optimistic open) — just flip
     // the loading flag so the banner switches from "Loading…" to
@@ -6918,6 +6923,8 @@ export default function TradeBookingForm() {
       portfolio_id: form.portfolio,
       portfolio_name: form.portfolio_name_row || form.portfolio,
       counterparty: form.counterparty,
+      account: form.account_name || null,
+      account_type: form.account_venue_type || null,
       asset: form.cf_asset,
       amount: cfSignedAmount,
       network: form.network || null,
