@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tokka-mo end-to-end smoke against an MO environment.
 # Usage:
-#   ./smoke.sh --base-url https://mo-tools-uat.tokkalabs.com --username <u> --password <p>
+#   ./smoke.sh --base-url https://test-jp-tms.internal.tokkalabs.com --username <u> --password <p>
+# (UAT URL; both UAT and PROD require Tokka VPN.)
 
 set -e
 

@@ -48,7 +48,7 @@ JSON
 
 6. Report:
 ```
-Draft #42 created (PENDING_REVIEW). Review at https://mo-tools.tokkalabs.com/pending
+Draft #42 created (PENDING_REVIEW). Review at https://sg-tms.internal.tokkalabs.com/pending
 ```
 
 ## Example 2 — 6-row batch from a Slack paste

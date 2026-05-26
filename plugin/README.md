@@ -1,6 +1,6 @@
 # tokka-mo — Tokka Labs MO Claude Code Plugin
 
-Submit Tokka Labs Middle Office **CASHFLOW** trade bookings as drafts directly from Claude Code. Approvals continue to happen in the web app at `mo-tools.tokkalabs.com/pending`.
+Submit Tokka Labs Middle Office **CASHFLOW** trade bookings as drafts directly from Claude Code. Approvals continue to happen in the web app at `sg-tms.internal.tokkalabs.com/pending`.
 
 **Status:** v0.1 — CASHFLOW only. SPOT support and rollout polish in Phase 2 / Phase 3.
 
@@ -15,6 +15,7 @@ If any of these aren't already true, paste this section into Claude and ask "hel
 - **Git with Bitbucket SSH access to `tokkalabs/middle-office-tools`** — you need (a) your Bitbucket account added to the repo by a Tokka admin AND (b) an SSH key on your laptop registered in your Bitbucket profile (Bitbucket → Personal settings → SSH keys). Test with `ssh -T git@bitbucket.org` — should say "logged in as <you>".
 - **Claude Code installed** — `claude --version` should work. If not, install from `claude.com/code`.
 - **A Middle Office account in good standing** on the target environment (UAT or PROD).
+- **Tokka VPN connection** — both UAT (`test-jp-tms.internal.tokkalabs.com`) and PROD (`sg-tms.internal.tokkalabs.com`) are on the internal network. The plugin won't reach the server if you're off-VPN; you'll see `cannot reach <url>: nodename nor servname provided`.
 
 ## Install (recommended — two commands)
 
@@ -61,7 +62,7 @@ The CLI talks to the MO server using a Bearer token. First time, run:
 # Find the installed CLI (the version number is in the path):
 TOKKA_MO=$(ls -d ~/.claude/plugins/cache/tokka-mo-marketplace/tokka-mo/*/bin/tokka-mo | tail -1)
 
-$TOKKA_MO login --api-url https://mo-tools.tokkalabs.com
+$TOKKA_MO login --api-url https://sg-tms.internal.tokkalabs.com
 ```
 
 For convenience, alias it once:
@@ -71,7 +72,7 @@ source ~/.zshrc
 # now you can just: tokka-mo login --api-url ...
 ```
 
-For UAT/staging: use `--api-url https://mo-tools-uat.tokkalabs.com` instead.
+For UAT/staging: use `--api-url https://test-jp-tms.internal.tokkalabs.com` instead.
 
 Sanity check (in Claude Code):
 
@@ -89,7 +90,7 @@ It'll prompt for username and password and save a 90-day Bearer token at `~/.con
 /tokka-mo:book 500 USDC OPEX out of CDA to TOKKA TREASURY
 ```
 
-Claude asks for missing fields, shows a preview, requires `y` to confirm, then submits. The draft shows up at `mo-tools.tokkalabs.com/pending` for review and approval.
+Claude asks for missing fields, shows a preview, requires `y` to confirm, then submits. The draft shows up at `sg-tms.internal.tokkalabs.com/pending` for review and approval.
 
 ### Batch booking
 
@@ -109,7 +110,7 @@ OPEX outgoing from 8006: 10k USDC to OFFICE VENDOR
 
 ### Approving a draft
 
-The plugin doesn't approve. Open `https://mo-tools.tokkalabs.com/pending`, review, and click Approve.
+The plugin doesn't approve. Open `https://sg-tms.internal.tokkalabs.com/pending`, review, and click Approve.
 
 ## Updating the plugin
 
@@ -136,7 +137,7 @@ claude plugin marketplace remove tokka-mo-marketplace   # optional
 | `not logged in; run: tokka-mo login` | No credentials file or it was cleared | Run `/tokka-mo:login` |
 | `Token rejected — run: tokka-mo login` | Token expired or revoked | Re-login |
 | `validation failed: portfolio_id 8006 not in refdata` | Stale refdata cache | The skill auto-refreshes; if it persists, ping `#mo-trade-booking` |
-| `cannot reach https://mo-tools...` | VPN / DNS / server down | Confirm VPN; `curl <url>/api/health` |
+| `cannot reach <url>: nodename nor servname...` | Tokka VPN not connected (internal DNS unreachable) | Connect to the Tokka VPN; retry. Confirm with `curl https://sg-tms.internal.tokkalabs.com/api/health` |
 | Token mint failed: HTTP 401 after entering credentials | Wrong password or account suspended | Confirm in the web app at the same URL |
 
 ## Filing issues

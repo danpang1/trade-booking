@@ -741,7 +741,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--api-url",
         default=os.environ.get("TOKKA_MO_API_URL"),
         help=(
-            "Base URL of the MO server (e.g. https://mo-tools.tokkalabs.com). "
+            "Base URL of the MO server (e.g. https://sg-tms.internal.tokkalabs.com for PROD, https://test-jp-tms.internal.tokkalabs.com for UAT; both require Tokka VPN). "
             "Default: $TOKKA_MO_API_URL, or the saved value from `tokka-mo login`."
         ),
     )
