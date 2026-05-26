@@ -56,14 +56,17 @@ def test_validate_payload_for_category_cashflow_passes_through():
     """For CASHFLOW, draft_db delegates to cashflow_db.validate_payload(mode='insert').
     A complete CASHFLOW payload should not raise.
     """
+    # Use real UAT refdata values — server-side validation now joins
+    # against public/refdata/*.json + public/tokens.json.
     payload = {
         "cashflow_type": "OTHER INCOME",
         "direction": "INCOMING",
-        "entity": "TK006",
-        "portfolio_id": 8006,
-        "portfolio_name": "CDA",
-        "counterparty": "Galaxy",
-        "account": "WALLET_CDA_EVM_04",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "BEBOP LTD",
+        "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
         "asset": "USDC",
         "amount": "1.00",
         "trade_date": "2026-05-15T12:00:00+00:00",
@@ -72,6 +75,52 @@ def test_validate_payload_for_category_cashflow_passes_through():
         "status": "PENDING",
     }
     draft_db.validate_payload_for_category("CASHFLOW", payload)  # no raise
+
+
+def test_validate_payload_for_category_cashflow_unknown_counterparty_raises():
+    """Server checks counterparty against public/refdata/counterparties.json
+    so a non-refdata name like 'CONTRA' or 'OPENAI' can't slip through.
+    Mirrors the form's counterparty dropdown which is refdata-driven."""
+    payload = {
+        "cashflow_type": "OPEX",
+        "direction": "OUTGOING",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "CONTRA",  # not in 174-item refdata
+        "account": "TK818@BINANCE",
+        "asset": "USDC",
+        "amount": "-1",
+        "trade_date": "2026-05-26T12:00:00+00:00",
+        "value_date": "2026-05-26T12:00:00+00:00",
+        "user_id": "claude:danny.pang",
+        "status": "PENDING",
+    }
+    with pytest.raises(draft_db.ValidationError, match="counterparty"):
+        draft_db.validate_payload_for_category("CASHFLOW", payload)
+
+
+def test_validate_payload_for_category_cashflow_unknown_network_raises():
+    """Network is uppercase per src/data/networks.js. Lowercase 'Ethereum'
+    must fail — bites users who type case-insensitively."""
+    payload = {
+        "cashflow_type": "OPEX",
+        "direction": "OUTGOING",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "BEBOP LTD",
+        "account": "TK818@BINANCE",
+        "asset": "USDC",
+        "amount": "-1",
+        "network": "Ethereum",  # wrong case, real value is "ETHEREUM"
+        "trade_date": "2026-05-26T12:00:00+00:00",
+        "value_date": "2026-05-26T12:00:00+00:00",
+        "user_id": "claude:danny.pang",
+        "status": "PENDING",
+    }
+    with pytest.raises(draft_db.ValidationError, match="network"):
+        draft_db.validate_payload_for_category("CASHFLOW", payload)
 
 
 def test_validate_payload_for_category_cashflow_unknown_type_raises():
@@ -131,7 +180,7 @@ def test_validate_payload_for_category_cashflow_zero_amount_raises():
         "portfolio_id": 8888,
         "portfolio_name": "TOKKA LABS - TREASURY",
         "counterparty": "BEBOP LTD",
-        "account": "WALLET_X",
+        "account": "TK818@BINANCE",
         "asset": "USDC",
         "amount": "0",
         "trade_date": "2026-05-26T12:00:00+00:00",

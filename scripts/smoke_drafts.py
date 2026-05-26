@@ -42,13 +42,16 @@ def _req(method, path, body=None, jar=None):
 
 def _cashflow_payload(label):
     return {
+        # Real UAT refdata values — server now joins against
+        # public/refdata/*.json + public/tokens.json on every insert.
         "cashflow_type": "OTHER INCOME",
         "direction": "INCOMING",
-        "entity": "TK006",
-        "portfolio_id": 8006,
-        "portfolio_name": "CDA",
-        "counterparty": "Galaxy",
-        "account": "SMOKE_TEST_WALLET",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "BEBOP LTD",
+        "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
         "asset": "USDC",
         "amount": "1.00",
         "trade_date": "2026-05-25T12:00:00+00:00",

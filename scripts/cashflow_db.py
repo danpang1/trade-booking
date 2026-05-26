@@ -4,6 +4,7 @@ Pure logic (validation, (de)serialization) lives here for unit testing.
 DB-touching scripts call into here for creds + connection.
 """
 from __future__ import annotations
+import json
 import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -111,6 +112,72 @@ VALID_CASHFLOW_TYPES = {
     "INTEREST EXPENSE", "INTEREST INCOME", "WITHHOLDING TAX",
     "LOAN", "LOAN REPAYMENT",
 }
+VALID_ACCOUNT_TYPES = {"EXCHANGE", "WALLET", "BROKER"}
+# Mirrors PRIORITY + ALL_ALPHABETICAL union in src/data/networks.js.
+# Uppercase only — same case-convention as the form's dropdown.
+VALID_NETWORKS = {
+    "APTOS", "ARBITRUM", "AVALANCHE", "BASE", "BERACHAIN",
+    "BINANCE SMART CHAIN", "BITCOIN", "BITCOIN CASH", "BLAST",
+    "CARDANO", "CELO", "CITREA", "DOGE", "ETHEREUM", "GNOSIS",
+    "HEDERA", "HYPERCORE", "HYPEREVM", "LINEA", "MANTLE", "MANTRA",
+    "MODE", "OPTIMISM", "PEAQ", "PLASMA", "POLKADOT", "POLYGON",
+    "RIPPLE", "SAGAEVM", "SCROLL", "SOLANA", "SONEIUM", "SONIC",
+    "STELLAR", "SUI", "TEMPO", "TON", "TRON", "UNICHAIN",
+    "XRPLEVM", "ZETA", "ZKSYNC",
+}
+
+
+# ── Refdata loaders (lazy, fail-open) ────────────────────────────────
+# Each loader returns a set of valid values. On failure (refdata file
+# missing / malformed) returns an empty set — _validate_one then skips
+# the refdata check rather than blocking all bookings during a sync
+# outage. Plugin-side checkpoint (a) per design Section 7.2 is the
+# front line; the server's refdata enforcement is defense-in-depth.
+#
+# Cache lives for the process lifetime. server.js syncs refdata hourly
+# but each Python invocation is a fresh process (subprocess spawn per
+# request) so the cache is effectively per-request and always sees the
+# latest JSON on disk.
+
+REFDATA_DIR = REPO / "public" / "refdata"
+TOKENS_JSON = REPO / "public" / "tokens.json"
+
+
+def _safe_load(loader):
+    try:
+        return loader()
+    except (FileNotFoundError, json.JSONDecodeError, OSError, KeyError):
+        return set()
+
+
+def _load_counterparties_set() -> set:
+    with open(REFDATA_DIR / "counterparties.json", encoding="utf-8") as f:
+        return {c["name"] for c in json.load(f) if c.get("name")}
+
+
+def _load_portfolio_ids_set() -> set:
+    with open(REFDATA_DIR / "portfolios.json", encoding="utf-8") as f:
+        return {
+            p["number"] for p in json.load(f)
+            if p.get("number") is not None
+        }
+
+
+def _load_accounts_set() -> set:
+    with open(REFDATA_DIR / "accounts.json", encoding="utf-8") as f:
+        data = json.load(f)
+    out = set()
+    for kind in ("exchange", "wallet", "broker"):
+        for a in data.get(kind, []):
+            if a.get("name"):
+                out.add(a["name"])
+    return out
+
+
+def _load_assets_set() -> set:
+    with open(TOKENS_JSON, encoding="utf-8") as f:
+        data = json.load(f)
+    return {t["symbol"] for t in data.get("tokens", []) if t.get("symbol")}
 
 
 class ValidationError(ValueError):
@@ -155,11 +222,59 @@ def _validate_one(p: dict, mode: str) -> None:
                 f"fee_amount must be numeric if set, got {p['fee_amount']!r}"
             ) from e
     try:
-        int(p["portfolio_id"])
+        pid_int = int(p["portfolio_id"])
     except (TypeError, ValueError) as e:
         raise ValidationError(
             f"portfolio_id must be integer, got {p['portfolio_id']!r}"
         ) from e
+
+    # ── Refdata-bound enums ──────────────────────────────────────────
+    # Each check fails open (skips) when the refdata set is empty
+    # (file missing / malformed / refdata sync outage). Plugin-side
+    # checkpoint (a) per design Section 7.2 is the primary gate.
+
+    cps = _safe_load(_load_counterparties_set)
+    if cps and p["counterparty"] not in cps:
+        raise ValidationError(
+            f"counterparty {p['counterparty']!r} not in refdata "
+            f"({len(cps)} valid counterparties available)"
+        )
+
+    ports = _safe_load(_load_portfolio_ids_set)
+    if ports and pid_int not in ports:
+        raise ValidationError(
+            f"portfolio_id {pid_int} not in refdata "
+            f"({len(ports)} valid portfolios)"
+        )
+
+    accts = _safe_load(_load_accounts_set)
+    if accts and p["account"] not in accts:
+        raise ValidationError(
+            f"account {p['account']!r} not in refdata "
+            f"({len(accts)} valid accounts)"
+        )
+
+    assets = _safe_load(_load_assets_set)
+    if assets and p["asset"] not in assets:
+        raise ValidationError(
+            f"asset {p['asset']!r} not in refdata "
+            f"({len(assets)} valid tokens)"
+        )
+
+    # Optional fields — validate only if non-empty / present.
+    if p.get("network"):
+        if p["network"] not in VALID_NETWORKS:
+            raise ValidationError(
+                f"network {p['network']!r} not in NETWORKS list — must be "
+                f"one of {len(VALID_NETWORKS)} uppercase chain names "
+                f"(e.g. ETHEREUM, BINANCE SMART CHAIN, TRON, SOLANA)"
+            )
+    if p.get("account_type"):
+        if p["account_type"] not in VALID_ACCOUNT_TYPES:
+            raise ValidationError(
+                f"account_type must be one of {sorted(VALID_ACCOUNT_TYPES)}, "
+                f"got {p['account_type']!r}"
+            )
 
 
 def validate_payload(payload, *, mode: str) -> None:
