@@ -512,6 +512,69 @@ def cmd_whoami(args) -> int:
     return 0
 
 
+import uuid as _uuid
+
+
+def _read_stdin_json():
+    raw = sys.stdin.read().strip()
+    if not raw:
+        raise SystemExit("tokka-mo: no JSON on stdin (use a heredoc or pipe a file)")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"tokka-mo: invalid JSON on stdin: {e}")
+
+
+def cmd_book(args) -> int:
+    payload = _read_stdin_json()
+
+    # Idempotency key
+    crid = args.client_request_id or str(_uuid.uuid4())
+    try:
+        _uuid.UUID(crid)
+    except (ValueError, AttributeError):
+        print(f"tokka-mo: --client-request-id {crid!r} is not a valid UUID", file=sys.stderr)
+        return 3
+
+    # Local validation against cached refdata
+    try:
+        refdata = load_refdata()
+    except CredsMissing:
+        print("not logged in; run: tokka-mo login", file=sys.stderr)
+        return 4
+    try:
+        validate_cashflow_payload(payload, refdata)
+    except ValidationError as e:
+        print(f"validation failed: {e}", file=sys.stderr)
+        return 3
+
+    # POST /api/bookings/draft
+    status, body, _ = _authed_request(
+        "POST", "/api/bookings/draft",
+        body={
+            "category": "CASHFLOW",
+            "payload": payload,
+            "client_request_id": crid,
+        },
+    )
+    if status == 401:
+        print("Token rejected — run: tokka-mo login", file=sys.stderr)
+        return 4
+    if status not in (200, 201) or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"server rejected draft: {msg}", file=sys.stderr)
+        return 3
+    row = body.get("row") or {}
+    deduped = body.get("deduped", False)
+    creds = load_credentials()
+    review_url = f"{creds['api_url']}/pending"
+    if deduped:
+        print(f"Draft #{row.get('id')} already existed (idempotent retry). Review at {review_url}")
+    else:
+        print(f"Draft #{row.get('id')} created (PENDING_REVIEW). Review at {review_url}")
+    return 0
+
+
 def cmd_refdata_refresh(args) -> int:
     try:
         load_credentials()
@@ -604,7 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--client-request-id", default=None,
                     help="Idempotency UUID. Auto-generated if omitted.")
-    sp.set_defaults(func=_cmd_not_implemented("book"))
+    sp.set_defaults(func=cmd_book)
 
     # book-batch (atomic N)
     sp = sub.add_parser(
