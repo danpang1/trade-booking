@@ -17,6 +17,7 @@ under its existing batch_id (a new batch_id is only allocated for
 genuinely new rows in this call).
 """
 from __future__ import annotations
+from datetime import datetime, timezone
 import json
 import sys
 import uuid
@@ -52,8 +53,18 @@ def _insert_batch(body: dict) -> dict:
         payload = t.get("payload")
         # Stamp user_id with "claude:" prefix so the row's booker is
         # attributed to the Claude Code path (see draft_insert.py).
+        # Also default trade_date / value_date to now (UTC) when the
+        # client doesn't supply them. Each trade in the batch defaults
+        # independently — a single batch can mix explicit-dated and
+        # default-dated rows.
         if isinstance(payload, dict):
-            payload = {**payload, "user_id": f"claude:{acting}"}
+            now_iso = datetime.now(timezone.utc).isoformat()
+            defaults = {"user_id": f"claude:{acting}"}
+            if not payload.get("trade_date"):
+                defaults["trade_date"] = now_iso
+            if not payload.get("value_date"):
+                defaults["value_date"] = now_iso
+            payload = {**payload, **defaults}
         draft_db.validate_payload_for_category(cat, payload)
         prepared.append((cat, payload, crid))
 

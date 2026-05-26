@@ -13,6 +13,7 @@ If the client_request_id already exists, the existing row is returned
 with "deduped": true (HTTP 200, not 409 — idempotent retry).
 """
 from __future__ import annotations
+from datetime import datetime, timezone
 import json
 import sys
 
@@ -32,8 +33,18 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
     # row (live trade after approve, draft displayed in the form) is
     # attributed to the Claude Code booking path — drafts only exist
     # because Claude Code (or the plugin) submitted them.
+    # Also default trade_date / value_date to the draft creation time
+    # (now, UTC) when the client doesn't supply them — saves Claude /
+    # plugins having to compute timestamps for the common "book it
+    # dated today" case. Explicit values pass through unchanged.
     if isinstance(payload, dict):
-        payload = {**payload, "user_id": f"claude:{acting}"}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        defaults = {"user_id": f"claude:{acting}"}
+        if not payload.get("trade_date"):
+            defaults["trade_date"] = now_iso
+        if not payload.get("value_date"):
+            defaults["value_date"] = now_iso
+        payload = {**payload, **defaults}
     # Shape validation against the live cashflow_db rules — same code
     # path the form's POST /api/cashflow/insert uses.
     draft_db.validate_payload_for_category(category, payload)
