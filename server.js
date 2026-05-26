@@ -43,6 +43,14 @@ const TOKEN_CREATE_SCRIPT = resolve(__dirname, "scripts", "token_create.py");
 const TOKEN_LIST_SCRIPT   = resolve(__dirname, "scripts", "token_list.py");
 const TOKEN_REVOKE_SCRIPT = resolve(__dirname, "scripts", "token_revoke.py");
 
+const DRAFT_INSERT_SCRIPT       = resolve(__dirname, "scripts", "draft_insert.py");
+const DRAFT_BATCH_INSERT_SCRIPT = resolve(__dirname, "scripts", "draft_batch_insert.py");
+const DRAFT_LIST_SCRIPT         = resolve(__dirname, "scripts", "draft_list.py");
+const DRAFT_GET_SCRIPT          = resolve(__dirname, "scripts", "draft_get.py");
+const DRAFT_PATCH_SCRIPT        = resolve(__dirname, "scripts", "draft_patch.py");
+const DRAFT_APPROVE_SCRIPT      = resolve(__dirname, "scripts", "draft_approve.py");
+const DRAFT_REJECT_SCRIPT       = resolve(__dirname, "scripts", "draft_reject.py");
+
 const USER_CREATE_SCRIPT  = resolve(__dirname, "scripts", "user_create.py");
 const USER_LIST_SCRIPT    = resolve(__dirname, "scripts", "user_list.py");
 const USER_UPDATE_SCRIPT  = resolve(__dirname, "scripts", "user_update.py");
@@ -250,6 +258,7 @@ function httpStatusFor(exitCode, json) {
   if (exitCode === 3) return 400;  // validation
   if (exitCode === 4) return 404;  // not_found (fallback if code missing)
   if (exitCode === 6) return 401;  // auth failure
+  if (exitCode === 7) return 409;  // conflict (draft already approved/rejected)
   return 500;
 }
 
@@ -633,6 +642,113 @@ const server = createServer(async (req, res) => {
     return;
   }
   // ── API Tokens end ────────────────────────────────────────────────────
+
+  // ── Bookings: drafts (cookie OR Bearer auth, per-user isolation) ──
+  if ((req.url || "").startsWith("/api/bookings/draft")) {
+    const acting = req.sessionUser.username;
+
+    // POST /api/bookings/draft/batch  — atomic N-row batch
+    if (req.url === "/api/bookings/draft/batch" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+      parsed._acting_user = acting;
+      const result = await spawnPython(DRAFT_BATCH_INSERT_SCRIPT, JSON.stringify(parsed));
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // POST /api/bookings/draft  — single
+    if (req.url === "/api/bookings/draft" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+      parsed._acting_user = acting;
+      const result = await spawnPython(DRAFT_INSERT_SCRIPT, JSON.stringify(parsed));
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // GET /api/bookings/drafts (bare list, optional query filters)
+    // Single-draft GET (/drafts/:id) is handled by the idOnlyMatch below.
+    {
+      const u = new URL(req.url || "", "http://localhost");
+      if (req.method === "GET" && /^\/api\/bookings\/drafts\/?$/.test(u.pathname)) {
+        const stdin = JSON.stringify({
+          _acting_user: acting,
+          status: u.searchParams.get("status") || null,
+          batch_id: u.searchParams.get("batch_id") || null,
+        });
+        const result = await spawnPython(DRAFT_LIST_SCRIPT, stdin);
+        res.statusCode = httpStatusFor(result.code, result.json);
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(result.json));
+        return;
+      }
+    }
+
+    // POST /api/bookings/drafts/:id/approve
+    const approveMatch = (req.url || "").match(/^\/api\/bookings\/drafts\/(\d+)\/approve$/);
+    if (approveMatch && req.method === "POST") {
+      const id = parseInt(approveMatch[1], 10);
+      const stdin = JSON.stringify({ id, _acting_user: acting });
+      const result = await spawnPython(DRAFT_APPROVE_SCRIPT, stdin);
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // POST /api/bookings/drafts/:id/reject
+    const rejectMatch = (req.url || "").match(/^\/api\/bookings\/drafts\/(\d+)\/reject$/);
+    if (rejectMatch && req.method === "POST") {
+      const id = parseInt(rejectMatch[1], 10);
+      const body = await readBody(req);
+      let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+      parsed.id = id;
+      parsed._acting_user = acting;
+      const result = await spawnPython(DRAFT_REJECT_SCRIPT, JSON.stringify(parsed));
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // PATCH /api/bookings/drafts/:id
+    const idOnlyMatch = (req.url || "").match(/^\/api\/bookings\/drafts\/(\d+)$/);
+    if (idOnlyMatch && req.method === "PATCH") {
+      const id = parseInt(idOnlyMatch[1], 10);
+      const body = await readBody(req);
+      let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
+      parsed.id = id;
+      parsed._acting_user = acting;
+      const result = await spawnPython(DRAFT_PATCH_SCRIPT, JSON.stringify(parsed));
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // GET /api/bookings/drafts/:id
+    if (idOnlyMatch && req.method === "GET") {
+      const id = parseInt(idOnlyMatch[1], 10);
+      const stdin = JSON.stringify({ id, _acting_user: acting });
+      const result = await spawnPython(DRAFT_GET_SCRIPT, stdin);
+      res.statusCode = httpStatusFor(result.code, result.json);
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(result.json));
+      return;
+    }
+
+    // unknown method/path under /api/bookings/draft(s)
+    res.statusCode = 404;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: false, error: "not found" }));
+    return;
+  }
+  // ── Bookings drafts end ──────────────────────────────────────────────
 
   // Static serve of any refdata JSON: /refdata/portfolios.json, etc.
   // Only matches known keys (REFDATA_SOURCES) so we don't accidentally
