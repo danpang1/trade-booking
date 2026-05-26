@@ -28,12 +28,20 @@ function summarize(payload) {
   // Render a single cashflow row as one compact line.
   // Defensive about missing fields: drafts can be patched into any shape.
   if (!payload || typeof payload !== "object") return "(empty)";
+  // For INTER PTF FUNDING the `counterparty` field holds the OTHER
+  // portfolio's number (the picker swaps in TradeBookingForm.jsx). Label
+  // it `ptf <n>` so readers don't mistake it for this row's portfolio_id.
+  const isIpf = payload.cashflow_type === "INTER PTF FUNDING";
+  const cptyLabel = isIpf && payload.counterparty
+    ? `ptf ${payload.counterparty}`
+    : payload.counterparty;
   return [
     payload.cashflow_type,
+    payload.portfolio_id ? `ptf ${payload.portfolio_id}` : null,
     payload.direction,
     payload.amount,
     payload.asset,
-    payload.counterparty,
+    cptyLabel,
     payload.network,
   ].filter(Boolean).join(" · ");
 }

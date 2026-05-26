@@ -233,19 +233,38 @@ def _validate_one(p: dict, mode: str) -> None:
     # (file missing / malformed / refdata sync outage). Plugin-side
     # checkpoint (a) per design Section 7.2 is the primary gate.
 
-    cps = _safe_load(_load_counterparties_set)
-    if cps and p["counterparty"] not in cps:
-        raise ValidationError(
-            f"counterparty {p['counterparty']!r} not in refdata "
-            f"({len(cps)} valid counterparties available)"
-        )
-
     ports = _safe_load(_load_portfolio_ids_set)
     if ports and pid_int not in ports:
         raise ValidationError(
             f"portfolio_id {pid_int} not in refdata "
             f"({len(ports)} valid portfolios)"
         )
+
+    # INTER PTF FUNDING swaps the Counterparty picker for a PortfolioPicker
+    # in TradeBookingForm.jsx:7806 — the `counterparty` field then holds the
+    # receiving portfolio's number (as a string), and counterparty_id is
+    # intentionally NULL. Validate against portfolios, not counterparties.
+    if p["cashflow_type"] == "INTER PTF FUNDING":
+        try:
+            cp_pid = int(p["counterparty"])
+        except (TypeError, ValueError):
+            raise ValidationError(
+                f"counterparty for INTER PTF FUNDING must be a portfolio "
+                f"number (string of digits), got {p['counterparty']!r}"
+            )
+        if ports and cp_pid not in ports:
+            raise ValidationError(
+                f"counterparty portfolio {cp_pid} not in refdata "
+                f"({len(ports)} valid portfolios) — INTER PTF FUNDING expects "
+                f"the receiving portfolio's number in the counterparty field"
+            )
+    else:
+        cps = _safe_load(_load_counterparties_set)
+        if cps and p["counterparty"] not in cps:
+            raise ValidationError(
+                f"counterparty {p['counterparty']!r} not in refdata "
+                f"({len(cps)} valid counterparties available)"
+            )
 
     accts = _safe_load(_load_accounts_set)
     if accts and p["account"] not in accts:
