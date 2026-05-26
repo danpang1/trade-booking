@@ -22,6 +22,8 @@ import { useAuth } from "./auth/AuthContext.jsx";
 import { api } from "./auth/api.js";
 import UserAdmin from "./admin/UserAdmin.jsx";
 import ApiTokens from "./settings/ApiTokens.jsx";
+import PendingDrafts from "./pending/PendingDrafts.jsx";
+import { listDrafts } from "./auth/api.js";
 
 // Live token list — initialized from the bundled snapshot, replaced after
 // fetch('/tokens.json') resolves (refreshed hourly by server.js). AssetPicker
@@ -5489,7 +5491,25 @@ function useClock() {
 
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
-  const [appView, setAppView] = useState("booking"); // "booking" | "users" | "tokens"
+  const [appView, setAppView] = useState("booking"); // "booking" | "users" | "tokens" | "pending"
+  // Pending-drafts count for the sidebar badge. Polled every 30s while
+  // the user is anywhere in the app. Failures are silent (the badge
+  // simply doesn't update); listDrafts emits 401 events via apiJson if
+  // the session has expired.
+  const [pendingCount, setPendingCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      const { status, body } = await listDrafts({ status: "PENDING_REVIEW" });
+      if (cancelled) return;
+      if (status === 200 && body?.ok) {
+        setPendingCount((body.drafts || []).length);
+      }
+    }
+    tick();
+    const h = setInterval(tick, 30000);
+    return () => { cancelled = true; clearInterval(h); };
+  }, []);
   const fileInputRef = useRef(null);
   const clock = useClock();
 
@@ -7032,6 +7052,10 @@ export default function TradeBookingForm() {
     return { __html: html };
   };
 
+  if (appView === "pending") {
+    return <PendingDrafts onClose={() => setAppView("booking")} />;
+  }
+
   if (appView === "tokens") {
     return <ApiTokens onClose={() => setAppView("booking")} />;
   }
@@ -7214,6 +7238,11 @@ export default function TradeBookingForm() {
               label="Pending Bookings"
               active={view === "PENDING_BOOKINGS"}
               onClick={() => setView("PENDING_BOOKINGS")}
+            />
+            <NavTabRow
+              label={`Pending Drafts${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+              active={appView === "pending"}
+              onClick={() => setAppView("pending")}
             />
 
             {user?.role === "admin" && (
