@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+
+# Defence-in-depth: these should NEVER live in the repo,
+# but block them in case a user accidentally copies them in.
+credentials
+refdata.json
+.tokka-mo/
