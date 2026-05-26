@@ -149,6 +149,16 @@ def _http_json(method, url, *, body=None, headers=None, timeout=10):
         raise SystemExit(f"tokka-mo: cannot reach {url}: {e.reason}")
 
 
+def _authed_request(method, path, *, body=None, timeout=10):
+    """Send an authenticated request using the saved creds.
+    Returns (status, parsed_body, response_headers). Caller handles 401.
+    """
+    creds = load_credentials()
+    url = creds["api_url"].rstrip("/") + path
+    headers = {"Authorization": f"Bearer {creds['token']}"}
+    return _http_json(method, url, body=body, headers=headers, timeout=timeout)
+
+
 # ─────────────────────────────────────────────────────────────────
 # Commands
 # ─────────────────────────────────────────────────────────────────
@@ -245,6 +255,48 @@ def _hostname():
         return "unknown-host"
 
 
+def cmd_whoami(args) -> int:
+    try:
+        creds = load_credentials()
+    except CredsMissing:
+        print("not logged in; run: tokka-mo login", file=sys.stderr)
+        return 4
+    status, body, _ = _authed_request("GET", "/api/auth/me")
+    if status == 401:
+        print("Token rejected — run: tokka-mo login", file=sys.stderr)
+        return 4
+    if status != 200 or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"whoami failed: {msg}", file=sys.stderr)
+        return 5
+    user = body.get("user") or {}
+    print(
+        f"{user.get('username','?')} · {user.get('role','?')} · "
+        f"token {creds['prefix']}… (expires {creds['expires_at']})"
+    )
+    return 0
+
+
+def cmd_logout(args) -> int:
+    try:
+        creds = load_credentials()
+    except CredsMissing:
+        print("not logged in", file=sys.stderr)
+        return 0
+    token_id = creds.get("token_id")
+    if token_id is not None:
+        status, body, _ = _authed_request("DELETE", f"/api/tokens/{token_id}")
+        # 204 (no content) is the success path; 401/404 also acceptable
+        # (token already revoked or expired). We always clear local creds.
+        if status not in (200, 204, 401, 404):
+            msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+            print(f"logout: server returned {msg}; clearing local creds anyway",
+                  file=sys.stderr)
+    clear_credentials()
+    print("Logged out.")
+    return 0
+
+
 def _cmd_not_implemented(name):
     def handler(args):
         print(f"tokka-mo: '{name}' not yet implemented", file=sys.stderr)
@@ -280,11 +332,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # logout
     sp = sub.add_parser("logout", help="Revoke current token and clear local creds")
-    sp.set_defaults(func=_cmd_not_implemented("logout"))
+    sp.set_defaults(func=cmd_logout)
 
     # whoami
     sp = sub.add_parser("whoami", help="Show the authenticated user")
-    sp.set_defaults(func=_cmd_not_implemented("whoami"))
+    sp.set_defaults(func=cmd_whoami)
 
     # refdata refresh
     sp = sub.add_parser("refdata", help="Manage local refdata cache")
