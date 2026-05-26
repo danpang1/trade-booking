@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, X, FilePen, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, X, ExternalLink, RefreshCw } from "lucide-react";
 import { listDrafts, approveDraft, rejectDraft } from "../auth/api.js";
-import DraftEditModal from "./DraftEditModal.jsx";
 
 const BB = {
   bg: "#000", panel: "#0a0a0a", border: "#1f1f1f",
@@ -39,7 +38,6 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [rowError, setRowError] = useState({});  // {id: "msg"}
-  const [editId, setEditId]   = useState(null);
   const [showApproved, setShowApproved] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
 
@@ -146,9 +144,6 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
         <td style={td}>
           {d.status === "PENDING_REVIEW" && (
             <div style={{ display: "flex", gap: 6 }}>
-              <button style={ghostBtn} onClick={() => setEditId(d.id)} title="Edit in modal">
-                <FilePen size={12} /> EDIT
-              </button>
               <button style={ghostBtn} onClick={() => openInForm(d)} title="Open in TradeBookingForm">
                 <ExternalLink size={12} /> FORM
               </button>
@@ -245,7 +240,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
           {showApproved && approved.length > 0 && (
             <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12 }}>
               <thead><tr>
-                <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>DEAL REF</th><th style={th}>APPROVED AT</th>
+                <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>DEAL REF</th><th style={th}>APPROVED BY</th><th style={th}>APPROVED AT</th>
               </tr></thead>
               <tbody>
                 {approved.map((d) => (
@@ -253,6 +248,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
                     <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
                     <td style={td}>{summarize(d.payload)}</td>
                     <td style={{ ...td, color: BB.green }}>{d.approved_deal_ref}</td>
+                    <td style={td}>{d.approved_by || "—"}</td>
                     <td style={{ ...td, color: BB.dim }}>{fmtDate(d.approved_at)}</td>
                   </tr>
                 ))}
@@ -269,7 +265,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
           {showRejected && rejected.length > 0 && (
             <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12 }}>
               <thead><tr>
-                <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>REASON</th><th style={th}>REJECTED AT</th>
+                <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>REASON</th><th style={th}>REJECTED BY</th><th style={th}>REJECTED AT</th>
               </tr></thead>
               <tbody>
                 {rejected.map((d) => (
@@ -277,6 +273,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
                     <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
                     <td style={td}>{summarize(d.payload)}</td>
                     <td style={{ ...td, color: BB.red }}>{d.rejection_reason || "—"}</td>
+                    <td style={td}>{d.rejected_by || "—"}</td>
                     <td style={{ ...td, color: BB.dim }}>{fmtDate(d.rejected_at)}</td>
                   </tr>
                 ))}
@@ -286,15 +283,6 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
         </div>
       </div>
 
-      {editId !== null && (
-        <DraftEditModal
-          draftId={editId}
-          onClose={() => setEditId(null)}
-          onSaved={() => { setEditId(null); load(); }}
-          onApproved={() => { setEditId(null); load(); }}
-          onRejected={() => { setEditId(null); load(); }}
-        />
-      )}
     </div>
   );
 }
