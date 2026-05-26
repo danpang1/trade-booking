@@ -51,3 +51,62 @@ export async function revokeToken(id) {
   const { status, body } = await apiJson(`/api/tokens/${id}`, { method: "DELETE" });
   return { status, body };
 }
+
+// ── Bookings drafts (Phase 1a) ───────────────────────────────────
+
+export async function listDrafts(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.batch_id) params.set("batch_id", filters.batch_id);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const { status, body } = await apiJson(`/api/bookings/drafts${qs}`);
+  return { status, body };
+}
+
+export async function getDraft(id) {
+  const { status, body } = await apiJson(`/api/bookings/drafts/${id}`);
+  return { status, body };
+}
+
+export async function createDraft({ category, payload, client_request_id }) {
+  const { status, body } = await apiJson("/api/bookings/draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, payload, client_request_id }),
+  });
+  return { status, body };
+}
+
+export async function createDraftBatch(trades) {
+  const { status, body } = await apiJson("/api/bookings/draft/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trades }),
+  });
+  return { status, body };
+}
+
+export async function patchDraft(id, payload) {
+  const { status, body } = await apiJson(`/api/bookings/drafts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload }),
+  });
+  return { status, body };
+}
+
+export async function approveDraft(id) {
+  const { status, body } = await apiJson(`/api/bookings/drafts/${id}/approve`, {
+    method: "POST",
+  });
+  return { status, body };
+}
+
+export async function rejectDraft(id, reason) {
+  const { status, body } = await apiJson(`/api/bookings/drafts/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: reason || null }),
+  });
+  return { status, body };
+}
