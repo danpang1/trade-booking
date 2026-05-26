@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""tokka-mo — Tokka Labs Middle Office CLI for Claude Code.
+
+This single-file CLI is invoked by:
+  • Claude Code's `trade-booking` skill (shell-out)
+  • The user directly: `tokka-mo book < payload.json`
+  • The slash commands /book /drafts /login
+
+It has no external dependencies — Python 3.10+ stdlib only — so the install
+is `chmod +x bin/tokka-mo` and a PATH symlink. No virtualenv, no pip.
+
+Commands:
+  login                 interactive login -> mints API token -> saves locally
+  logout                revoke current token, clear local credentials
+  whoami                show the authenticated user
+  refdata refresh       pull /refdata/*.json + /tokens.json -> local cache
+  book < payload.json   POST one CASHFLOW draft
+  book-batch < batch.json  POST N CASHFLOW drafts atomically
+  drafts list [--status STATUS] [--batch BATCH_ID]  list your drafts
+"""
+from __future__ import annotations
+import argparse
+import json
+import os
+import sys
+
+VERSION = "0.1.0"
+
+
+def _cmd_not_implemented(name):
+    def handler(args):
+        print(f"tokka-mo: '{name}' not yet implemented", file=sys.stderr)
+        return 99
+    return handler
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="tokka-mo",
+        description="Tokka Labs Middle Office CLI for Claude Code.",
+    )
+    p.add_argument("--version", action="version", version=f"tokka-mo {VERSION}")
+    p.add_argument(
+        "--api-url",
+        default=os.environ.get("TOKKA_MO_API_URL"),
+        help=(
+            "Base URL of the MO server (e.g. https://mo-tools.tokkalabs.com). "
+            "Default: $TOKKA_MO_API_URL, or the saved value from `tokka-mo login`."
+        ),
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    # login
+    sp = sub.add_parser("login", help="Interactive login -> mint API token -> save")
+    sp.add_argument("--api-url", dest="login_api_url", default=None,
+                    help="Server base URL to save with the credentials")
+    sp.add_argument(
+        "--non-interactive", action="store_true",
+        help="Read username and password from stdin (two lines). For CI / smoke.",
+    )
+    sp.set_defaults(func=_cmd_not_implemented("login"))
+
+    # logout
+    sp = sub.add_parser("logout", help="Revoke current token and clear local creds")
+    sp.set_defaults(func=_cmd_not_implemented("logout"))
+
+    # whoami
+    sp = sub.add_parser("whoami", help="Show the authenticated user")
+    sp.set_defaults(func=_cmd_not_implemented("whoami"))
+
+    # refdata refresh
+    sp = sub.add_parser("refdata", help="Manage local refdata cache")
+    refdata_sub = sp.add_subparsers(dest="refdata_cmd", required=True)
+    rsp = refdata_sub.add_parser("refresh", help="Pull /refdata/*.json into the cache")
+    rsp.set_defaults(func=_cmd_not_implemented("refdata refresh"))
+
+    # book (single)
+    sp = sub.add_parser(
+        "book",
+        help="POST one CASHFLOW draft. JSON payload on stdin.",
+    )
+    sp.add_argument("--client-request-id", default=None,
+                    help="Idempotency UUID. Auto-generated if omitted.")
+    sp.set_defaults(func=_cmd_not_implemented("book"))
+
+    # book-batch (atomic N)
+    sp = sub.add_parser(
+        "book-batch",
+        help="POST N CASHFLOW drafts atomically. JSON on stdin: {trades: [...]}",
+    )
+    sp.set_defaults(func=_cmd_not_implemented("book-batch"))
+
+    # drafts list
+    sp = sub.add_parser("drafts", help="Inspect your drafts")
+    drafts_sub = sp.add_subparsers(dest="drafts_cmd", required=True)
+    dlp = drafts_sub.add_parser("list", help="List your drafts (text table)")
+    dlp.add_argument("--status", choices=("PENDING_REVIEW", "APPROVED", "REJECTED"),
+                     default=None)
+    dlp.add_argument("--batch", dest="batch_id", default=None,
+                     help="Filter to a single batch_id (UUID)")
+    dlp.set_defaults(func=_cmd_not_implemented("drafts list"))
+
+    return p
+
+
+def main(argv=None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
