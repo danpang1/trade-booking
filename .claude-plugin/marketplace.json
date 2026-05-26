@@ -1,0 +1,19 @@
+{
+  "name": "tokka-mo-marketplace",
+  "owner": {
+    "name": "Tokka Labs Middle Office"
+  },
+  "metadata": {
+    "description": "Tokka Labs Middle Office Claude Code plugins. The middle-office-tools repo doubles as a Claude Code marketplace — the `plugin/` subdirectory ships `tokka-mo`, the CASHFLOW trade-booking client.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "tokka-mo",
+      "source": "./plugin",
+      "description": "Submit Tokka Labs Middle Office CASHFLOW trade bookings as drafts directly from Claude Code. Approvals happen in mo-tools.tokkalabs.com/pending.",
+      "category": "productivity",
+      "tags": ["tokka-labs", "middle-office", "trade-booking", "cashflow", "internal"]
+    }
+  ]
+}

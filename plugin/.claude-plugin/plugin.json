@@ -1,15 +1,8 @@
 {
-  "$schema": "https://docs.anthropic.com/claude-code/plugin.schema.json",
   "name": "tokka-mo",
   "version": "0.1.0",
   "description": "Submit Tokka Labs Middle Office trade bookings (CASHFLOW v0.1) as drafts from Claude Code. Approve in mo-tools.tokkalabs.com.",
-  "author": "Tokka Labs Middle Office",
-  "skills": [
-    "skills/trade-booking"
-  ],
-  "commands": [
-    "commands/book.md",
-    "commands/drafts.md",
-    "commands/login.md"
-  ]
+  "author": {
+    "name": "Tokka Labs Middle Office"
+  }
 }
