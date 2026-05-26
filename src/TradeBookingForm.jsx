@@ -7701,7 +7701,7 @@ export default function TradeBookingForm() {
             <Field label="Created By" required span={4}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
                 <span style={{ fontSize: 11, color: "#7d7d7d", letterSpacing: 1 }}>BOOKED BY</span>
-                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>{user?.username || "—"}</span>
+                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>{form.created_by || user?.username || "—"}</span>
               </div>
             </Field>
             {form.category === "CASHFLOW" && (
