@@ -181,6 +181,147 @@ def load_refdata(*, force_refresh: bool = False) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────
+# CASHFLOW payload validation — mirrors scripts/cashflow_db.py on
+# the server, plus refdata-bound enum checks using the local cache.
+# ─────────────────────────────────────────────────────────────────
+
+
+class ValidationError(ValueError):
+    """Raised by validate_cashflow_payload for any malformed input."""
+
+
+REQUIRED_CASHFLOW_FIELDS = (
+    "cashflow_type", "direction", "entity", "portfolio_id",
+    "portfolio_name", "counterparty", "account", "account_type",
+    "asset", "amount", "trade_date", "value_date", "user_id", "status",
+)
+VALID_DIRECTIONS = {"INCOMING", "OUTGOING"}
+VALID_STATUSES = {"PENDING", "CONFIRMED", "PROCESSED", "SETTLED", "CANCELLED"}
+VALID_ACCOUNT_TYPES = {"EXCHANGE", "WALLET", "BROKER"}
+VALID_CASHFLOW_TYPES = {
+    "INTER PTF FUNDING", "RETAINER FEES", "OPEX",
+    "OTHER INCOME", "OTHER EXPENSE", "TRANSFER FEES",
+    "INTEREST EXPENSE", "INTEREST INCOME", "WITHHOLDING TAX",
+    "LOAN", "LOAN REPAYMENT",
+}
+
+
+def _refdata_values(refdata, key, name_field="name"):
+    """Pull a set of names/symbols from a refdata list. Defensive about shapes."""
+    items = refdata.get(key) or []
+    out = set()
+    for item in items:
+        if isinstance(item, dict):
+            v = item.get(name_field)
+            if v:
+                out.add(v)
+        elif isinstance(item, str):
+            out.add(item)
+    return out
+
+
+def _refdata_portfolio_ids(refdata):
+    """{id: name} so we can validate id + name match together."""
+    out = {}
+    for p in refdata.get("portfolios") or []:
+        if isinstance(p, dict) and "id" in p and "name" in p:
+            out[p["id"]] = p["name"]
+    return out
+
+
+def _suggest(value, choices, n=3):
+    """Return n closest choices as a string hint."""
+    import difflib
+    if not choices:
+        return ""
+    matches = difflib.get_close_matches(str(value), [str(c) for c in choices], n=n, cutoff=0.0)
+    return f" Did you mean: {', '.join(matches)}?" if matches else ""
+
+
+def validate_cashflow_payload(payload, refdata) -> None:
+    """Raise ValidationError on any rule break. Otherwise return None."""
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be an object")
+
+    for field in REQUIRED_CASHFLOW_FIELDS:
+        v = payload.get(field)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValidationError(f"required field missing or empty: {field}")
+
+    # Enum checks
+    if payload["direction"] not in VALID_DIRECTIONS:
+        raise ValidationError(
+            f"direction must be one of {sorted(VALID_DIRECTIONS)}, got {payload['direction']!r}"
+        )
+    if payload["status"] not in VALID_STATUSES:
+        raise ValidationError(
+            f"status must be one of {sorted(VALID_STATUSES)}, got {payload['status']!r}"
+        )
+    if payload["account_type"] not in VALID_ACCOUNT_TYPES:
+        raise ValidationError(
+            f"account_type must be one of {sorted(VALID_ACCOUNT_TYPES)}, got {payload['account_type']!r}"
+        )
+    if payload["cashflow_type"] not in VALID_CASHFLOW_TYPES:
+        raise ValidationError(
+            f"cashflow_type must be one of {sorted(VALID_CASHFLOW_TYPES)}, "
+            f"got {payload['cashflow_type']!r}"
+        )
+
+    # Amount
+    try:
+        amt = float(str(payload["amount"]))
+    except (TypeError, ValueError):
+        raise ValidationError(f"amount must be numeric, got {payload['amount']!r}")
+    if abs(amt) == 0:
+        raise ValidationError("amount must be non-zero")
+
+    # Dates
+    for d in ("trade_date", "value_date"):
+        try:
+            _dt.datetime.fromisoformat(payload[d].replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            raise ValidationError(
+                f"{d} must be ISO 8601 with timezone, got {payload[d]!r}"
+            )
+
+    # Refdata-bound fields
+    ports = _refdata_portfolio_ids(refdata)
+    if payload["portfolio_id"] not in ports:
+        suggest = _suggest(payload["portfolio_id"], sorted(ports.keys()))
+        raise ValidationError(
+            f"portfolio_id {payload['portfolio_id']!r} not in refdata.{suggest} "
+            f"Run `tokka-mo refdata refresh` if your cache is stale."
+        )
+    expected_name = ports[payload["portfolio_id"]]
+    if payload["portfolio_name"] != expected_name:
+        raise ValidationError(
+            f"portfolio_name {payload['portfolio_name']!r} doesn't match "
+            f"portfolio_id {payload['portfolio_id']} (expected {expected_name!r})"
+        )
+
+    counterparties = _refdata_values(refdata, "counterparties")
+    if payload["counterparty"] not in counterparties:
+        raise ValidationError(
+            f"counterparty {payload['counterparty']!r} not in refdata."
+            f"{_suggest(payload['counterparty'], counterparties)}"
+        )
+
+    accounts = _refdata_values(refdata, "accounts")
+    if payload["account"] not in accounts:
+        raise ValidationError(
+            f"account {payload['account']!r} not in refdata."
+            f"{_suggest(payload['account'], accounts)}"
+        )
+
+    tokens = _refdata_values(refdata, "tokens", name_field="symbol")
+    if payload["asset"] not in tokens:
+        raise ValidationError(
+            f"asset {payload['asset']!r} not in refdata."
+            f"{_suggest(payload['asset'], tokens)}"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────
 # HTTP helpers — stdlib urllib only.
 #
 # Two helpers:

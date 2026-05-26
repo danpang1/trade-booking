@@ -134,3 +134,98 @@ def test_save_and_reload_refdata_cache(hermetic_config):
 
 def test_load_refdata_cache_returns_none_when_missing(hermetic_config):
     assert tokka_mo.load_refdata_cache() is None
+
+
+# ── CASHFLOW payload validator ──────────────────────────────────
+
+REFDATA_FIXTURE = {
+    "portfolios": [
+        {"id": 8006, "name": "CDA"},
+        {"id": 8041, "name": "MARKET MAKING"},
+    ],
+    "accounts": [
+        {"name": "TK006@BINANCE"},
+        {"name": "TK818@BINANCE"},
+        {"name": "TOKKA TREASURY WALLET"},
+    ],
+    "counterparties": [
+        {"name": "Galaxy"},
+        {"name": "TOKKA TREASURY"},
+        {"name": "TOKKA LABS PTE LTD"},
+    ],
+    "tokens": [
+        {"symbol": "USDC"},
+        {"symbol": "USDT"},
+        {"symbol": "BEBOP"},
+    ],
+    "users": [{"username": "danny.pang"}],
+    "fetched_at": "2026-05-26T00:00:00+00:00",
+}
+
+VALID_PAYLOAD = {
+    "cashflow_type": "OPEX",
+    "direction": "OUTGOING",
+    "entity": "TOKKA LABS PTE LTD",
+    "portfolio_id": 8006,
+    "portfolio_name": "CDA",
+    "counterparty": "TOKKA TREASURY",
+    "account": "TOKKA TREASURY WALLET",
+    "account_type": "WALLET",
+    "asset": "USDC",
+    "amount": "888",
+    "trade_date": "2026-05-26T12:00:00+00:00",
+    "value_date": "2026-05-26T12:00:00+00:00",
+    "user_id": "danny.pang",
+    "status": "PENDING",
+}
+
+
+def test_validate_cashflow_payload_happy_path():
+    tokka_mo.validate_cashflow_payload(VALID_PAYLOAD, REFDATA_FIXTURE)
+
+
+@pytest.mark.parametrize("field", [
+    "cashflow_type", "direction", "entity", "portfolio_id", "portfolio_name",
+    "counterparty", "account", "account_type", "asset", "amount",
+    "trade_date", "value_date", "user_id", "status",
+])
+def test_validate_missing_required_field_raises(field):
+    bad = {k: v for k, v in VALID_PAYLOAD.items() if k != field}
+    with pytest.raises(tokka_mo.ValidationError, match=field):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_bad_direction():
+    bad = {**VALID_PAYLOAD, "direction": "IN"}
+    with pytest.raises(tokka_mo.ValidationError, match="direction"):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_bad_account_type():
+    bad = {**VALID_PAYLOAD, "account_type": "POCKET"}
+    with pytest.raises(tokka_mo.ValidationError, match="account_type"):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_zero_amount():
+    bad = {**VALID_PAYLOAD, "amount": "0"}
+    with pytest.raises(tokka_mo.ValidationError, match="amount"):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_portfolio_not_in_refdata():
+    bad = {**VALID_PAYLOAD, "portfolio_id": 9999}
+    with pytest.raises(tokka_mo.ValidationError, match="portfolio_id"):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_counterparty_not_in_refdata():
+    bad = {**VALID_PAYLOAD, "counterparty": "TOTALLY MADE UP CO"}
+    with pytest.raises(tokka_mo.ValidationError, match="counterparty"):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_asset_not_in_refdata():
+    bad = {**VALID_PAYLOAD, "asset": "DOGECOIN"}
+    with pytest.raises(tokka_mo.ValidationError, match="asset"):
+        tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
