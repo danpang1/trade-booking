@@ -5511,9 +5511,49 @@ export default function TradeBookingForm() {
     return () => { cancelled = true; clearInterval(h); };
   }, []);
 
-  // Draft mode: read ?draft=<id> from URL on mount, fetch the draft,
-  // pre-fill the form. Only handles CASHFLOW for Plan 1a — other
-  // categories surface a clear inline error.
+  // Tracks whether the draft modal was opened from PendingDrafts (so
+  // closing the modal returns to the inbox instead of leaving the user
+  // stranded on the empty booking page).
+  const [cameFromPending, setCameFromPending] = useState(false);
+
+  // Load a draft into the form's state. Returns true on success.
+  // Used by (a) the URL ?draft=<id> mount effect for deep links, and
+  // (b) the PendingDrafts inbox "FORM" button via the onOpenDraft callback.
+  // Only handles CASHFLOW for Plan 1a.
+  async function loadDraftIntoForm(id) {
+    setDraftLoadError("");
+    const { status, body } = await getDraft(id);
+    if (status !== 200 || !body?.ok) {
+      setDraftLoadError(body?.error || `Failed to load draft #${id} (HTTP ${status})`);
+      return false;
+    }
+    const d = body.draft;
+    if (d.category !== "CASHFLOW") {
+      setDraftLoadError(`Draft #${id} is ${d.category}; Phase 1a supports CASHFLOW only`);
+      return false;
+    }
+    const p = d.payload || {};
+    setForm((cur) => ({
+      ...cur,
+      category: "CASHFLOW",
+      cf_type: p.cashflow_type ?? cur.cf_type,
+      cf_direction: p.direction ?? cur.cf_direction,
+      entity_row: p.entity ?? cur.entity_row,
+      portfolio: p.portfolio_id != null ? String(p.portfolio_id) : cur.portfolio,
+      counterparty: p.counterparty ?? cur.counterparty,
+      cf_asset: p.asset ?? cur.cf_asset,
+      cf_amount: p.amount != null ? String(Math.abs(parseFloat(p.amount) || 0)) : cur.cf_amount,
+      network: p.network ?? cur.network,
+      trade_date: p.trade_date ?? cur.trade_date,
+      value_date: p.value_date ?? cur.value_date,
+      notes: p.comment ?? cur.notes,
+    }));
+    setDraftId(id);
+    return true;
+  }
+
+  // Draft mode (URL deep link): read ?draft=<id> from URL on mount.
+  // Switches to booking view so ModalShell opens (it opens on draftId).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("draft");
@@ -5523,39 +5563,9 @@ export default function TradeBookingForm() {
       setDraftLoadError(`Invalid draft id in URL: ${raw}`);
       return;
     }
-    (async () => {
-      const { status, body } = await getDraft(id);
-      if (status !== 200 || !body?.ok) {
-        setDraftLoadError(body?.error || `Failed to load draft #${id} (HTTP ${status})`);
-        return;
-      }
-      const d = body.draft;
-      if (d.category !== "CASHFLOW") {
-        setDraftLoadError(`Draft #${id} is ${d.category}; Phase 1a supports CASHFLOW only`);
-        return;
-      }
-      // Populate the form from draft payload. We map cashflow payload
-      // keys onto the form's `form` state shape; unknown keys are ignored.
-      const p = d.payload || {};
-      setForm((cur) => ({
-        ...cur,
-        category: "CASHFLOW",
-        cf_type: p.cashflow_type ?? cur.cf_type,
-        cf_direction: p.direction ?? cur.cf_direction,
-        entity_row: p.entity ?? cur.entity_row,
-        portfolio: p.portfolio_id != null ? String(p.portfolio_id) : cur.portfolio,
-        counterparty: p.counterparty ?? cur.counterparty,
-        cf_asset: p.asset ?? cur.cf_asset,
-        cf_amount: p.amount != null ? String(Math.abs(parseFloat(p.amount) || 0)) : cur.cf_amount,
-        network: p.network ?? cur.network,
-        trade_date: p.trade_date ?? cur.trade_date,
-        value_date: p.value_date ?? cur.value_date,
-        notes: p.comment ?? cur.notes,
-      }));
-      setDraftId(id);
-      // Make sure we're on the booking view, not pending/tokens/users.
-      setAppView("booking");
-    })();
+    loadDraftIntoForm(id).then((ok) => {
+      if (ok) setAppView("booking");
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -7159,7 +7169,23 @@ export default function TradeBookingForm() {
   };
 
   if (appView === "pending") {
-    return <PendingDrafts onClose={() => setAppView("booking")} />;
+    return (
+      <PendingDrafts
+        onClose={() => setAppView("booking")}
+        onOpenDraft={async (id) => {
+          // Open the booking-form modal over the inbox by switching to
+          // booking view (so ModalShell renders) AND remembering to
+          // return here on close.
+          setCameFromPending(true);
+          const ok = await loadDraftIntoForm(id);
+          if (ok) {
+            setAppView("booking");
+          } else {
+            setCameFromPending(false);
+          }
+        }}
+      />
+    );
   }
 
   if (appView === "tokens") {
@@ -7479,7 +7505,7 @@ export default function TradeBookingForm() {
           )}
           {form.category !== "FUTURE" && (
       <ModalShell
-        open={createDealOpen || Boolean(amendingDealRef)}
+        open={createDealOpen || Boolean(amendingDealRef) || Boolean(draftId)}
         onClose={() => {
           // A snapshot exists when the form was overlaid with "other"
           // data — either an Amend row OR a loan-pre-filled Cashflow
@@ -7494,13 +7520,25 @@ export default function TradeBookingForm() {
           formSnapshotRef.current = null;
           setCreateDealOpen(false);
           setAmendingDealRef(null);
+          // Draft-mode close: clear draftId, error banner, and any
+          // ?draft= deep-link param so a refresh doesn't re-open the modal.
+          // If we entered from the Pending Drafts inbox, return there.
+          setDraftId(null);
+          setDraftLoadError("");
+          if (window.location.search.includes("draft=")) {
+            window.history.replaceState(null, "", "/");
+          }
+          if (cameFromPending) {
+            setAppView("pending");
+            setCameFromPending(false);
+          }
           setFeedback(null);
         }}
       >
       <ProductTabs
         active={form.category}
         onChange={(k) => switchCategory(k)}
-        locked={Boolean(amendingDealRef)}
+        locked={Boolean(amendingDealRef) || Boolean(draftId)}
       />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 px-5 pt-4">
         {/* ═══════════ LEFT — form ═══════════ */}

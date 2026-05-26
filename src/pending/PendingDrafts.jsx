@@ -34,7 +34,7 @@ const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, backg
 const iconOK     = { background: "transparent", color: BB.green, border: `1px solid ${BB.green}`, padding: 4, cursor: "pointer" };
 const iconNO     = { background: "transparent", color: BB.red, border: `1px solid ${BB.red}`, padding: 4, cursor: "pointer" };
 
-export default function PendingDrafts({ onClose }) {
+export default function PendingDrafts({ onClose, onOpenDraft }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
@@ -124,8 +124,14 @@ export default function PendingDrafts({ onClose }) {
   }
 
   function openInForm(d) {
-    // Full page navigation; TradeBookingForm.jsx mount-effect reads ?draft=<id>.
-    window.location.href = `/?draft=${d.id}`;
+    // Open the booking-form modal over this inbox via the parent's
+    // onOpenDraft callback (lifts modal state into TradeBookingForm).
+    // Fallback: deep-link via URL nav if no callback was wired.
+    if (onOpenDraft) {
+      onOpenDraft(d.id);
+    } else {
+      window.location.href = `/?draft=${d.id}`;
+    }
   }
 
   function renderRow(d) {
