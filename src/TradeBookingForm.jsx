@@ -6836,6 +6836,11 @@ export default function TradeBookingForm() {
   async function submitDraft(action) {
     // action: "patch" | "approve"
     if (!draftId) return;
+    // Derive signed amount — mirrors handleSubmit's cfSignedAmount logic so
+    // OUTGOING drafts are stored with a negative amount (same convention as
+    // the normal cashflow insert path).
+    const cfMagnitude = Math.abs(parseFloat(form.cf_amount) || 0);
+    const cfSignedAmount = form.cf_direction === "OUTGOING" ? -cfMagnitude : cfMagnitude;
     // Re-derive a CASHFLOW payload shape from the current form state.
     // Mirrors the existing /api/cashflow/insert client-side serializer
     // (search for `body.cashflow_type = form.cf_type` in this file if
@@ -6848,7 +6853,7 @@ export default function TradeBookingForm() {
       portfolio_name: form.portfolio_name_row || form.portfolio,
       counterparty: form.counterparty,
       asset: form.cf_asset,
-      amount: form.cf_amount,
+      amount: cfSignedAmount,
       network: form.network || null,
       trade_date: form.trade_date,
       value_date: form.value_date,
