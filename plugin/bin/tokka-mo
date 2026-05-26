@@ -647,6 +647,52 @@ def cmd_book_batch(args) -> int:
     return 0
 
 
+def _summarize_payload(p):
+    """One-line cashflow summary for the text table."""
+    if not isinstance(p, dict):
+        return "(empty)"
+    parts = [
+        p.get("cashflow_type"), p.get("direction"),
+        p.get("amount"), p.get("asset"),
+        p.get("counterparty"), p.get("network"),
+    ]
+    return " · ".join(str(x) for x in parts if x)
+
+
+def cmd_drafts_list(args) -> int:
+    qs = []
+    if args.status:
+        qs.append(f"status={args.status}")
+    if args.batch_id:
+        qs.append(f"batch_id={args.batch_id}")
+    path = "/api/bookings/drafts" + (("?" + "&".join(qs)) if qs else "")
+    status, body, _ = _authed_request("GET", path)
+    if status == 401:
+        print("Token rejected — run: tokka-mo login", file=sys.stderr)
+        return 4
+    if status != 200 or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"list failed: {msg}", file=sys.stderr)
+        return 5
+    drafts = body.get("drafts") or []
+    if not drafts:
+        print("(no drafts)")
+        return 0
+    # Compact text table
+    print(f"{'ID':>5}  {'STATUS':<14}  {'CAT':<8}  {'CREATED':<19}  SUMMARY")
+    print("-" * 100)
+    for d in drafts:
+        created = (d.get("created_at") or "")[:19].replace("T", " ")
+        print(
+            f"{d.get('id'):>5}  "
+            f"{(d.get('status') or '')[:14]:<14}  "
+            f"{(d.get('category') or '')[:8]:<8}  "
+            f"{created:<19}  "
+            f"{_summarize_payload(d.get('payload'))}"
+        )
+    return 0
+
+
 def cmd_refdata_refresh(args) -> int:
     try:
         load_credentials()
@@ -756,7 +802,7 @@ def build_parser() -> argparse.ArgumentParser:
                      default=None)
     dlp.add_argument("--batch", dest="batch_id", default=None,
                      help="Filter to a single batch_id (UUID)")
-    dlp.set_defaults(func=_cmd_not_implemented("drafts list"))
+    dlp.set_defaults(func=cmd_drafts_list)
 
     return p
 
