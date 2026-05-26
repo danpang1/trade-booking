@@ -4,13 +4,17 @@ Submit Tokka Labs Middle Office **CASHFLOW** trade bookings as drafts directly f
 
 **Status:** v0.1 — CASHFLOW only. SPOT support and rollout polish in Phase 2 / Phase 3.
 
+> **Not sure how to install?** Paste this whole README into Claude Code (or claude.ai) and ask: **"Walk me through installing this on my <macOS / Windows / Linux> laptop."** Claude will identify which prerequisites you're missing, pick the right install path for your OS, and explain each step. Get stuck? Send Claude the exact error message — most failures are in the Troubleshooting table at the bottom.
+
 ## Prerequisites
 
-- macOS, Linux, or Windows 10+
-- Python 3.10 or newer (`python3 --version`)
-- Git with Bitbucket SSH access to `tokkalabs/middle-office-tools` (the plugin lives in `plugin/` inside this repo)
-- Claude Code installed (`claude --version`)
-- A Middle Office account in good standing on the target environment (UAT or PROD)
+If any of these aren't already true, paste this section into Claude and ask "help me set up <item>." For items requiring access from Tokka (Bitbucket repo, MO account), ping `#mo-trade-booking` first.
+
+- **macOS, Linux, or Windows 10+** — any modern laptop
+- **Python 3.10 or newer** — check with `python3 --version`. To install: macOS → `brew install python@3.11`; Windows → download from python.org; Linux → use your distro's package manager
+- **Git with Bitbucket SSH access to `tokkalabs/middle-office-tools`** — you need (a) your Bitbucket account added to the repo by a Tokka admin AND (b) an SSH key on your laptop registered in your Bitbucket profile (Bitbucket → Personal settings → SSH keys). Test with `ssh -T git@bitbucket.org` — should say "logged in as <you>".
+- **Claude Code installed** — `claude --version` should work. If not, install from `claude.com/code`.
+- **A Middle Office account in good standing** on the target environment (UAT or PROD). You can log in to `mo-tools.tokkalabs.com` with the same username + password you'll use for `tokka-mo login`.
 
 ## Install (macOS / Linux)
 
