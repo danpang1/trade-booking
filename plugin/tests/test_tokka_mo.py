@@ -94,3 +94,43 @@ def test_extract_sid_missing():
 def test_extract_sid_empty_value():
     # Logout-style cookie: sid=
     assert tokka_mo._extract_sid("sid=; Max-Age=0") is None
+
+
+# ── Refdata cache ──────────────────────────────────────────────
+
+def test_is_cache_fresh_returns_true_within_24h(hermetic_config):
+    import datetime as dt
+    cache = {"fetched_at": dt.datetime(2026, 5, 25, 12, 0, 0, tzinfo=dt.timezone.utc).isoformat()}
+    now = dt.datetime(2026, 5, 25, 23, 0, 0, tzinfo=dt.timezone.utc)
+    assert tokka_mo.is_cache_fresh(cache, now=now) is True
+
+
+def test_is_cache_fresh_returns_false_after_24h(hermetic_config):
+    import datetime as dt
+    cache = {"fetched_at": dt.datetime(2026, 5, 24, 12, 0, 0, tzinfo=dt.timezone.utc).isoformat()}
+    now = dt.datetime(2026, 5, 25, 13, 0, 0, tzinfo=dt.timezone.utc)  # 25h later
+    assert tokka_mo.is_cache_fresh(cache, now=now) is False
+
+
+def test_is_cache_fresh_handles_missing_field(hermetic_config):
+    assert tokka_mo.is_cache_fresh({}, now=None) is False
+    assert tokka_mo.is_cache_fresh({"fetched_at": ""}, now=None) is False
+    assert tokka_mo.is_cache_fresh({"fetched_at": "not-a-date"}, now=None) is False
+
+
+def test_save_and_reload_refdata_cache(hermetic_config):
+    data = {
+        "fetched_at": "2026-05-25T12:00:00+00:00",
+        "portfolios": [{"id": 8006, "name": "CDA"}],
+        "accounts": [{"id": 1, "name": "BINANCE TK006"}],
+        "counterparties": [{"id": 1, "name": "Galaxy"}],
+        "users": [{"id": 1, "name": "danny.pang"}],
+        "tokens": [{"symbol": "USDC"}],
+    }
+    tokka_mo.save_refdata_cache(data)
+    loaded = tokka_mo.load_refdata_cache()
+    assert loaded == data
+
+
+def test_load_refdata_cache_returns_none_when_missing(hermetic_config):
+    assert tokka_mo.load_refdata_cache() is None

@@ -87,6 +87,100 @@ def clear_credentials() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────
+# Refdata cache — single JSON file at $CACHE.
+# Schema: {fetched_at, portfolios, accounts, counterparties, users, tokens}
+# ─────────────────────────────────────────────────────────────────
+import datetime as _dt
+
+
+def _cache_dir():
+    override = os.environ.get("TOKKA_MO_CACHE_DIR")
+    if override:
+        return os.path.expanduser(override)
+    if os.name == "nt":
+        return os.path.join(
+            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "tokka-mo"
+        )
+    return os.path.expanduser("~/.cache/tokka-mo")
+
+
+def _cache_path():
+    return os.path.join(_cache_dir(), "refdata.json")
+
+
+def save_refdata_cache(data: dict) -> None:
+    d = _cache_dir()
+    os.makedirs(d, exist_ok=True)
+    p = _cache_path()
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+    os.replace(tmp, p)
+
+
+def load_refdata_cache():
+    p = _cache_path()
+    if not os.path.exists(p):
+        return None
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def is_cache_fresh(cache, *, now=None) -> bool:
+    """True if cache.fetched_at is within the last 24h."""
+    if not cache or not isinstance(cache, dict):
+        return False
+    fetched_at = cache.get("fetched_at")
+    if not fetched_at or not isinstance(fetched_at, str):
+        return False
+    try:
+        ts = _dt.datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=_dt.timezone.utc)
+    now = now or _dt.datetime.now(_dt.timezone.utc)
+    return (now - ts) < _dt.timedelta(hours=24)
+
+
+def fetch_refdata(api_url: str, token: str) -> dict:
+    """Download all 5 refdata sources. Returns the merged dict (no fetched_at —
+    that's stamped by save_refdata_cache's caller below).
+    """
+    api_url = api_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {token}"}
+    out = {}
+    sources = {
+        "portfolios": "/refdata/portfolios.json",
+        "accounts": "/refdata/accounts.json",
+        "counterparties": "/refdata/counterparties.json",
+        "users": "/refdata/users.json",
+        "tokens": "/tokens.json",
+    }
+    for key, path in sources.items():
+        status, body, _ = _http_json("GET", api_url + path, headers=headers)
+        if status != 200:
+            raise SystemExit(
+                f"tokka-mo: refdata fetch failed for {path} "
+                f"(HTTP {status}); try `tokka-mo login` if expired"
+            )
+        out[key] = body
+    return out
+
+
+def load_refdata(*, force_refresh: bool = False) -> dict:
+    """Return the refdata dict, refreshing from server if stale or missing."""
+    cache = load_refdata_cache()
+    if cache and not force_refresh and is_cache_fresh(cache):
+        return cache
+    creds = load_credentials()
+    fresh = fetch_refdata(creds["api_url"], creds["token"])
+    fresh["fetched_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    save_refdata_cache(fresh)
+    return fresh
+
+
+# ─────────────────────────────────────────────────────────────────
 # HTTP helpers — stdlib urllib only.
 #
 # Two helpers:
