@@ -77,3 +77,20 @@ def test_clear_credentials_removes_file(hermetic_config):
 def test_clear_credentials_idempotent_when_absent(hermetic_config):
     # Should NOT raise even if file never existed.
     tokka_mo.clear_credentials()
+
+
+# ── _extract_sid parser ─────────────────────────────────────────
+
+def test_extract_sid_basic():
+    h = "sid=abc123; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200"
+    assert tokka_mo._extract_sid(h) == "abc123"
+
+
+def test_extract_sid_missing():
+    assert tokka_mo._extract_sid("") is None
+    assert tokka_mo._extract_sid("Other=foo") is None
+
+
+def test_extract_sid_empty_value():
+    # Logout-style cookie: sid=
+    assert tokka_mo._extract_sid("sid=; Max-Age=0") is None

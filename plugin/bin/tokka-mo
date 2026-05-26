@@ -86,6 +86,165 @@ def clear_credentials() -> None:
         pass
 
 
+# ─────────────────────────────────────────────────────────────────
+# HTTP helpers — stdlib urllib only.
+#
+# Two helpers:
+#   _http_json(url, ...)   — generic JSON POST/GET/DELETE, returns
+#                            (status, body_or_dict, response_headers).
+#   resolve_api_url(args)  — order: --api-url, $TOKKA_MO_API_URL,
+#                            saved creds.api_url, else error.
+# ─────────────────────────────────────────────────────────────────
+import urllib.request
+import urllib.error
+
+
+def resolve_api_url(args) -> str:
+    """Return the server base URL, raise on missing."""
+    candidates = []
+    if getattr(args, "login_api_url", None):
+        candidates.append(args.login_api_url)
+    if getattr(args, "api_url", None):
+        candidates.append(args.api_url)
+    if not candidates:
+        try:
+            candidates.append(load_credentials().get("api_url"))
+        except CredsMissing:
+            pass
+    for c in candidates:
+        if c:
+            return c.rstrip("/")
+    raise SystemExit(
+        "tokka-mo: no API URL set. Use --api-url, $TOKKA_MO_API_URL, "
+        "or run `tokka-mo login --api-url <url>` first."
+    )
+
+
+def _http_json(method, url, *, body=None, headers=None, timeout=10):
+    """Send a JSON request. Returns (status, parsed_body_or_text, response_headers)."""
+    data = None
+    h = {"Accept": "application/json"}
+    if headers:
+        h.update(headers)
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        h["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=h)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            try:
+                parsed = json.loads(raw) if raw else None
+            except json.JSONDecodeError:
+                parsed = raw
+            return resp.status, parsed, dict(resp.getheaders())
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(raw) if raw else None
+        except json.JSONDecodeError:
+            parsed = raw
+        return e.code, parsed, dict(e.headers or {})
+    except urllib.error.URLError as e:
+        raise SystemExit(f"tokka-mo: cannot reach {url}: {e.reason}")
+
+
+# ─────────────────────────────────────────────────────────────────
+# Commands
+# ─────────────────────────────────────────────────────────────────
+import getpass
+
+
+def cmd_login(args) -> int:
+    """Two-step login:
+      1. POST /api/auth/login -> Set-Cookie: sid=<session>
+      2. POST /api/tokens with that cookie -> token plaintext (returned ONCE)
+      3. Save token; discard cookie (we never use cookies again for this CLI).
+    """
+    api_url = resolve_api_url(args)
+    if getattr(args, "non_interactive", False):
+        # CI / smoke path: read two lines from stdin (username, password)
+        username = sys.stdin.readline().rstrip("\r\n")
+        password = sys.stdin.readline().rstrip("\r\n")
+    else:
+        username = input("Username: ").strip()
+        if not username:
+            print("login aborted: empty username", file=sys.stderr)
+            return 2
+        password = getpass.getpass("Password: ")
+    if not username or not password:
+        print("login aborted: empty username or password", file=sys.stderr)
+        return 2
+
+    # Step 1: cookie login
+    status, body, headers = _http_json(
+        "POST", f"{api_url}/api/auth/login",
+        body={"username": username, "password": password},
+    )
+    if status != 200 or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"Login failed: {msg}", file=sys.stderr)
+        return 3
+    set_cookie = headers.get("Set-Cookie", "") or headers.get("set-cookie", "")
+    sid = _extract_sid(set_cookie)
+    if not sid:
+        print("Login failed: server did not return a session cookie", file=sys.stderr)
+        return 3
+
+    # Step 2: mint a long-lived API token
+    token_name = f"tokka-mo CLI ({_hostname()})"
+    status, body, _ = _http_json(
+        "POST", f"{api_url}/api/tokens",
+        body={"name": token_name, "expires_in_days": 90},
+        headers={"Cookie": f"sid={sid}"},
+    )
+    if status != 200 or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"Token mint failed: {msg}", file=sys.stderr)
+        return 4
+    token = body.get("token")
+    prefix = body.get("prefix")
+    token_id = body.get("id")
+    expires_at = body.get("expires_at")
+    if not token:
+        print("Token mint failed: server did not return a token plaintext", file=sys.stderr)
+        return 4
+
+    # Step 3: save; we never need the session cookie again. The server
+    # cleans up idle sessions, so no explicit logout is required for the
+    # cookie. (Bearer tokens are separately revocable via `tokka-mo logout`.)
+    save_credentials({
+        "api_url": api_url,
+        "username": username,
+        "token": token,
+        "prefix": prefix,
+        "token_id": token_id,
+        "expires_at": expires_at,
+    })
+    print(f"Logged in as {username}. Token {prefix}… expires {expires_at}.")
+    return 0
+
+
+def _extract_sid(set_cookie_header):
+    """Parse 'sid=abc; HttpOnly; ...' -> 'abc'. Empty string -> None."""
+    if not set_cookie_header:
+        return None
+    for part in set_cookie_header.split(";"):
+        part = part.strip()
+        if part.startswith("sid="):
+            v = part[4:]
+            return v or None
+    return None
+
+
+def _hostname():
+    import socket
+    try:
+        return socket.gethostname()
+    except Exception:
+        return "unknown-host"
+
+
 def _cmd_not_implemented(name):
     def handler(args):
         print(f"tokka-mo: '{name}' not yet implemented", file=sys.stderr)
@@ -117,7 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--non-interactive", action="store_true",
         help="Read username and password from stdin (two lines). For CI / smoke.",
     )
-    sp.set_defaults(func=_cmd_not_implemented("login"))
+    sp.set_defaults(func=cmd_login)
 
     # logout
     sp = sub.add_parser("logout", help="Revoke current token and clear local creds")
