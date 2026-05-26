@@ -27,6 +27,65 @@ import sys
 VERSION = "0.1.0"
 
 
+# ─────────────────────────────────────────────────────────────────
+# Credential storage — JSON file at $CREDS, chmod 600.
+#
+# Override via $TOKKA_MO_CONFIG_DIR for hermetic tests.
+# ─────────────────────────────────────────────────────────────────
+
+
+class CredsMissing(FileNotFoundError):
+    """Raised when load_credentials() can't find a credentials file."""
+
+
+def _config_dir():
+    override = os.environ.get("TOKKA_MO_CONFIG_DIR")
+    if override:
+        return os.path.expanduser(override)
+    if os.name == "nt":
+        return os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "tokka-mo")
+    return os.path.expanduser("~/.config/tokka-mo")
+
+
+def _creds_path():
+    return os.path.join(_config_dir(), "credentials")
+
+
+def save_credentials(creds: dict) -> None:
+    """Write {api_url, username, token, prefix, token_id, expires_at} as JSON.
+    Created with mode 0o600 on POSIX. Parents are created with 0o700.
+    """
+    d = _config_dir()
+    os.makedirs(d, exist_ok=True)
+    if os.name != "nt":
+        os.chmod(d, 0o700)
+    p = _creds_path()
+    # Write to a temp path then rename, so an interrupted write can't
+    # leave a half-formed credentials file.
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(creds, f, indent=2, sort_keys=True)
+    if os.name != "nt":
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, p)
+
+
+def load_credentials() -> dict:
+    p = _creds_path()
+    if not os.path.exists(p):
+        raise CredsMissing(f"no credentials at {p}; run: tokka-mo login")
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def clear_credentials() -> None:
+    p = _creds_path()
+    try:
+        os.remove(p)
+    except FileNotFoundError:
+        pass
+
+
 def _cmd_not_implemented(name):
     def handler(args):
         print(f"tokka-mo: '{name}' not yet implemented", file=sys.stderr)
