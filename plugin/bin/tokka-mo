@@ -731,13 +731,6 @@ def cmd_logout(args) -> int:
     return 0
 
 
-def _cmd_not_implemented(name):
-    def handler(args):
-        print(f"tokka-mo: '{name}' not yet implemented", file=sys.stderr)
-        return 99
-    return handler
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tokka-mo",
