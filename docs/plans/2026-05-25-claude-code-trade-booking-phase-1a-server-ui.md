@@ -2,6 +2,118 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers-extended-cc:subagent-driven-development (recommended) or superpowers-extended-cc:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+---
+
+## Session completion log — 2026-05-25 → 2026-05-26
+
+**Status:** Tasks 1-15 ✅ complete. Task 16 partially complete (README + Helm bump done; PROD migration + release tag remain — user-driven).
+
+**Branch:** `feature/phase-1a-drafts` — pushed to both Bitbucket and the GitHub mirror at `ef67e74`. 34 commits ahead of `origin/main`.
+
+**Helm chart:** bumped to `0.0.31` (leapfrogs main's `0.0.30` to avoid ECR tag-immutability collision with the blotter / loan-schedule merges that landed on main mid-session).
+
+### Commits in order (most recent first)
+
+```
+ef67e74 docs(drafts): document Phase 1a + bump chart to 0.0.31
+0d08885 fix(cashflow): require account_type on every cashflow insert
+a48a16a fix(drafts): map account/account_type when loading draft into form
+aa0907b perf(drafts): optimistic modal open + visibility-aware badge polling
+33f2087 feat(cashflow): enum/refdata enforcement on every dropdown-bound field
+5ab08fb feat(cashflow): enum-validate cashflow_type server-side
+bdbb315 feat(drafts): default trade_date / value_date to draft creation time
+a5e9018 fix(cashflow): require account + non-zero amount server-side
+87f3fce feat(audit): surface approver in cashflow audit trail
+80012f8 fix(drafts): snapshot/restore form on draft modal open/close
+ef58955 fix(drafts): show form.created_by in BOOKED BY field, not session username
+c066e00 feat(drafts): prefix user_id at draft creation; load status into form
+23fe73b feat(drafts): drop EDIT button, tag claude: prefix on approve, surface approved/rejected by
+e2e4150 fix(drafts): keep Pending Drafts inbox visible behind the form modal
+5e60216 feat(drafts): open draft-edit as modal overlay instead of URL navigation
+d7c3668 test(drafts): add end-to-end smoke for Phase 1a
+4d86413 fix(drafts): derive signed amount in submitDraft to match normal cashflow path
+2f1f669 feat(drafts): add draft mode to TradeBookingForm (?draft=<id>)
+9d8cd9c feat(drafts): wire PendingDrafts page + sidebar badge polling
+f2d2437 feat(drafts): add PendingDrafts page with batch grouping
+d5cdbb3 feat(drafts): add DraftEditModal for in-place edits  (component now unused; FORM is the sole edit path)
+5589b96 feat(drafts): add listDrafts/get/create/batch/patch/approve/reject helpers
+9dc33d8 feat(drafts): add /api/bookings/draft(s) routes + exit-7→409 mapping
+cf9943b feat(drafts): add draft_reject endpoint script  (cherry-picked from save/draft-reject after mid-session branch shuffle)
+140a6d3 feat(drafts): add draft_approve with in-process cashflow_insert
+0af03fc feat(drafts): add draft_patch endpoint script
+cac9ffb feat(drafts): add draft_list and draft_get endpoint scripts
+a8a8e21 feat(drafts): add draft_batch_insert endpoint script (atomic)
+786a891 feat(drafts): add draft_insert endpoint script (single)
+153df8e feat(drafts): add draft_db pure-logic + tests
+517ec89 feat(drafts): add bookings_draft schema for Phase 1a
+2b22613 docs(plans): add Phase 1a implementation plan (CASHFLOW drafts, server + UI)
+```
+
+### Plan-deviations (extras added during execution, beyond the original plan)
+
+These responded to live feedback from the human partner as the plan was running. None breaks the original design intent; they tighten / improve it.
+
+- **`claude:<acting_user>` prefix** on `payload.user_id` — applied at draft creation (`draft_insert.py`, `draft_batch_insert.py`). Every approved-via-Claude trade row is now attributable to the Claude Code path while `bookings_draft.approved_by` records the plain human approver. Surfaced in the audit-trail UI as `by claude:danny.pang · approved by danny.pang` on the initial booking version.
+- **Server-side enum + refdata enforcement** on every dropdown-bound CASHFLOW field — `cashflow_type` (11-value enum, mirrors form), `account_type` (`{EXCHANGE, WALLET, BROKER}`), `network` (42 uppercase chains, mirrors `src/data/networks.js`), `counterparty` / `portfolio_id` / `account` / `asset` (lazy-loaded from `public/refdata/*.json` + `public/tokens.json`, fail-open on outage). Error messages enumerate the valid set.
+- **`account` and `account_type` added to `REQUIRED_FIELDS_INSERT`** — caught the gap that produced `MCF00000034` with `account=NULL` mid-session.
+- **`abs(amount) > 0`** check added — mirrors the form's positive-amount rule.
+- **`trade_date` / `value_date` default to `now(UTC)`** when omitted by the client.
+- **Audit trail surfaces approver** — `cashflow_history.py` LEFT JOINs `bookings_draft` on `approved_deal_ref` and returns `draft_approved_by` / `draft_approved_at` / `draft_source` per version; `HistoryModal` renders these.
+- **Modal-overlay UX for draft editing** — instead of the URL-driven full-page nav the plan originally specified, `FORM` opens the existing `ModalShell` over the Pending Drafts inbox. ProductTabs locked in draft mode; form-state snapshot/restore on close so the `claude:` prefix doesn't leak into a subsequent Create Deal.
+- **Optimistic modal open** — modal opens immediately on `FORM` click with a "Loading draft #N…" banner; fields populate when `getDraft` returns.
+- **Visibility-aware badge polling** — 60s (was 30s) and pauses when tab is hidden. Cuts background spawns ~4×.
+- **`DraftEditModal` component is now unused** — `FORM` is the sole edit path; component still exists in `src/pending/` but isn't rendered. Could be deleted in a cleanup pass.
+- **Sign-math fix in `submitDraft`** — first attempt sent raw magnitude; fixed to mirror `handleSubmit`'s `cfSignedAmount` derivation so OUTGOING drafts approve with negative amounts.
+
+### Known follow-ups (not done in this session)
+
+- `CASHFLOW_TYPES` is an 11-value placeholder — backend swap to MySQL `select_category=CASHFLOW TYPE` (28 values) per `TradeBookingForm.jsx:218`. Update `VALID_CASHFLOW_TYPES` in `cashflow_db.py` to load from refdata when that sync ships.
+- Counterparties refdata is trading-focused; no OPEX vendors. OPEX bookings currently use `TOKKA TREASURY` or `TOKKA LABS PTE LTD` as a placeholder counterparty.
+- `approveMatch` / `rejectMatch` variable shadowing in `server.js` between `/api/users` and `/api/bookings/drafts` blocks. Block-scoped, syntactically valid, but confusing — rename inner ones to `draftApproveMatch` / `draftRejectMatch`.
+- SELECT-then-INSERT dedupe race in `draft_insert.py` / `draft_batch_insert.py` — same pattern as Phase 0's `token_create.py`. Single-Python-per-request makes the race window microscopic. Full fix is `INSERT ... ON CONFLICT (client_request_id) RETURNING *`.
+- `DraftEditModal` is dead code (see above).
+- Long-lived Python worker would eliminate the ~1s subprocess spawn per request that drives most perceived latency. Out of scope for Phase 1a.
+
+### Behavioral rules saved to memory (next-session Claude should obey)
+
+Under `~/.claude/projects/C--Users-peter/memory/`:
+
+- `feedback_claude_plugin_validate_refdata.md` — when acting as the trade-booking plugin, validate every refdata-bound field against the live dropdown/refdata list BEFORE submitting; STOP and ask if the user value isn't valid. Bitten 2026-05-26 by silently submitting "TRADING FEES" (not in the 11-option list).
+- `feedback_claude_plugin_retry_idempotency.md` — when retrying a draft POST, REUSE the same `client_request_id`. Fresh UUID = duplicate. Bitten 2026-05-26 when a `json.tool` pipe choked on curl's `HTTP:%{http_code}` trailer, making a successful POST look failed; the retry generated a fresh UUID and produced drafts #6 + #7 for the same logical booking.
+
+### Task 16 — remaining (user-driven)
+
+1. Bitbucket pipeline build of `ef67e74` → confirm ECR image `0.0.31` pushed cleanly.
+2. Open the PR on Bitbucket, review, merge to `main`.
+3. Apply schema to PROD: `MO_DB_HOST=<prod> MO_DB_PORT=5432 MO_DB_DATABASE=<prod-db> MO_DB_USERNAME=<prod-user> MO_DB_PASSWORD=<prod-pw> python scripts/apply_schema_drafts.py` → expect `ok: bookings_draft table ready`.
+4. Wait for the prod pod to roll with the new image.
+5. `python scripts/smoke_drafts.py --base-url https://mo-tools.tokkalabs.com --username danny.pang --password <pw>` → expect `PASS`. Run the cleanup `DELETE` line it prints.
+6. Browser sanity: log in to PROD, sidebar shows `Pending Drafts (0)`, create one draft via Bearer-curl, verify the loop end-to-end.
+7. Tag the release: `git tag phase-1a-cashflow-drafts && git push origin phase-1a-cashflow-drafts`.
+
+### Live drafts left on UAT at end of session
+
+| id | status | summary |
+|---|---|---|
+| 1 | REJECTED | OPEX -88 BEBOP (pre-prefix-fix) |
+| 2 | APPROVED | OPEX -88 BEBOP → `MCF00000034` (the row that surfaced the blank-`account` gap) |
+| 3-6 | REJECTED | canaries + the duplicate from the retry-idempotency bug |
+| 7 | PENDING_REVIEW | **OPEX -888 BEBOP TK818@BINANCE** — the user's most recent real booking; ready to approve via UI |
+
+UAT cleanup SQL: see the PR description (or commit `ef67e74`'s README diff).
+
+### To resume in a fresh terminal
+
+```powershell
+cd "C:\Users\peter\OneDrive\Desktop\Claude\trade-booking"
+git checkout feature/phase-1a-drafts
+git pull
+node server.js          # if you want a server; one was already running in the prior session
+npm run dev             # if you want the Vite dev server on :5180
+```
+
+---
+
 **Goal:** Ship the end-to-end CASHFLOW draft loop on the server and React app. A user (or any Bearer-auth client) submits a CASHFLOW booking — single or N-row batch — as a draft. The same user reviews drafts at `/pending`, edits if needed (in-place modal **or** the full booking form via "Open in form"), then approves; approval atomically inserts into `trades_cashflow` via the existing `cashflow_insert._insert_one` path. The Claude Code plugin itself ships in a separate Plan 1b.
 
 **Architecture:** New `bookings_draft` table holds JSONB `payload` per category; live trade tables (`trades_cashflow`) are unchanged. Seven new `/api/bookings/draft(s)` endpoints accept cookie OR Bearer auth. Per-user isolation enforced server-side on every list/get/patch/approve/reject (`WHERE created_by = req.sessionUser.username`). Approve uses one BEGIN/COMMIT that claims the draft AND calls `cashflow_insert._insert_one(cur, payload)` in-process — atomic, no compensating logic. New `<PendingDrafts>` React page mounts via a new `appView === "pending"` branch; `TradeBookingForm.jsx` gains a third mode (`draft`) driven by `?draft=<id>` in the URL.
