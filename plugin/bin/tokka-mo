@@ -371,6 +371,24 @@ def cmd_whoami(args) -> int:
     return 0
 
 
+def cmd_refdata_refresh(args) -> int:
+    try:
+        load_credentials()
+    except CredsMissing:
+        print("not logged in; run: tokka-mo login", file=sys.stderr)
+        return 4
+    data = load_refdata(force_refresh=True)
+    print(
+        f"portfolios: {len(data.get('portfolios') or [])} · "
+        f"accounts: {len(data.get('accounts') or [])} · "
+        f"counterparties: {len(data.get('counterparties') or [])} · "
+        f"users: {len(data.get('users') or [])} · "
+        f"tokens: {len(data.get('tokens') or [])} · "
+        f"fetched {data['fetched_at']}"
+    )
+    return 0
+
+
 def cmd_logout(args) -> int:
     try:
         creds = load_credentials()
@@ -436,7 +454,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("refdata", help="Manage local refdata cache")
     refdata_sub = sp.add_subparsers(dest="refdata_cmd", required=True)
     rsp = refdata_sub.add_parser("refresh", help="Pull /refdata/*.json into the cache")
-    rsp.set_defaults(func=_cmd_not_implemented("refdata refresh"))
+    rsp.set_defaults(func=cmd_refdata_refresh)
 
     # book (single)
     sp = sub.add_parser(
