@@ -170,7 +170,8 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
 
   return (
     <div style={{
-      minHeight: "100vh", background: BB.bg, color: BB.fg,
+      position: "fixed", inset: 0, zIndex: 30, overflow: "auto",
+      background: BB.bg, color: BB.fg,
       fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
     }}>
       <div style={{

@@ -7168,25 +7168,10 @@ export default function TradeBookingForm() {
     return { __html: html };
   };
 
-  if (appView === "pending") {
-    return (
-      <PendingDrafts
-        onClose={() => setAppView("booking")}
-        onOpenDraft={async (id) => {
-          // Open the booking-form modal over the inbox by switching to
-          // booking view (so ModalShell renders) AND remembering to
-          // return here on close.
-          setCameFromPending(true);
-          const ok = await loadDraftIntoForm(id);
-          if (ok) {
-            setAppView("booking");
-          } else {
-            setCameFromPending(false);
-          }
-        }}
-      />
-    );
-  }
+  // PendingDrafts is NOT an early return — it renders as a fixed-position
+  // overlay (z-30) in the main JSX below, so the booking-form's ModalShell
+  // (z-40) can open ON TOP of the inbox when a draft is edited. See the
+  // `appView === "pending"` render block near the closing JSX.
 
   if (appView === "tokens") {
     return <ApiTokens onClose={() => setAppView("booking")} />;
@@ -7501,6 +7486,24 @@ export default function TradeBookingForm() {
             <PlaceholderView
               title="Pending Bookings"
               subtitle="Bookings awaiting approval, attached documentation, or settlement confirmation. Approve, reject, or amend from here. Coming soon."
+            />
+          )}
+          {/* Pending Drafts inbox as a fixed overlay (z-30). When the
+              user opens a draft for editing, the booking-form ModalShell
+              (z-40) opens on top of this overlay — so the inbox stays
+              visible behind the modal instead of being replaced by the
+              main booking page. */}
+          {appView === "pending" && (
+            <PendingDrafts
+              onClose={() => setAppView("booking")}
+              onOpenDraft={async (id) => {
+                setCameFromPending(true);
+                const ok = await loadDraftIntoForm(id);
+                if (!ok) setCameFromPending(false);
+                // Intentionally do NOT change appView — staying on
+                // "pending" keeps the inbox overlay visible behind the
+                // booking-form modal that opens via the draftId state.
+              }}
             />
           )}
           {form.category !== "FUTURE" && (
