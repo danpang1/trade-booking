@@ -1,19 +1,22 @@
 @echo off
 REM tokka-mo Claude Code plugin installer (Windows).
-REM Run from inside the plugin directory:
-REM   cd <middle-office-tools>\plugin
-REM   install.bat
+REM
+REM Usage:
+REM   install.bat              # install from this local clone
+REM   install.bat --remote     # install from the Bitbucket remote (sparse)
 
 setlocal EnableExtensions
 
-set "PLUGIN_SRC=%~dp0"
-if "%PLUGIN_SRC:~-1%"=="\" set "PLUGIN_SRC=%PLUGIN_SRC:~0,-1%"
-set "PLUGIN_DIR=%USERPROFILE%\.claude\plugins\tokka-mo"
+set "REMOTE=0"
+if /I "%~1"=="--remote" set "REMOTE=1"
+
+REM Repo root is the parent of this plugin/ directory
+set "PLUGIN_PARENT=%~dp0.."
+for %%I in ("%PLUGIN_PARENT%") do set "REPO_ROOT=%%~fI"
 
 echo tokka-mo installer
-echo   source: %PLUGIN_SRC%
 
-REM Check Python
+REM Check Python 3.10+
 where py >NUL 2>&1
 if errorlevel 1 (
   where python >NUL 2>&1
@@ -22,22 +25,37 @@ if errorlevel 1 (
     exit /b 1
   )
 )
+echo   Python OK
 
-REM Register plugin via mklink /D (requires admin OR Developer Mode)
-if exist "%PLUGIN_DIR%" rmdir /S /Q "%PLUGIN_DIR%"
-mklink /D "%PLUGIN_DIR%" "%PLUGIN_SRC%" >NUL 2>&1
+REM Check Claude Code
+where claude >NUL 2>&1
 if errorlevel 1 (
-  echo NOTE: mklink failed (need admin or Developer Mode). Falling back to copy.
-  xcopy /E /I /Y "%PLUGIN_SRC%" "%PLUGIN_DIR%" >NUL
+  echo ERROR: 'claude' command not found. Install Claude Code from claude.com/code first.
+  exit /b 1
 )
-echo   linked plugin to %PLUGIN_DIR%
+echo   Claude Code OK
+
+REM Register the marketplace
+if "%REMOTE%"=="1" (
+  echo   - registering marketplace from Bitbucket ^(sparse^)
+  claude plugin marketplace add "ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git" --sparse plugin .claude-plugin
+) else (
+  echo   - registering marketplace from %REPO_ROOT%
+  claude plugin marketplace add "%REPO_ROOT%"
+)
+
+REM Install the plugin
+echo   - installing tokka-mo@tokka-mo-marketplace
+claude plugin install tokka-mo@tokka-mo-marketplace
 
 REM Config + cache dirs
 if not exist "%APPDATA%\tokka-mo" mkdir "%APPDATA%\tokka-mo"
 if not exist "%LOCALAPPDATA%\tokka-mo" mkdir "%LOCALAPPDATA%\tokka-mo"
 echo   created %APPDATA%\tokka-mo and %LOCALAPPDATA%\tokka-mo
 
-REM Add bin/tokka-mo.bat to user PATH if not present
 echo.
-echo NOTE: Add %PLUGIN_SRC%\bin to your user PATH for `tokka-mo` to work in a shell.
-echo Then open Claude Code and run /login.
+echo Done. Restart any running Claude Code session (/exit then claude)
+echo so it picks up the new plugin, then try:
+echo   /tokka-mo:login           # first-time auth
+echo   /tokka-mo:book ...        # book a CASHFLOW draft
+echo   /tokka-mo:drafts          # list your drafts

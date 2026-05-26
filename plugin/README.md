@@ -14,98 +14,80 @@ If any of these aren't already true, paste this section into Claude and ask "hel
 - **Python 3.10 or newer** — check with `python3 --version`. To install: macOS → `brew install python@3.11`; Windows → download from python.org; Linux → use your distro's package manager
 - **Git with Bitbucket SSH access to `tokkalabs/middle-office-tools`** — you need (a) your Bitbucket account added to the repo by a Tokka admin AND (b) an SSH key on your laptop registered in your Bitbucket profile (Bitbucket → Personal settings → SSH keys). Test with `ssh -T git@bitbucket.org` — should say "logged in as <you>".
 - **Claude Code installed** — `claude --version` should work. If not, install from `claude.com/code`.
-- **A Middle Office account in good standing** on the target environment (UAT or PROD). You can log in to `mo-tools.tokkalabs.com` with the same username + password you'll use for `tokka-mo login`.
+- **A Middle Office account in good standing** on the target environment (UAT or PROD).
 
-## Install (macOS / Linux)
+## Install (recommended — two commands)
 
-The plugin ships inside the `middle-office-tools` repo, under `plugin/`. Clone the repo (or `git pull` if you already have it), then run the installer from the plugin directory:
+The plugin installs from `middle-office-tools` itself, which doubles as a Claude Code marketplace. No `git clone` required — Claude Code does the fetch.
 
 ```bash
-# First time:
-git clone ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git ~/Projects/middle-office-tools
-cd ~/Projects/middle-office-tools/plugin
-./install.sh
-
-# Updates later:
-cd ~/Projects/middle-office-tools && git pull
-# (no re-install needed unless install.sh itself changed)
+claude plugin marketplace add ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git --sparse plugin .claude-plugin
+claude plugin install tokka-mo@tokka-mo-marketplace
 ```
 
-The installer symlinks `plugin/` into `~/.claude/plugins/tokka-mo` and the CLI into `~/.local/bin/tokka-mo`.
+That's it. The `--sparse` flag tells Claude Code to only fetch the `plugin/` and `.claude-plugin/` directories (about 50 KB) instead of the whole `middle-office-tools` repo.
 
-## Install (Windows)
+Verify it's installed:
 
-```cmd
-git clone ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git %USERPROFILE%\Projects\middle-office-tools
-cd %USERPROFILE%\Projects\middle-office-tools\plugin
-install.bat
-```
-
-## Lightweight install (plugin only — for non-engineers)
-
-If you don't need the rest of the `middle-office-tools` repo (e.g. you're a non-engineering team member who just wants the plugin), use Git's sparse-checkout to pull **only** the `plugin/` folder (~50 KB instead of the full repo):
-
-**macOS / Linux:**
 ```bash
-mkdir -p ~/.claude/plugins/tokka-mo-src
-cd ~/.claude/plugins/tokka-mo-src
-git clone --depth 1 --filter=blob:none --sparse \
-  ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git .
-git sparse-checkout set plugin
-cd plugin && ./install.sh
+claude plugin list
+# Look for: tokka-mo@tokka-mo-marketplace ✔ enabled
 ```
 
-**Windows:**
-```cmd
-mkdir "%USERPROFILE%\.claude\plugins\tokka-mo-src"
-cd /d "%USERPROFILE%\.claude\plugins\tokka-mo-src"
-git clone --depth 1 --filter=blob:none --sparse ^
-  ssh://git@bitbucket.org/tokkalabs/middle-office-tools.git .
-git sparse-checkout set plugin
-cd plugin
-install.bat
-```
+**Restart any running Claude Code session** (`/exit` then `claude`) so it picks up the new plugin.
 
-Updates work the same as the full install:
+## Install (alternative — local path, for engineers with the repo cloned)
+
+If you already have `middle-office-tools` cloned locally:
+
 ```bash
-cd ~/.claude/plugins/tokka-mo-src && git pull
+cd ~/Projects/middle-office-tools   # or wherever your clone lives
+claude plugin marketplace add .
+claude plugin install tokka-mo@tokka-mo-marketplace
 ```
 
 ## First-time login
 
+The CLI talks to the MO server using a Bearer token. First time, run:
+
 ```bash
-tokka-mo login --api-url https://mo-tools.tokkalabs.com
-# Username: <you>
-# Password: ******
-# Logged in as <you>. Token tkmo_a1b2... expires 2026-08-24T...
+# In Claude Code:
+/tokka-mo:login
 ```
 
-For UAT/staging:
+…and follow the prompt. Or from a terminal directly (advanced):
+
 ```bash
-tokka-mo login --api-url https://mo-tools-uat.tokkalabs.com
+# Find the CLI inside the installed plugin:
+~/.claude/plugins/cache/tokka-mo-marketplace/tokka-mo/bin/tokka-mo \
+  login --api-url https://mo-tools.tokkalabs.com
 ```
 
-Sanity check:
-```bash
-tokka-mo whoami
-tokka-mo refdata refresh
-```
+For UAT/staging: use `--api-url https://mo-tools-uat.tokkalabs.com` instead.
 
-## Common workflows
-
-### Single booking (in Claude Code)
+Sanity check (in Claude Code):
 
 ```
-/book 500 USDC OPEX out of CDA to TOKKA TREASURY
+/tokka-mo:login
 ```
 
-Claude will ask for missing fields, preview, require `y` confirmation, then submit. The draft shows up at `mo-tools.tokkalabs.com/pending` for your review and approval.
+It'll prompt for username and password and save a 90-day Bearer token at `~/.config/tokka-mo/credentials` (chmod 600).
 
-### Batch booking (in Claude Code)
+## Common workflows (all in Claude Code)
 
-Paste a multi-line list into Claude Code after `/book`:
+### Single booking
+
 ```
-/book
+/tokka-mo:book 500 USDC OPEX out of CDA to TOKKA TREASURY
+```
+
+Claude asks for missing fields, shows a preview, requires `y` to confirm, then submits. The draft shows up at `mo-tools.tokkalabs.com/pending` for review and approval.
+
+### Batch booking
+
+Paste a multi-line list after `/tokka-mo:book`:
+```
+/tokka-mo:book
 funding in to 8006 from Galaxy: 100k USDC
 funding in to 8006 from Galaxy: 200k USDC
 OPEX outgoing from 8006: 10k USDC to OFFICE VENDOR
@@ -114,41 +96,40 @@ OPEX outgoing from 8006: 10k USDC to OFFICE VENDOR
 ### Inspecting drafts
 
 ```
-/drafts
-```
-…or from a terminal:
-```bash
-tokka-mo drafts list
-tokka-mo drafts list --status PENDING_REVIEW
-tokka-mo drafts list --batch <batch-uuid>
+/tokka-mo:drafts
 ```
 
 ### Approving a draft
 
-The CLI doesn't approve. Open `https://mo-tools.tokkalabs.com/pending` (or `/pending` on whichever env you're using), review, and click Approve.
+The plugin doesn't approve. Open `https://mo-tools.tokkalabs.com/pending`, review, and click Approve.
 
 ## Updating the plugin
 
 ```bash
-cd ~/Projects/middle-office-tools && git pull
+claude plugin update tokka-mo@tokka-mo-marketplace
 ```
 
-(The plugin lives in `plugin/` inside this repo and is symlinked into `~/.claude/plugins/tokka-mo`, so a single `git pull` updates both the server-side scripts and the plugin.)
+Then restart Claude Code.
 
-No reinstall needed unless `plugin/install.sh` itself changed — the plugin CHANGELOG will say.
+## Uninstalling
+
+```bash
+claude plugin uninstall tokka-mo@tokka-mo-marketplace
+claude plugin marketplace remove tokka-mo-marketplace   # optional
+```
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `tokka-mo: command not found` | `~/.local/bin` (or repo `bin/`) not on PATH | `export PATH="$HOME/.local/bin:$PATH"` in your shell rc; reopen the terminal |
-| `not logged in; run: tokka-mo login` | No credentials file or it was cleared | Run `/login` or `tokka-mo login --api-url <url>` |
+| `/tokka-mo:book` etc. don't appear in /help | Plugin not loaded — Claude Code wasn't restarted after install | `/exit` then `claude` again |
+| `claude plugin marketplace add` fails with SSH error | Your SSH key isn't registered with Bitbucket | Test with `ssh -T git@bitbucket.org`; add your key in Bitbucket → Personal settings → SSH keys |
+| Bitbucket "repo not found" | Your account doesn't have access | Ping `#mo-trade-booking` to get added to `tokkalabs/middle-office-tools` |
+| `not logged in; run: tokka-mo login` | No credentials file or it was cleared | Run `/tokka-mo:login` |
 | `Token rejected — run: tokka-mo login` | Token expired or revoked | Re-login |
-| `validation failed: portfolio_id 8006 not in refdata` | Stale refdata cache | `tokka-mo refdata refresh` |
+| `validation failed: portfolio_id 8006 not in refdata` | Stale refdata cache | The skill auto-refreshes; if it persists, ping `#mo-trade-booking` |
 | `cannot reach https://mo-tools...` | VPN / DNS / server down | Confirm VPN; `curl <url>/api/health` |
-| `Token mint failed: HTTP 401` after entering credentials | Wrong password or account suspended | Confirm in the web app at the same URL |
-| `git clone` hangs | SSH key not loaded into Bitbucket profile | Check `ssh-add -L`; add to Bitbucket SSH keys |
-| Windows `mklink` fails | Need admin OR Developer Mode | Right-click cmd → Run as Admin, OR enable Developer Mode in Settings → Privacy → For Developers |
+| Token mint failed: HTTP 401 after entering credentials | Wrong password or account suspended | Confirm in the web app at the same URL |
 
 ## Filing issues
 
