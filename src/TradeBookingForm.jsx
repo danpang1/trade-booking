@@ -23,7 +23,7 @@ import { api } from "./auth/api.js";
 import UserAdmin from "./admin/UserAdmin.jsx";
 import ApiTokens from "./settings/ApiTokens.jsx";
 import PendingDrafts from "./pending/PendingDrafts.jsx";
-import { listDrafts } from "./auth/api.js";
+import { listDrafts, getDraft, patchDraft, approveDraft } from "./auth/api.js";
 
 // Live token list — initialized from the bundled snapshot, replaced after
 // fetch('/tokens.json') resolves (refreshed hourly by server.js). AssetPicker
@@ -5510,6 +5510,55 @@ export default function TradeBookingForm() {
     const h = setInterval(tick, 30000);
     return () => { cancelled = true; clearInterval(h); };
   }, []);
+
+  // Draft mode: read ?draft=<id> from URL on mount, fetch the draft,
+  // pre-fill the form. Only handles CASHFLOW for Plan 1a — other
+  // categories surface a clear inline error.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("draft");
+    if (!raw) return;
+    const id = parseInt(raw, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      setDraftLoadError(`Invalid draft id in URL: ${raw}`);
+      return;
+    }
+    (async () => {
+      const { status, body } = await getDraft(id);
+      if (status !== 200 || !body?.ok) {
+        setDraftLoadError(body?.error || `Failed to load draft #${id} (HTTP ${status})`);
+        return;
+      }
+      const d = body.draft;
+      if (d.category !== "CASHFLOW") {
+        setDraftLoadError(`Draft #${id} is ${d.category}; Phase 1a supports CASHFLOW only`);
+        return;
+      }
+      // Populate the form from draft payload. We map cashflow payload
+      // keys onto the form's `form` state shape; unknown keys are ignored.
+      const p = d.payload || {};
+      setForm((cur) => ({
+        ...cur,
+        category: "CASHFLOW",
+        cf_type: p.cashflow_type ?? cur.cf_type,
+        cf_direction: p.direction ?? cur.cf_direction,
+        entity_row: p.entity ?? cur.entity_row,
+        portfolio: p.portfolio_id != null ? String(p.portfolio_id) : cur.portfolio,
+        counterparty: p.counterparty ?? cur.counterparty,
+        cf_asset: p.asset ?? cur.cf_asset,
+        cf_amount: p.amount != null ? String(Math.abs(parseFloat(p.amount) || 0)) : cur.cf_amount,
+        network: p.network ?? cur.network,
+        trade_date: p.trade_date ?? cur.trade_date,
+        value_date: p.value_date ?? cur.value_date,
+        notes: p.comment ?? cur.notes,
+      }));
+      setDraftId(id);
+      // Make sure we're on the booking view, not pending/tokens/users.
+      setAppView("booking");
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const fileInputRef = useRef(null);
   const clock = useClock();
 
@@ -6483,6 +6532,10 @@ export default function TradeBookingForm() {
   const [conflictModal, setConflictModal] = useState(null);
   // null | "MCF-42"  — when set, form is in amend mode (PUT vs POST)
   const [amendingDealRef, setAmendingDealRef] = useState(null);
+  // null | <int>  — when set, form is in draft mode (Plan 1a Phase 1a).
+  // Submit branches between "Save Draft" (PATCH) and "Approve & Book" (POST approve).
+  const [draftId, setDraftId] = useState(null);
+  const [draftLoadError, setDraftLoadError] = useState("");
   // Snapshot of form + categoryCache taken right before an Amend opens.
   // The Amend modal overlays the user's in-progress Create Deal draft;
   // on close we restore the snapshot so the draft survives. Cleared
@@ -6778,6 +6831,54 @@ export default function TradeBookingForm() {
       return;
     }
     loadRowIntoForm(result.rows[0]);
+  }
+
+  async function submitDraft(action) {
+    // action: "patch" | "approve"
+    if (!draftId) return;
+    // Re-derive a CASHFLOW payload shape from the current form state.
+    // Mirrors the existing /api/cashflow/insert client-side serializer
+    // (search for `body.cashflow_type = form.cf_type` in this file if
+    // the shape ever drifts — keep them in sync).
+    const payload = {
+      cashflow_type: form.cf_type,
+      direction: form.cf_direction,
+      entity: form.entity_row || null,
+      portfolio_id: form.portfolio,
+      portfolio_name: form.portfolio_name_row || form.portfolio,
+      counterparty: form.counterparty,
+      asset: form.cf_asset,
+      amount: form.cf_amount,
+      network: form.network || null,
+      trade_date: form.trade_date,
+      value_date: form.value_date,
+      comment: form.notes || null,
+      user_id: user?.username || "unknown",
+      status: "PENDING",
+    };
+    if (action === "patch") {
+      const { status, body } = await patchDraft(draftId, payload);
+      if (status !== 200 || !body?.ok) {
+        setFeedback({ ok: false, message: body?.error || `Save Draft failed (${status})` });
+        return;
+      }
+      setFeedback({ ok: true, message: `Draft #${draftId} saved` });
+      return;
+    }
+    if (action === "approve") {
+      if (!confirm("Approve and book this draft? Inserts into trades_cashflow.")) return;
+      const { status, body } = await approveDraft(draftId);
+      if (status !== 200 || !body?.ok) {
+        setFeedback({ ok: false, message: body?.error || `Approve failed (${status})` });
+        return;
+      }
+      setFeedback({ ok: true, message: `Booked ${body.deal_ref} from draft #${draftId}` });
+      // Clear draft mode and URL so the next booking is a fresh "new".
+      setDraftId(null);
+      window.history.replaceState(null, "", "/");
+      setForm(initial());
+      setAppView("pending");
+    }
   }
 
   const handleSubmit = async () => {
@@ -7405,6 +7506,24 @@ export default function TradeBookingForm() {
             border: `1px solid ${BB.border}`,
           }}
         >
+          {draftLoadError && (
+            <div style={{
+              padding: "8px 12px", background: "#FF4D4F22",
+              color: "#FF4D4F", border: "1px solid #FF4D4F",
+              fontSize: 12, marginBottom: 12,
+            }}>
+              {draftLoadError}
+            </div>
+          )}
+          {draftId && !draftLoadError && (
+            <div style={{
+              padding: "8px 12px", background: "#FA8C1622",
+              color: "#FA8C16", border: "1px solid #FA8C16",
+              fontSize: 12, marginBottom: 12,
+            }}>
+              Editing draft #{draftId}. Save Draft to keep editing later, or Approve & Book to insert into trades_cashflow.
+            </div>
+          )}
           {/* ═════ 1. SUMMARY (category-specific title) ═════ */}
           <Section
             title={
@@ -8610,6 +8729,38 @@ export default function TradeBookingForm() {
           {/* ════ COMMAND BAR ════ */}
               <SubmitFeedback feedback={feedback} onDismiss={() => setFeedback(null)} />
           <div className="flex gap-2 pt-1">
+            {draftId && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => submitDraft("patch")}
+                  className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
+                  style={{
+                    background: BB.surface2,
+                    color: BB.dim,
+                    border: `1px solid ${BB.border}`,
+                    letterSpacing: "0.28em",
+                    cursor: "pointer",
+                  }}
+                >
+                  Save Draft #{draftId}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitDraft("approve")}
+                  className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
+                  style={{
+                    background: BB.orange,
+                    color: "#ffffff",
+                    border: `1px solid ${BB.orange}`,
+                    letterSpacing: "0.28em",
+                    cursor: "pointer",
+                  }}
+                >
+                  Approve & Book #{draftId}
+                </button>
+              </>
+            )}
             <button
               onClick={handleSubmit}
               disabled={!canSubmit || isSubmitting}
