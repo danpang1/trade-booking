@@ -575,6 +575,78 @@ def cmd_book(args) -> int:
     return 0
 
 
+def cmd_book_batch(args) -> int:
+    body = _read_stdin_json()
+    if not isinstance(body, dict) or not isinstance(body.get("trades"), list):
+        print("tokka-mo: stdin must be {\"trades\": [...]}", file=sys.stderr)
+        return 3
+    trades = body["trades"]
+    if not trades:
+        print("tokka-mo: trades list is empty", file=sys.stderr)
+        return 3
+    if len(trades) > 50:
+        print(f"tokka-mo: batch too large ({len(trades)} > 50)", file=sys.stderr)
+        return 3
+
+    # Load refdata once
+    try:
+        refdata = load_refdata()
+    except CredsMissing:
+        print("not logged in; run: tokka-mo login", file=sys.stderr)
+        return 4
+
+    # Local validation
+    prepared = []
+    seen_crids = set()
+    for i, t in enumerate(trades):
+        if not isinstance(t, dict):
+            print(f"trade {i}: not an object", file=sys.stderr)
+            return 3
+        payload = t.get("payload") or t  # allow bare payloads, infer category
+        crid = t.get("client_request_id") or str(_uuid.uuid4())
+        try:
+            _uuid.UUID(crid)
+        except (ValueError, AttributeError):
+            print(f"trade {i}: invalid client_request_id {crid!r}", file=sys.stderr)
+            return 3
+        if crid in seen_crids:
+            print(f"trade {i}: duplicate client_request_id in batch: {crid}", file=sys.stderr)
+            return 3
+        seen_crids.add(crid)
+        try:
+            validate_cashflow_payload(payload, refdata)
+        except ValidationError as e:
+            print(f"trade {i} validation failed: {e}", file=sys.stderr)
+            return 3
+        prepared.append({
+            "category": "CASHFLOW",
+            "payload": payload,
+            "client_request_id": crid,
+        })
+
+    # POST batch
+    status, body, _ = _authed_request(
+        "POST", "/api/bookings/draft/batch",
+        body={"trades": prepared},
+    )
+    if status == 401:
+        print("Token rejected — run: tokka-mo login", file=sys.stderr)
+        return 4
+    if status not in (200, 201) or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"server rejected batch: {msg}", file=sys.stderr)
+        return 3
+    batch_id = body.get("batch_id")
+    rows = body.get("rows") or []
+    ids = [str(r.get("id")) for r in rows]
+    creds = load_credentials()
+    print(
+        f"Batch {batch_id} · {len(rows)} drafts created "
+        f"(#{', #'.join(ids)}). Review at {creds['api_url']}/pending"
+    )
+    return 0
+
+
 def cmd_refdata_refresh(args) -> int:
     try:
         load_credentials()
@@ -674,7 +746,7 @@ def build_parser() -> argparse.ArgumentParser:
         "book-batch",
         help="POST N CASHFLOW drafts atomically. JSON on stdin: {trades: [...]}",
     )
-    sp.set_defaults(func=_cmd_not_implemented("book-batch"))
+    sp.set_defaults(func=cmd_book_batch)
 
     # drafts list
     sp = sub.add_parser("drafts", help="Inspect your drafts")
