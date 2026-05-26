@@ -2,9 +2,21 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Check, X, ExternalLink, RefreshCw } from "lucide-react";
 import { listDrafts, approveDraft, rejectDraft } from "../auth/api.js";
 
+// Altas editorial palette — mirrors TradeBookingForm.jsx BB tokens
+// (bone canvas / chalk panels / hair borders / ink text / tokka blue accent).
 const BB = {
-  bg: "#000", panel: "#0a0a0a", border: "#1f1f1f",
-  fg: "#e5e5e5", dim: "#7d7d7d", accent: "#FA8C16", red: "#FF4D4F", green: "#52C41A",
+  bg: "#ffffff",           // white canvas
+  panel: "#f8f6f1",        // chalk (table body, group cards)
+  panelHead: "#efece4",    // muted chalk (table header rows, group bar)
+  border: "#d9d4c7",       // hair (primary divider)
+  borderSoft: "#efece4",   // sub-divider (between rows)
+  fg: "#0d0d0d",           // ink (primary text)
+  dim: "#6a665c",          // slate (labels / muted text)
+  faint: "#9a9488",        // helpers
+  accent: "#1f63ea",       // tokka blue (primary CTA)
+  accentDeep: "#1a4fbb",   // tokka blue deep (hover)
+  red: "#b91c1c",          // red-700 (reject / errors)
+  green: "#047857",        // emerald-700 (approve / booked refs)
 };
 
 function fmtDate(iso) {
@@ -26,12 +38,12 @@ function summarize(payload) {
   ].filter(Boolean).join(" · ");
 }
 
-const th = { padding: "8px 12px", textAlign: "left", color: BB.dim, fontSize: 10, letterSpacing: 1.5, borderBottom: `1px solid ${BB.border}` };
-const td = { padding: "8px 12px", borderBottom: `1px solid ${BB.border}`, fontSize: 12 };
-const primaryBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: BB.accent, color: BB.bg, border: "none", padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer" };
-const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, background: "transparent", color: BB.fg, border: `1px solid ${BB.border}`, padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer" };
-const iconOK     = { background: "transparent", color: BB.green, border: `1px solid ${BB.green}`, padding: 4, cursor: "pointer" };
-const iconNO     = { background: "transparent", color: BB.red, border: `1px solid ${BB.red}`, padding: 4, cursor: "pointer" };
+const th = { padding: "8px 12px", textAlign: "left", color: BB.dim, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", background: BB.panelHead, borderBottom: `1px solid ${BB.border}`, fontWeight: 500 };
+const td = { padding: "8px 12px", borderBottom: `1px solid ${BB.borderSoft}`, fontSize: 12, color: BB.fg };
+const primaryBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: BB.accent, color: "#ffffff", border: `1px solid ${BB.accent}`, padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer", borderRadius: 0 };
+const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, background: BB.bg, color: BB.fg, border: `1px solid ${BB.border}`, padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer", borderRadius: 0 };
+const iconOK     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: BB.bg, color: BB.green, border: `1px solid ${BB.green}`, padding: 4, cursor: "pointer", borderRadius: 0 };
+const iconNO     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: BB.bg, color: BB.red, border: `1px solid ${BB.red}`, padding: 4, cursor: "pointer", borderRadius: 0 };
 
 export default function PendingDrafts({ onClose, onOpenDraft }) {
   const [rows, setRows]       = useState([]);
@@ -203,7 +215,8 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 color: BB.dim, fontSize: 11, letterSpacing: 1.5, padding: "8px 12px",
-                background: BB.panel, borderBottom: `1px solid ${BB.border}`,
+                background: BB.panelHead, borderBottom: `1px solid ${BB.border}`,
+                border: `1px solid ${BB.border}`, borderBottomWidth: 0,
               }}>
                 <span>
                   {g.isSingle
@@ -216,7 +229,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
                   </button>
                 )}
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, border: `1px solid ${BB.border}`, borderTop: 0 }}>
                 <thead>
                   <tr>
                     <th style={th}>ID</th>
@@ -238,7 +251,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
             {showApproved ? "HIDE" : "SHOW"} APPROVED ({approved.length})
           </button>
           {showApproved && approved.length > 0 && (
-            <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12, border: `1px solid ${BB.border}` }}>
               <thead><tr>
                 <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>DEAL REF</th><th style={th}>APPROVED BY</th><th style={th}>APPROVED AT</th>
               </tr></thead>
@@ -263,7 +276,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
             {showRejected ? "HIDE" : "SHOW"} REJECTED ({rejected.length})
           </button>
           {showRejected && rejected.length > 0 && (
-            <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12, border: `1px solid ${BB.border}` }}>
               <thead><tr>
                 <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>REASON</th><th style={th}>REJECTED BY</th><th style={th}>REJECTED AT</th>
               </tr></thead>
