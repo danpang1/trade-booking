@@ -57,7 +57,7 @@ def test_validate_payload_for_category_cashflow_passes_through():
     A complete CASHFLOW payload should not raise.
     """
     payload = {
-        "cashflow_type": "FUNDING IN",
+        "cashflow_type": "OTHER INCOME",
         "direction": "INCOMING",
         "entity": "TK006",
         "portfolio_id": 8006,
@@ -72,6 +72,30 @@ def test_validate_payload_for_category_cashflow_passes_through():
         "status": "PENDING",
     }
     draft_db.validate_payload_for_category("CASHFLOW", payload)  # no raise
+
+
+def test_validate_payload_for_category_cashflow_unknown_type_raises():
+    """The server enforces the same 11-item cashflow_type enum that the
+    form's dropdown uses, so a non-standard type like 'TRADING FEES' gets
+    a 400 instead of silently passing through to a draft with a blank
+    dropdown for the human reviewer."""
+    payload = {
+        "cashflow_type": "TRADING FEES",  # not in the 11-item list
+        "direction": "OUTGOING",
+        "entity": "TOKKA LABS PTE LTD",
+        "portfolio_id": 8888,
+        "portfolio_name": "TOKKA LABS - TREASURY",
+        "counterparty": "BEBOP LTD",
+        "account": "TK818@BINANCE",
+        "asset": "USDC",
+        "amount": "-38.8",
+        "trade_date": "2026-05-26T12:00:00+00:00",
+        "value_date": "2026-05-26T12:00:00+00:00",
+        "user_id": "claude:danny.pang",
+        "status": "PENDING",
+    }
+    with pytest.raises(draft_db.ValidationError, match="cashflow_type"):
+        draft_db.validate_payload_for_category("CASHFLOW", payload)
 
 
 def test_validate_payload_for_category_cashflow_blank_account_raises():

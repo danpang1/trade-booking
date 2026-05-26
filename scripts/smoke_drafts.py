@@ -42,12 +42,13 @@ def _req(method, path, body=None, jar=None):
 
 def _cashflow_payload(label):
     return {
-        "cashflow_type": "FUNDING IN",
+        "cashflow_type": "OTHER INCOME",
         "direction": "INCOMING",
         "entity": "TK006",
         "portfolio_id": 8006,
         "portfolio_name": "CDA",
         "counterparty": "Galaxy",
+        "account": "SMOKE_TEST_WALLET",
         "asset": "USDC",
         "amount": "1.00",
         "trade_date": "2026-05-25T12:00:00+00:00",

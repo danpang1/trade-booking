@@ -100,6 +100,17 @@ REQUIRED_FIELDS_AMEND = REQUIRED_FIELDS_INSERT + ("deal_ref",)
 
 VALID_DIRECTIONS = {"INCOMING", "OUTGOING"}
 VALID_STATUSES = {"PENDING", "CONFIRMED", "PROCESSED", "SETTLED", "CANCELLED"}
+# Mirrors the CASHFLOW_TYPES placeholder list in src/TradeBookingForm.jsx
+# (line ~219). Backend will swap to MySQL select_category=CASHFLOW TYPE
+# (28 values) eventually; until then this set is the single source of
+# truth so Claude / future plugins / direct form bookings all see the
+# same 400 when a non-standard type leaks through.
+VALID_CASHFLOW_TYPES = {
+    "INTER PTF FUNDING", "RETAINER FEES", "OPEX",
+    "OTHER INCOME", "OTHER EXPENSE", "TRANSFER FEES",
+    "INTEREST EXPENSE", "INTEREST INCOME", "WITHHOLDING TAX",
+    "LOAN", "LOAN REPAYMENT",
+}
 
 
 class ValidationError(ValueError):
@@ -119,6 +130,11 @@ def _validate_one(p: dict, mode: str) -> None:
     if p["status"] not in VALID_STATUSES:
         raise ValidationError(
             f"status must be one of {sorted(VALID_STATUSES)}, got {p['status']!r}"
+        )
+    if p["cashflow_type"] not in VALID_CASHFLOW_TYPES:
+        raise ValidationError(
+            f"cashflow_type must be one of {sorted(VALID_CASHFLOW_TYPES)}, "
+            f"got {p['cashflow_type']!r}"
         )
     try:
         amount_dec = Decimal(str(p["amount"]))
