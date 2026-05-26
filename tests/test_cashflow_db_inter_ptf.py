@@ -18,6 +18,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import cashflow_db  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _stub_refdata(monkeypatch):
+    """Pin refdata so tests don't depend on public/refdata/*.json being present
+    or readable inside the Docker test container. The validator silently skips
+    enum checks when refdata loads return empty sets; that masked real
+    validation gaps in CI."""
+    monkeypatch.setattr(cashflow_db, "_load_counterparties_set",
+                        lambda: {"0XRICK LIMITED", "BEBOP LTD"})
+    monkeypatch.setattr(cashflow_db, "_load_portfolio_ids_set",
+                        lambda: {8006, 8041, 8888})
+    monkeypatch.setattr(cashflow_db, "_load_accounts_set",
+                        lambda: {"TK818@BINANCE", "WALLET_CDA_EVM_04"})
+    monkeypatch.setattr(cashflow_db, "_load_assets_set",
+                        lambda: {"USDC", "USDT", "ETH", "BTC"})
+
+
 def _ipf_payload(counterparty: str = "8006") -> dict:
     """Inter-portfolio funding leg, sender side (8888 → 8006).
 

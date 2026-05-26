@@ -108,12 +108,12 @@ def _valid_insert_payload() -> dict:
     return {
         "deal_ref": "MCF-PLACEHOLDER",          # ignored on insert
         "external_trade_id": None,
-        "cashflow_type": "FUNDING IN",
+        "cashflow_type": "OTHER INCOME",
         "direction": "INCOMING",
         "entity": "TK006",
         "portfolio_id": 8006,
         "portfolio_name": "CDA",
-        "counterparty": "Galaxy",
+        "counterparty": "0XRICK LIMITED",
         "account": "WALLET_CDA_EVM_04",
         "account_type": "WALLET",
         "asset": "USDC",
@@ -122,7 +122,7 @@ def _valid_insert_payload() -> dict:
         "fee_amount": "0",
         "trade_date": "2026-05-15T12:00:00Z",
         "value_date": "2026-05-15T12:00:00Z",
-        "network": "BSC",
+        "network": "BINANCE SMART CHAIN",
         "txid_reference": None,
         "user_id": "adam",
         "status": "CONFIRMED",
@@ -214,7 +214,7 @@ def test_payload_to_columns_orders_match_ddl():
     # Values must align positionally with cols.
     assert vals[cols.index("deal_ref")] == "MCF-42"
     assert vals[cols.index("txn_type")] == "CASHFLOW"
-    assert vals[cols.index("cashflow_type")] == "FUNDING IN"
+    assert vals[cols.index("cashflow_type")] == "OTHER INCOME"
     assert vals[cols.index("direction")] == "INCOMING"
     assert vals[cols.index("portfolio_id")] == "8006"  # stored as TEXT
     assert vals[cols.index("amount")] == "1000000"
