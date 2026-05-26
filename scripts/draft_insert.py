@@ -28,10 +28,12 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
         raise draft_db.ValidationError("missing _acting_user (server bug)")
 
     # Stamp user_id inside the payload so the eventual cashflow_insert
-    # writes the right user. The server already stamps _acting_user at
-    # the outer level; we mirror it into payload.user_id here.
+    # writes the right user. Prefix with "claude:" so any downstream
+    # row (live trade after approve, draft displayed in the form) is
+    # attributed to the Claude Code booking path — drafts only exist
+    # because Claude Code (or the plugin) submitted them.
     if isinstance(payload, dict):
-        payload = {**payload, "user_id": acting}
+        payload = {**payload, "user_id": f"claude:{acting}"}
     # Shape validation against the live cashflow_db rules — same code
     # path the form's POST /api/cashflow/insert uses.
     draft_db.validate_payload_for_category(category, payload)

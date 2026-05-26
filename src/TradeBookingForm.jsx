@@ -5547,6 +5547,11 @@ export default function TradeBookingForm() {
       trade_date: p.trade_date ?? cur.trade_date,
       value_date: p.value_date ?? cur.value_date,
       notes: p.comment ?? cur.notes,
+      // Surface the draft's booker (which now includes the "claude:"
+      // prefix stamped by draft_insert.py) and its trade settlement
+      // status into the form so the UI shows what'll be approved.
+      created_by: p.user_id ?? cur.created_by,
+      status: p.status ?? cur.status,
     }));
     setDraftId(id);
     return true;
@@ -6868,8 +6873,12 @@ export default function TradeBookingForm() {
       trade_date: form.trade_date,
       value_date: form.value_date,
       comment: form.notes || null,
-      user_id: user?.username || "unknown",
-      status: "PENDING",
+      // Use form.created_by (loaded from draft, prefixed with "claude:")
+      // and form.status (loaded from draft, defaulted to PENDING when
+      // the draft was created) so the patched/approved row preserves
+      // the draft's booker and settlement status.
+      user_id: form.created_by || user?.username || "unknown",
+      status: form.status || "PENDING",
     };
     if (action === "patch") {
       const { status, body } = await patchDraft(draftId, payload);

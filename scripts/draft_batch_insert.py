@@ -50,9 +50,10 @@ def _insert_batch(body: dict) -> dict:
             )
         seen_crids.add(crid)
         payload = t.get("payload")
-        # Stamp user_id, then shape-validate
+        # Stamp user_id with "claude:" prefix so the row's booker is
+        # attributed to the Claude Code path (see draft_insert.py).
         if isinstance(payload, dict):
-            payload = {**payload, "user_id": acting}
+            payload = {**payload, "user_id": f"claude:{acting}"}
         draft_db.validate_payload_for_category(cat, payload)
         prepared.append((cat, payload, crid))
 

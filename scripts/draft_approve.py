@@ -59,18 +59,12 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         f"approve not implemented for category {category}"
                     )
 
-                # Tag the booker as "claude:<username>" so the live trade
-                # row attributes the booking back to the Claude Code path
-                # (drafts always originate from there in Phase 1a). The
-                # human approver is preserved separately on bookings_draft
-                # via approved_by — see PendingDrafts APPROVED table.
-                # Defensive: only prefix once even though approve is
-                # 409-protected against double-approval.
-                existing_user = payload.get("user_id") or ""
-                if not existing_user.startswith("claude:"):
-                    payload = {**payload, "user_id": f"claude:{existing_user or acting}"}
-
                 # IN-PROCESS insert into trades_cashflow on the SAME cursor.
+                # The booker prefix ("claude:<username>") was stamped onto
+                # payload.user_id at draft creation (draft_insert.py /
+                # draft_batch_insert.py), so this path passes it through
+                # unchanged. The human approver is preserved separately on
+                # bookings_draft.approved_by.
                 # If this raises, the enclosing `with conn:` block rolls back
                 # both the UPDATE above AND any partial INSERT.
                 try:
