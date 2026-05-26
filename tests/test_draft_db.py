@@ -89,6 +89,7 @@ def test_validate_payload_for_category_cashflow_unknown_counterparty_raises():
         "portfolio_name": "TOKKA LABS - TREASURY",
         "counterparty": "CONTRA",  # not in 174-item refdata
         "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
         "asset": "USDC",
         "amount": "-1",
         "trade_date": "2026-05-26T12:00:00+00:00",
@@ -111,6 +112,7 @@ def test_validate_payload_for_category_cashflow_unknown_network_raises():
         "portfolio_name": "TOKKA LABS - TREASURY",
         "counterparty": "BEBOP LTD",
         "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
         "asset": "USDC",
         "amount": "-1",
         "network": "Ethereum",  # wrong case, real value is "ETHEREUM"
@@ -136,6 +138,7 @@ def test_validate_payload_for_category_cashflow_unknown_type_raises():
         "portfolio_name": "TOKKA LABS - TREASURY",
         "counterparty": "BEBOP LTD",
         "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
         "asset": "USDC",
         "amount": "-38.8",
         "trade_date": "2026-05-26T12:00:00+00:00",
@@ -181,6 +184,7 @@ def test_validate_payload_for_category_cashflow_zero_amount_raises():
         "portfolio_name": "TOKKA LABS - TREASURY",
         "counterparty": "BEBOP LTD",
         "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
         "asset": "USDC",
         "amount": "0",
         "trade_date": "2026-05-26T12:00:00+00:00",

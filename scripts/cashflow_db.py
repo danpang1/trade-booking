@@ -94,8 +94,8 @@ def connect():
 
 REQUIRED_FIELDS_INSERT = (
     "cashflow_type", "direction", "entity", "portfolio_id",
-    "portfolio_name", "counterparty", "account", "asset", "amount",
-    "trade_date", "value_date", "user_id", "status",
+    "portfolio_name", "counterparty", "account", "account_type",
+    "asset", "amount", "trade_date", "value_date", "user_id", "status",
 )
 REQUIRED_FIELDS_AMEND = REQUIRED_FIELDS_INSERT + ("deal_ref",)
 
