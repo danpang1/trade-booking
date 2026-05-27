@@ -2,21 +2,21 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Check, X, ExternalLink, RefreshCw } from "lucide-react";
 import { listDrafts, approveDraft, rejectDraft } from "../auth/api.js";
 
-// Token-backed palette — pulls every colour from src/tokens.css so the
-// pending inbox shares the same paper/ink/status surface as the main app.
+// Token-backed palette — every colour resolves from src/tokens.css so the
+// pending inbox shares the same paper / ink / status surface as the rest
+// of the app.
 const BB = {
-  bg:         "var(--paper)",            // primary canvas
-  panel:      "var(--paper-2)",          // table body, group cards
-  panelHead:  "var(--paper-3)",          // header rows, group bar
-  border:     "var(--rule-2)",           // primary divider
-  borderSoft: "var(--rule)",             // sub-divider (between rows)
-  fg:         "var(--ink)",              // primary text
-  dim:        "var(--ink-3)",            // labels / muted text
-  faint:      "var(--ink-4)",            // helpers / disabled
-  accent:     "var(--signal-link)",      // primary CTA
-  accentDeep: "var(--signal-link)",      // hover (no separate deeper tone in design)
-  red:        "var(--signal-sell)",      // reject / errors
-  green:      "var(--signal-buy)",       // approve / booked refs
+  bg:         "var(--paper)",
+  panel:      "var(--paper-2)",
+  panelHead:  "var(--paper-3)",
+  border:     "var(--rule-2)",
+  borderSoft: "var(--rule)",
+  fg:         "var(--ink)",
+  dim:        "var(--ink-3)",
+  faint:      "var(--ink-4)",
+  accent:     "var(--signal-link)",
+  red:        "var(--signal-sell)",
+  green:      "var(--signal-buy)",
 };
 
 function fmtDate(iso) {
@@ -24,13 +24,26 @@ function fmtDate(iso) {
   return iso.slice(0, 19).replace("T", " ");
 }
 
+// Coarse "Nm ago" / "Hh Mm ago" for the design's "submitted 00:04 ago".
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const ms = Date.now() - t;
+  if (ms < 0) return "just now";
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "<1m";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ${mins % 60}m`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d`;
+}
+
 function summarize(payload) {
-  // Render a single cashflow row as one compact line.
-  // Defensive about missing fields: drafts can be patched into any shape.
+  // One-line cashflow summary used in the card body and the
+  // "Recently decided" compact grid. Defensive about missing fields.
   if (!payload || typeof payload !== "object") return "(empty)";
-  // For INTER PTF FUNDING the `counterparty` field holds the OTHER
-  // portfolio's number (the picker swaps in TradeBookingForm.jsx). Label
-  // it `ptf <n>` so readers don't mistake it for this row's portfolio_id.
   const isIpf = payload.cashflow_type === "INTER PTF FUNDING";
   const cptyLabel = isIpf && payload.counterparty
     ? `ptf ${payload.counterparty}`
@@ -46,26 +59,79 @@ function summarize(payload) {
   ].filter(Boolean).join(" · ");
 }
 
-// Table cells — 28px dense rows per STYLE_GUIDE §5; mono 10px uppercase
-// 0.06em-tracked column heads on paper-3 background.
-const th = { padding: "6px 12px", textAlign: "left", color: "var(--ink-3)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", fontWeight: 500 };
-const td = { padding: "6px 12px", borderBottom: "1px solid var(--rule)", fontSize: 12, color: "var(--ink)" };
-// Buttons — STYLE_GUIDE §6.3: mono 11px, 3px radius, hairline border.
-// Primary uses panel bg + panel-ink text; danger keeps signal-sell border/text.
+// Button presets — STYLE_GUIDE §6.3: mono 11px, 3px radius, hairline border.
 const primaryBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: "var(--panel)", color: "var(--panel-ink)", border: "1px solid var(--panel)", padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer", borderRadius: 3 };
 const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--rule-2)", padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer", borderRadius: 3 };
-const iconOK     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--signal-buy-bg)", color: "var(--signal-buy)", border: "1px solid var(--signal-buy)", padding: 4, cursor: "pointer", borderRadius: 3 };
-const iconNO     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--signal-sell-bg)", color: "var(--signal-sell)", border: "1px solid var(--signal-sell)", padding: 4, cursor: "pointer", borderRadius: 3 };
+const dangerBtn  = { display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper)", color: "var(--signal-sell)", border: "1px solid var(--signal-sell)", padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer", borderRadius: 3 };
+
+// "Drafts created by makers · awaiting approval before settlement"-style
+// label used above each section. Mono 10px uppercase ink-3.
+const sectionLabel = {
+  display: "block", fontFamily: "var(--font-mono)",
+  fontSize: 10, color: "var(--ink-3)",
+  textTransform: "uppercase", letterSpacing: "0.06em",
+  fontWeight: 500, marginBottom: 8,
+};
+
+// Status-pill / signal-pill: mono 10 uppercase 600 weight,
+// foreground colour + matching bg + matching border. Used for cashflow
+// type, direction, decision badges.
+function Pill({ tone, children }) {
+  const palettes = {
+    pending:   { bg: "var(--status-pending-bg)",   fg: "var(--status-pending)"   },
+    confirmed: { bg: "var(--status-confirmed-bg)", fg: "var(--status-confirmed)" },
+    processed: { bg: "var(--status-processed-bg)", fg: "var(--status-processed)" },
+    settled:   { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
+    cancelled: { bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)" },
+    buy:       { bg: "var(--signal-buy-bg)",       fg: "var(--signal-buy)"       },
+    sell:      { bg: "var(--signal-sell-bg)",      fg: "var(--signal-sell)"      },
+    warn:      { bg: "var(--signal-warn-bg)",      fg: "var(--signal-warn)"      },
+    muted:     { bg: "var(--paper-2)",             fg: "var(--ink-3)"            },
+  };
+  const p = palettes[tone] || palettes.muted;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      padding: "2px 6px", borderRadius: 2, lineHeight: 1.2,
+      background: p.bg, color: p.fg, border: `1px solid ${p.fg}`,
+      fontFamily: "var(--font-mono)",
+      fontSize: 10, fontWeight: 600,
+      letterSpacing: "0.06em", textTransform: "uppercase",
+    }}>{children}</span>
+  );
+}
+
+// Inline kbd chip (matches STYLE_GUIDE §6.5).
+function Kbd({ children, on = false }) {
+  return (
+    <span style={{
+      fontFamily: "var(--font-mono)", fontSize: 10,
+      padding: "1px 5px", borderRadius: 3,
+      border: `1px solid ${on ? "rgba(255,255,255,0.25)" : "var(--rule-2)"}`,
+      borderBottomWidth: 2,
+      background: on ? "rgba(255,255,255,0.15)" : "var(--paper)",
+      color: on ? "var(--panel-ink)" : "var(--ink-2)",
+    }}>{children}</span>
+  );
+}
+
+// Pick the cashflow-type pill tone — for "PAYMENT-ish" outflows we want
+// the design's "sell" tone (red); inflows → "buy" (green). Anything
+// else stays muted.
+function directionTone(direction) {
+  if (direction === "OUTGOING" || direction === "SHORT" || direction === "PAID") return "sell";
+  if (direction === "INCOMING" || direction === "LONG" || direction === "RECEIVED") return "buy";
+  return "muted";
+}
 
 export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [rowError, setRowError] = useState({});  // {id: "msg"}
-  const [showApproved, setShowApproved] = useState(false);
-  const [showRejected, setShowRejected] = useState(false);
   const [selected, setSelected] = useState(() => new Set());  // pending draft ids
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState("PENDING"); // PENDING | APPROVED | REJECTED
 
   async function load() {
     setLoading(true);
@@ -146,6 +212,22 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
 
   useEffect(() => { load(); }, []);
 
+  // A/R keyboard shortcuts when on the PENDING tab with at least one card
+  // selected — matches STYLE_GUIDE §Interactions.
+  useEffect(() => {
+    if (activeTab !== "PENDING") return;
+    const onKey = (e) => {
+      if (selected.size === 0) return;
+      // Ignore when typing in an input/textarea.
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (e.key === "a" || e.key === "A") { e.preventDefault(); onBulkApprove(); }
+      else if (e.key === "r" || e.key === "R") { e.preventDefault(); onBulkReject(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [activeTab, selected]);
+
   const { pending, approved, rejected } = useMemo(() => {
     const p = [], a = [], r = [];
     for (const d of rows) {
@@ -155,6 +237,22 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
     }
     return { pending: p, approved: a, rejected: r };
   }, [rows]);
+
+  // Recently-decided feed on the PENDING tab — merges approved + rejected
+  // and shows the most recent 10 so makers can see the queue's recent
+  // throughput without leaving the page.
+  const recentlyDecided = useMemo(() => {
+    const merged = [
+      ...approved.map((d) => ({ ...d, _decision: "approved" })),
+      ...rejected.map((d) => ({ ...d, _decision: "rejected" })),
+    ];
+    merged.sort((a, b) => {
+      const ta = (a.approved_at || a.rejected_at || a.created_at || "");
+      const tb = (b.approved_at || b.rejected_at || b.created_at || "");
+      return tb.localeCompare(ta);
+    });
+    return merged.slice(0, 10);
+  }, [approved, rejected]);
 
   // Group pending into batches (one group per batch_id, plus a singles group).
   const pendingGroups = useMemo(() => {
@@ -212,9 +310,6 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   }
 
   function openInForm(d) {
-    // Open the booking-form modal over this inbox via the parent's
-    // onOpenDraft callback (lifts modal state into TradeBookingForm).
-    // Fallback: deep-link via URL nav if no callback was wired.
     if (onOpenDraft) {
       onOpenDraft(d.id);
     } else {
@@ -222,70 +317,202 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
     }
   }
 
-  function renderRow(d) {
-    const isPending = d.status === "PENDING_REVIEW";
+  // ────────────────────────────────────────────────────────────────────
+  // Card-style pending row (STYLE_GUIDE §"Pending Bookings"):
+  //   paper-2 bg, 1px rule-2 border, 3px confirmed left border, 3px radius
+  //   ref + cashflow-type pill + direction pill on one row · "submitted
+  //   Xm ago by Y" on the right · single-line summary · action row.
+  // ────────────────────────────────────────────────────────────────────
+  function PendingCard({ d }) {
+    const p = d.payload || {};
+    const isSelected = selected.has(d.id);
     return (
-      <tr key={d.id}>
-        <td style={{ ...td, width: 32, textAlign: "center" }}>
-          {isPending && (
+      <div style={{
+        background: "var(--paper-2)",
+        border: "1px solid var(--rule-2)",
+        borderLeft: "3px solid var(--status-confirmed)",
+        padding: 14,
+        marginBottom: 10,
+        borderRadius: 3,
+        outline: isSelected ? "2px solid var(--ink)" : "none",
+        outlineOffset: -1,
+      }}>
+        {/* Top row: select + ref + type/direction pills · submitted-time */}
+        <div style={{
+          display: "flex", alignItems: "baseline",
+          justifyContent: "space-between", gap: 12, marginBottom: 8,
+        }}>
+          <div style={{
+            display: "flex", alignItems: "baseline", gap: 10,
+            flexWrap: "wrap",
+          }}>
             <input
               type="checkbox"
-              checked={selected.has(d.id)}
+              checked={isSelected}
               onChange={() => toggleSelected(d.id)}
-              style={{ cursor: "pointer", margin: 0 }}
+              style={{ cursor: "pointer", margin: 0, alignSelf: "center" }}
               aria-label={`Select draft ${d.id}`}
             />
+            <span
+              onClick={() => openInForm(d)}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 13, fontWeight: 600,
+                color: "var(--signal-link)",
+                borderBottom: "1px dotted var(--signal-link)",
+                cursor: "pointer",
+              }}
+              title="Open in TradeBookingForm"
+            >
+              #{d.id}
+            </span>
+            {p.cashflow_type && <Pill tone="muted">{p.cashflow_type}</Pill>}
+            {p.direction && <Pill tone={directionTone(p.direction)}>{p.direction}</Pill>}
+          </div>
+          <div style={{
+            fontFamily: "var(--font-mono)", fontSize: 11,
+            color: "var(--ink-3)", whiteSpace: "nowrap",
+          }}>
+            submitted <b style={{ color: "var(--ink)" }}>{timeAgo(d.created_at)}</b> ago
+            {d.created_by && (
+              <> by <b style={{ color: "var(--ink)" }}>{d.created_by}</b></>
+            )}
+          </div>
+        </div>
+
+        {/* Single-line summary, mono 13 */}
+        <div style={{
+          fontFamily: "var(--font-mono)", fontSize: 13,
+          color: "var(--ink)", marginBottom: 6,
+        }}>
+          {summarize(p)}
+        </div>
+
+        {/* Sub-line — counterparty / account / portfolio name in mono 11 */}
+        <div style={{
+          fontFamily: "var(--font-mono)", fontSize: 11,
+          color: "var(--ink-3)", marginBottom: 12,
+        }}>
+          {p.counterparty && (
+            <>counterparty <b style={{ color: "var(--ink-2)" }}>{p.counterparty}</b>{" "}</>
           )}
-        </td>
-        <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
-        <td style={td}>{summarize(d.payload)}</td>
-        <td style={{ ...td, color: BB.dim }}>{fmtDate(d.created_at)}</td>
-        <td style={td}>
-          {(() => {
-            // Status pill matches the blotter's design-token treatment so
-            // 'PENDING' here looks identical to PENDING in Deal Enquiry.
-            if (d.approved_deal_ref) {
-              return (
-                <span style={{
-                  fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600,
-                  color: "var(--signal-buy)", letterSpacing: "0.04em",
-                }}>{d.approved_deal_ref}</span>
-              );
-            }
-            const isRejected = !!d.rejected_at;
-            const fg = isRejected ? "var(--status-cancelled)" : "var(--status-pending)";
-            const bg = isRejected ? "var(--status-cancelled-bg)" : "var(--status-pending-bg)";
-            return (
-              <span style={{
-                background: bg, border: `1px solid ${fg}`, color: fg,
-                padding: "2px 6px", borderRadius: 2,
-                fontSize: 10, fontWeight: 600, letterSpacing: "0.06em",
-                textTransform: "uppercase", lineHeight: 1.2,
-              }}>{isRejected ? "Rejected" : "Pending"}</span>
-            );
-          })()}
-        </td>
-        <td style={td}>
-          {isPending && (
-            <div style={{ display: "flex", gap: 6 }}>
-              <button style={ghostBtn} onClick={() => openInForm(d)} title="Open in TradeBookingForm">
-                <ExternalLink size={12} /> FORM
-              </button>
-              <button style={iconOK} onClick={() => onApprove(d)} title="Approve">
-                <Check size={12} />
-              </button>
-              <button style={iconNO} onClick={() => onReject(d)} title="Reject">
-                <X size={12} />
-              </button>
-            </div>
+          {p.account && (
+            <>· account <b style={{ color: "var(--ink-2)" }}>{p.account}</b>{" "}</>
           )}
-          {rowError[d.id] && (
-            <div style={{ color: BB.red, fontSize: 10, marginTop: 4 }}>{rowError[d.id]}</div>
+          {p.portfolio_name && (
+            <>· portfolio <b style={{ color: "var(--ink-2)" }}>{p.portfolio_name}</b></>
           )}
-        </td>
-      </tr>
+        </div>
+
+        {/* Action row */}
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            style={{ ...primaryBtn, flex: 1, justifyContent: "center" }}
+            onClick={() => onApprove(d)}
+          >
+            <Check size={12} /> Approve <Kbd on>A</Kbd>
+          </button>
+          <button
+            style={{ ...dangerBtn, flex: 1, justifyContent: "center" }}
+            onClick={() => onReject(d)}
+          >
+            <X size={12} /> Reject <Kbd>R</Kbd>
+          </button>
+          <button style={ghostBtn} onClick={() => openInForm(d)}>
+            <ExternalLink size={12} /> Open draft
+          </button>
+        </div>
+
+        {rowError[d.id] && (
+          <div style={{
+            color: "var(--signal-sell)", fontSize: 10, marginTop: 6,
+            fontFamily: "var(--font-mono)",
+          }}>
+            {rowError[d.id]}
+          </div>
+        )}
+      </div>
     );
   }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Compact decided-row grid — STYLE_GUIDE §"Recently decided".
+  // Columns: ref · decision pill · type · time · "by user · note".
+  // Used on the PENDING tab's "Recently decided" feed and on the
+  // APPROVED / REJECTED tabs as the full list.
+  // ────────────────────────────────────────────────────────────────────
+  function DecidedGrid({ items, showNoteCol = true }) {
+    if (items.length === 0) {
+      return (
+        <div style={{ fontSize: 11, color: "var(--ink-3)", padding: "12px 0" }}>
+          No items.
+        </div>
+      );
+    }
+    return (
+      <div style={{
+        border: "1px solid var(--rule)", borderRadius: 3, overflow: "hidden",
+      }}>
+        {items.map((d, i) => {
+          const dec = d._decision || (d.status === "APPROVED" ? "approved" : "rejected");
+          const time = fmtDate(d.approved_at || d.rejected_at || d.created_at);
+          const by = d.approved_by || d.rejected_by || "—";
+          const note = d.rejection_reason || (d.approved_deal_ref ? `→ ${d.approved_deal_ref}` : "");
+          return (
+            <div key={d.id} style={{
+              display: "grid",
+              gridTemplateColumns: showNoteCol
+                ? "100px 100px 70px 140px 1fr"
+                : "100px 100px 70px 140px",
+              alignItems: "center",
+              padding: "8px 12px",
+              borderBottom: i < items.length - 1 ? "1px solid var(--rule)" : "none",
+              background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : "transparent",
+              fontFamily: "var(--font-mono)", fontSize: 11,
+              gap: 8,
+            }}>
+              <span
+                onClick={() => openInForm(d)}
+                style={{
+                  color: "var(--signal-link)",
+                  borderBottom: "1px dotted var(--signal-link)",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+                title="Open draft"
+              >#{d.id}</span>
+              <span>
+                <Pill tone={dec === "approved" ? "settled" : "cancelled"}>
+                  {dec === "approved" ? "✓ approved" : "✕ rejected"}
+                </Pill>
+              </span>
+              <span style={{ color: "var(--ink-3)" }}>
+                {d.payload?.cashflow_type
+                  ? d.payload.cashflow_type.split(" ")[0]
+                  : "—"}
+              </span>
+              <span style={{ color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
+                {time}
+              </span>
+              {showNoteCol && (
+                <span style={{ color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  by <b style={{ color: "var(--ink-2)" }}>{by}</b>
+                  {note && <span> · "{note}"</span>}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Top-right segmented tab control (Pending N | Approved N | Rejected N).
+  const tabs = [
+    { key: "PENDING",  label: "Pending",  count: pending.length  },
+    { key: "APPROVED", label: "Approved", count: approved.length },
+    { key: "REJECTED", label: "Rejected", count: rejected.length },
+  ];
 
   return (
     <div style={{
@@ -293,39 +520,78 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
       background: BB.bg, color: BB.fg,
       fontFamily: "var(--font-mono)",
     }}>
+      {/* ─── Header — serif title + tab control + subtitle + actions ─── */}
       <div style={{
-        padding: "16px 24px", display: "flex", alignItems: "center",
-        justifyContent: "space-between", borderBottom: `1px solid ${BB.border}`,
+        padding: "14px 24px 12px",
+        borderBottom: `1px solid ${BB.borderSoft}`,
       }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <div style={{
+          display: "flex", alignItems: "baseline",
+          justifyContent: "space-between", gap: 16,
+        }}>
           <div style={{
+            fontFamily: "var(--font-serif)",
             fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em",
-            fontFamily: "var(--font-serif)", color: "var(--ink)",
+            color: "var(--ink)",
           }}>
             Pending Bookings
           </div>
-          <div style={{
-            fontSize: 11, color: "var(--ink-3)",
-            letterSpacing: "0.06em", textTransform: "uppercase",
-          }}>
-            {pending.length} pending · {approved.length} approved · {rejected.length} rejected
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Segmented tab control */}
+            <div style={{
+              display: "flex", gap: 0,
+              border: "1px solid var(--rule-2)", borderRadius: 3,
+              overflow: "hidden",
+            }}>
+              {tabs.map((t, i) => {
+                const isActive = activeTab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setActiveTab(t.key)}
+                    style={{
+                      padding: "5px 12px",
+                      fontFamily: "var(--font-mono)", fontSize: 11,
+                      background: isActive ? "var(--ink)" : "transparent",
+                      color: isActive ? "var(--paper)" : "var(--ink-2)",
+                      border: "none",
+                      borderRight: i < tabs.length - 1 ? "1px solid var(--rule-2)" : "none",
+                      textTransform: "uppercase", letterSpacing: "0.05em",
+                      cursor: "pointer", fontWeight: isActive ? 600 : 500,
+                    }}
+                  >
+                    {t.label} {t.count}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={load} style={ghostBtn} title="Refresh">
+              <RefreshCw size={14} />
+            </button>
+            <button onClick={onClose} style={ghostBtn} title="Close">
+              <X size={14} />
+            </button>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={load} style={ghostBtn}>
-            <RefreshCw size={14} /> REFRESH
-          </button>
-          <button onClick={onClose} style={ghostBtn}>
-            <X size={14} /> CLOSE
-          </button>
+        <div style={{
+          fontFamily: "var(--font-mono)", fontSize: 11,
+          color: "var(--ink-3)", marginTop: 6,
+        }}>
+          Drafts created by makers · awaiting approval before settlement
         </div>
       </div>
 
       {error && (
-        <div style={{ padding: "10px 24px", color: BB.red, fontSize: 11 }}>{error}</div>
+        <div style={{
+          padding: "10px 24px", color: "var(--signal-sell)",
+          fontSize: 11, fontFamily: "var(--font-mono)",
+        }}>
+          {error}
+        </div>
       )}
 
-      {selected.size > 0 && (
+      {/* Sticky bulk-action bar — only shown on PENDING tab with selection */}
+      {activeTab === "PENDING" && selected.size > 0 && (
         <div style={{
           position: "sticky", top: 0, zIndex: 5,
           background: "var(--paper-2)",
@@ -345,137 +611,99 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
               style={{ ...ghostBtn, opacity: bulkBusy ? 0.5 : 1 }}
               onClick={() => setSelected(new Set())}
               disabled={bulkBusy}
-            >
-              CLEAR
-            </button>
+            >Clear</button>
             <button
-              style={{ ...ghostBtn, color: BB.red, borderColor: BB.red, opacity: bulkBusy ? 0.5 : 1 }}
+              style={{ ...dangerBtn, opacity: bulkBusy ? 0.5 : 1 }}
               onClick={onBulkReject}
               disabled={bulkBusy}
             >
-              <X size={12} /> REJECT {selected.size}
+              <X size={12} /> Reject {selected.size} <Kbd>R</Kbd>
             </button>
             <button
               style={{ ...primaryBtn, opacity: bulkBusy ? 0.5 : 1 }}
               onClick={onBulkApprove}
               disabled={bulkBusy}
             >
-              <Check size={12} /> APPROVE {selected.size}
+              <Check size={12} /> Approve {selected.size} <Kbd on>A</Kbd>
             </button>
           </div>
         </div>
       )}
 
-      <div style={{ padding: 24 }}>
+      <div style={{ padding: "16px 24px 32px" }}>
         {loading ? (
           <div style={{ color: BB.dim, fontSize: 11 }}>LOADING...</div>
-        ) : pending.length === 0 ? (
-          <div style={{ color: BB.dim, fontSize: 11, padding: "20px 0" }}>
-            No pending drafts.
-          </div>
-        ) : (
-          pendingGroups.map((g, gi) => (
-            <div key={g.batchId || `single-${gi}`} style={{ marginBottom: 24 }}>
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                color: "var(--ink-3)", fontSize: 11, letterSpacing: "0.06em",
-                textTransform: "uppercase", padding: "8px 12px",
-                background: "var(--paper-2)",
-                border: "1px solid var(--rule-2)", borderBottomWidth: 0,
-              }}>
-                <span>
-                  {g.isSingle
-                    ? `SINGLE · ${fmtDate(g.list[0].created_at)}`
-                    : `BATCH ${g.batchId.slice(0, 8)}… · ${g.list.length} DRAFTS · ${fmtDate(g.list[0].created_at)}`}
-                </span>
-                {!g.isSingle && (
-                  <button style={primaryBtn} onClick={() => onApproveAll(g.list)}>
-                    APPROVE ALL {g.list.length}
-                  </button>
-                )}
+        ) : activeTab === "PENDING" ? (
+          <>
+            <div style={sectionLabel}>Awaiting action · {pending.length}</div>
+            {pending.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--ink-3)", padding: "8px 0 16px" }}>
+                No pending drafts.
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, border: `1px solid ${BB.border}`, borderTop: 0 }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...th, width: 32, textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={g.list.length > 0 && g.list.every((d) => selected.has(d.id))}
-                        ref={(el) => {
-                          if (!el) return;
-                          const some = g.list.some((d) => selected.has(d.id));
-                          const all = g.list.every((d) => selected.has(d.id));
-                          el.indeterminate = some && !all;
-                        }}
-                        onChange={() => toggleSelectGroup(g.list)}
-                        style={{ cursor: "pointer", margin: 0 }}
-                        aria-label={g.isSingle ? "Select draft" : "Select all in batch"}
-                      />
-                    </th>
-                    <th style={th}>ID</th>
-                    <th style={th}>SUMMARY</th>
-                    <th style={th}>CREATED</th>
-                    <th style={th}>DEAL REF / STATUS</th>
-                    <th style={th}>ACTIONS</th>
-                  </tr>
-                </thead>
-                <tbody>{g.list.map(renderRow)}</tbody>
-              </table>
-            </div>
-          ))
+            ) : (
+              pendingGroups.map((g, gi) => (
+                <div key={g.batchId || `single-${gi}`} style={{ marginBottom: 14 }}>
+                  {/* Batch group bar — only shown for multi-trade batches */}
+                  {!g.isSingle && (
+                    <div style={{
+                      display: "flex", justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 12px", marginBottom: 8,
+                      background: "var(--paper-2)",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 3,
+                      fontFamily: "var(--font-mono)", fontSize: 10,
+                      color: "var(--ink-3)", letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={g.list.every((d) => selected.has(d.id))}
+                          ref={(el) => {
+                            if (!el) return;
+                            const some = g.list.some((d) => selected.has(d.id));
+                            const all = g.list.every((d) => selected.has(d.id));
+                            el.indeterminate = some && !all;
+                          }}
+                          onChange={() => toggleSelectGroup(g.list)}
+                          style={{ cursor: "pointer", margin: 0 }}
+                          aria-label="Select all in batch"
+                        />
+                        Batch {g.batchId.slice(0, 8)}… · {g.list.length} drafts · {fmtDate(g.list[0].created_at)}
+                      </span>
+                      <button
+                        style={{ ...ghostBtn, padding: "3px 8px", fontSize: 10 }}
+                        onClick={() => onApproveAll(g.list)}
+                      >
+                        Approve all {g.list.length}
+                      </button>
+                    </div>
+                  )}
+                  {g.list.map((d) => <PendingCard key={d.id} d={d} />)}
+                </div>
+              ))
+            )}
+
+            {recentlyDecided.length > 0 && (
+              <>
+                <div style={{ ...sectionLabel, marginTop: 24 }}>Recently decided</div>
+                <DecidedGrid items={recentlyDecided} />
+              </>
+            )}
+          </>
+        ) : activeTab === "APPROVED" ? (
+          <>
+            <div style={sectionLabel}>Approved · {approved.length}</div>
+            <DecidedGrid items={approved} />
+          </>
+        ) : (
+          <>
+            <div style={sectionLabel}>Rejected · {rejected.length}</div>
+            <DecidedGrid items={rejected} />
+          </>
         )}
-
-        {/* APPROVED collapsed */}
-        <div style={{ marginTop: 32 }}>
-          <button style={ghostBtn} onClick={() => setShowApproved((s) => !s)}>
-            {showApproved ? "HIDE" : "SHOW"} APPROVED ({approved.length})
-          </button>
-          {showApproved && approved.length > 0 && (
-            <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12, border: `1px solid ${BB.border}` }}>
-              <thead><tr>
-                <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>DEAL REF</th><th style={th}>APPROVED BY</th><th style={th}>APPROVED AT</th>
-              </tr></thead>
-              <tbody>
-                {approved.map((d) => (
-                  <tr key={d.id}>
-                    <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
-                    <td style={td}>{summarize(d.payload)}</td>
-                    <td style={{ ...td, color: BB.green }}>{d.approved_deal_ref}</td>
-                    <td style={td}>{d.approved_by || "—"}</td>
-                    <td style={{ ...td, color: BB.dim }}>{fmtDate(d.approved_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* REJECTED collapsed */}
-        <div style={{ marginTop: 16 }}>
-          <button style={ghostBtn} onClick={() => setShowRejected((s) => !s)}>
-            {showRejected ? "HIDE" : "SHOW"} REJECTED ({rejected.length})
-          </button>
-          {showRejected && rejected.length > 0 && (
-            <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, marginTop: 12, border: `1px solid ${BB.border}` }}>
-              <thead><tr>
-                <th style={th}>ID</th><th style={th}>SUMMARY</th><th style={th}>REASON</th><th style={th}>REJECTED BY</th><th style={th}>REJECTED AT</th>
-              </tr></thead>
-              <tbody>
-                {rejected.map((d) => (
-                  <tr key={d.id}>
-                    <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
-                    <td style={td}>{summarize(d.payload)}</td>
-                    <td style={{ ...td, color: BB.red }}>{d.rejection_reason || "—"}</td>
-                    <td style={td}>{d.rejected_by || "—"}</td>
-                    <td style={{ ...td, color: BB.dim }}>{fmtDate(d.rejected_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
       </div>
-
     </div>
   );
 }
