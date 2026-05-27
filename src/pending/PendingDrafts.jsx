@@ -538,7 +538,7 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
             fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em",
             color: "var(--ink)",
           }}>
-            Pending Bookings
+            Approvals
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* Segmented tab control */}
