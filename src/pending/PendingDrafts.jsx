@@ -692,7 +692,7 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
                           style={{ cursor: "pointer", margin: 0 }}
                           aria-label="Select all in batch"
                         />
-                        Batch {g.batchId.slice(0, 8)}… · {g.list.length} drafts · {fmtDate(g.list[0].created_at)}
+                        Select All · {g.list.length} drafts · {fmtDate(g.list[0].created_at)}
                       </span>
                       <button
                         style={{ ...ghostBtn, padding: "3px 8px", fontSize: 10 }}
