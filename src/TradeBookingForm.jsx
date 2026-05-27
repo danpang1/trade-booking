@@ -298,6 +298,13 @@ const isoNow = () => new Date().toISOString();
 // Current time formatted for <input type="datetime-local"> ("YYYY-MM-DDTHH:mm")
 // Slicing from toISOString() means the value is UTC, not browser-local.
 const nowUtc = () => new Date().toISOString().slice(0, 16);
+// "HH:MM:SS UTC" — every clock readout on this dashboard is UTC, never browser-local.
+const fmtUtcTime = (d) => {
+  if (!d) return "";
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  return `${dt.toISOString().slice(11, 19)} UTC`;
+};
 // Today at 00:00 UTC (12 AM) — used as the default for trade/value date so
 // users land on a clean midnight stamp instead of the current minute.
 const today00Utc = () => new Date().toISOString().slice(0, 10) + "T00:00";
@@ -4904,7 +4911,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                     loading
                       ? "Refreshing…"
                       : lastFetchedAt
-                      ? `Refresh table · last updated ${lastFetchedAt.toLocaleTimeString()}`
+                      ? `Refresh table · last updated ${fmtUtcTime(lastFetchedAt)}`
                       : "Refresh table"
                   }
                   className="inline-flex items-center justify-center align-middle transition-colors"
@@ -5911,7 +5918,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     loading
                       ? "Refreshing…"
                       : lastFetchedAt
-                      ? `Refresh table · last updated ${lastFetchedAt.toLocaleTimeString()}`
+                      ? `Refresh table · last updated ${fmtUtcTime(lastFetchedAt)}`
                       : "Refresh table"
                   }
                   className="inline-flex items-center justify-center align-middle transition-colors"
@@ -6150,17 +6157,23 @@ export default function TradeBookingForm() {
   // Pending-drafts count for the sidebar badge. Polled every 60s while
   // the tab is focused; paused when the tab is hidden so background
   // tabs don't burn Python subprocess spawns. Failures are silent.
+  // Also refreshed on demand: PendingDrafts calls refreshPendingCount()
+  // after every approve/reject so the badge updates within ~1 request,
+  // not within ~60s.
   const [pendingCount, setPendingCount] = useState(0);
+  const refreshPendingCount = useCallback(async () => {
+    const { status, body } = await listDrafts({ status: "PENDING_REVIEW" });
+    if (status === 200 && body?.ok) {
+      setPendingCount((body.drafts || []).length);
+    }
+  }, []);
   useEffect(() => {
     let cancelled = false;
     let h = null;
     async function tick() {
       if (document.visibilityState !== "visible") return;
-      const { status, body } = await listDrafts({ status: "PENDING_REVIEW" });
       if (cancelled) return;
-      if (status === 200 && body?.ok) {
-        setPendingCount((body.drafts || []).length);
-      }
+      await refreshPendingCount();
     }
     function start() {
       if (h !== null) return;
@@ -6185,7 +6198,7 @@ export default function TradeBookingForm() {
       stop();
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, []);
+  }, [refreshPendingCount]);
 
   // Tracks whether the draft modal was opened from PendingDrafts (so
   // closing the modal returns to the inbox instead of leaving the user
@@ -7973,12 +7986,12 @@ export default function TradeBookingForm() {
             placement="bottom"
             text={
               refdataError
-                ? `REFDATA: error — ${refdataError}`
+                ? `ref data: error — ${refdataError}`
                 : refdataLoading
-                ? "REFDATA: syncing…"
+                ? "ref data: syncing…"
                 : refdataLastAt
-                ? `REFDATA: ${refdataLastAt.toLocaleTimeString()} · click to re-sync`
-                : "REFDATA: click to load"
+                ? `ref data: last synced: ${fmtUtcTime(refdataLastAt)}`
+                : "ref data: click to load"
             }
           >
             <button
@@ -8086,12 +8099,7 @@ export default function TradeBookingForm() {
               onClick={() => setView("LOAN_ENQUIRY")}
             />
             <NavTabRow
-              label="Pending Bookings"
-              active={view === "PENDING_BOOKINGS"}
-              onClick={() => setView("PENDING_BOOKINGS")}
-            />
-            <NavTabRow
-              label={`Pending Drafts${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+              label={`Pending Bookings${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
               active={appView === "pending"}
               onClick={() => setAppView("pending")}
             />
@@ -8216,13 +8224,7 @@ export default function TradeBookingForm() {
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
-          {view === "PENDING_BOOKINGS" && (
-            <PlaceholderView
-              title="Pending Bookings"
-              subtitle="Bookings awaiting approval, attached documentation, or settlement confirmation. Approve, reject, or amend from here. Coming soon."
-            />
-          )}
-          {/* Pending Drafts inbox as a fixed overlay (z-30). When the
+          {/* Pending Bookings inbox as a fixed overlay (z-30). When the
               user opens a draft for editing, the booking-form ModalShell
               (z-40) opens on top of this overlay — so the inbox stays
               visible behind the modal instead of being replaced by the
@@ -8230,6 +8232,7 @@ export default function TradeBookingForm() {
           {appView === "pending" && (
             <PendingDrafts
               onClose={() => setAppView("booking")}
+              onChanged={refreshPendingCount}
               onOpenDraft={async (id) => {
                 setCameFromPending(true);
                 const ok = await loadDraftIntoForm(id);
@@ -8259,7 +8262,7 @@ export default function TradeBookingForm() {
           setAmendingDealRef(null);
           // Draft-mode close: clear draftId, error banner, and any
           // ?draft= deep-link param so a refresh doesn't re-open the modal.
-          // If we entered from the Pending Drafts inbox, return there.
+          // If we entered from the Pending Bookings inbox, return there.
           setDraftId(null);
           setDraftLoadError("");
           setDraftLoading(false);
@@ -9706,7 +9709,7 @@ export default function TradeBookingForm() {
               }}
             >
               <span>
-                MOD <span style={{ color: BB.dim }}>{new Date(form.last_modified_at).toLocaleTimeString()}</span>
+                MOD <span style={{ color: BB.dim }}>{fmtUtcTime(form.last_modified_at)}</span>
               </span>
               <span>
                 ATT <span style={{ color: BB.cyan }}>{form.attachments.length}</span>

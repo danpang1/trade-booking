@@ -53,13 +53,15 @@ const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, backg
 const iconOK     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: BB.bg, color: BB.green, border: `1px solid ${BB.green}`, padding: 4, cursor: "pointer", borderRadius: 0 };
 const iconNO     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: BB.bg, color: BB.red, border: `1px solid ${BB.red}`, padding: 4, cursor: "pointer", borderRadius: 0 };
 
-export default function PendingDrafts({ onClose, onOpenDraft }) {
+export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
   const [rowError, setRowError] = useState({});  // {id: "msg"}
   const [showApproved, setShowApproved] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());  // pending draft ids
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -68,10 +70,74 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
       setRows(body.drafts || []);
       setError("");
       setRowError({});
+      // Drop selection entries whose drafts are no longer PENDING_REVIEW
+      // (e.g. just approved/rejected). Avoid stale highlights on rerender.
+      const pendingIds = new Set(
+        (body.drafts || []).filter((d) => d.status === "PENDING_REVIEW").map((d) => d.id)
+      );
+      setSelected((prev) => {
+        const next = new Set();
+        for (const id of prev) if (pendingIds.has(id)) next.add(id);
+        return next;
+      });
+      // Tell the parent (sidebar badge) to refresh — saves the badge
+      // from waiting up to 60s for its next poll after every action.
+      onChanged?.();
     } else {
       setError(body?.error || `HTTP ${status}`);
     }
     setLoading(false);
+  }
+
+  function toggleSelected(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectGroup(list) {
+    const ids = list.map((d) => d.id);
+    const allOn = ids.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOn) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function onBulkApprove() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (!confirm(`Approve ${ids.length} draft${ids.length > 1 ? "s" : ""}? Each will insert into trades_cashflow.`)) return;
+    setBulkBusy(true);
+    for (const id of ids) {
+      const { status, body } = await approveDraft(id);
+      if (status !== 200 || !body?.ok) {
+        setRowError((r) => ({ ...r, [id]: body?.error || `Approve failed (${status})` }));
+      }
+    }
+    setBulkBusy(false);
+    await load();
+  }
+
+  async function onBulkReject() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const reason = prompt(`Reject ${ids.length} draft${ids.length > 1 ? "s" : ""} — reason (optional, applied to all):`) ?? null;
+    if (!confirm(`Reject ${ids.length} draft${ids.length > 1 ? "s" : ""}?`)) return;
+    setBulkBusy(true);
+    for (const id of ids) {
+      const { status, body } = await rejectDraft(id, reason);
+      if (status !== 200 || !body?.ok) {
+        setRowError((r) => ({ ...r, [id]: body?.error || `Reject failed (${status})` }));
+      }
+    }
+    setBulkBusy(false);
+    await load();
   }
 
   useEffect(() => { load(); }, []);
@@ -153,8 +219,20 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
   }
 
   function renderRow(d) {
+    const isPending = d.status === "PENDING_REVIEW";
     return (
       <tr key={d.id}>
+        <td style={{ ...td, width: 32, textAlign: "center" }}>
+          {isPending && (
+            <input
+              type="checkbox"
+              checked={selected.has(d.id)}
+              onChange={() => toggleSelected(d.id)}
+              style={{ cursor: "pointer", margin: 0 }}
+              aria-label={`Select draft ${d.id}`}
+            />
+          )}
+        </td>
         <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
         <td style={td}>{summarize(d.payload)}</td>
         <td style={{ ...td, color: BB.dim }}>{fmtDate(d.created_at)}</td>
@@ -162,7 +240,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
           {d.approved_deal_ref || (d.rejected_at ? "REJECTED" : "PENDING")}
         </td>
         <td style={td}>
-          {d.status === "PENDING_REVIEW" && (
+          {isPending && (
             <div style={{ display: "flex", gap: 6 }}>
               <button style={ghostBtn} onClick={() => openInForm(d)} title="Open in TradeBookingForm">
                 <ExternalLink size={12} /> FORM
@@ -194,7 +272,7 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
         justifyContent: "space-between", borderBottom: `1px solid ${BB.border}`,
       }}>
         <div style={{ fontSize: 13, letterSpacing: 2, color: BB.dim }}>
-          PENDING DRAFTS · {pending.length}
+          PENDING BOOKINGS · {pending.length}
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <button onClick={load} style={ghostBtn}>
@@ -210,12 +288,49 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
         <div style={{ padding: "10px 24px", color: BB.red, fontSize: 11 }}>{error}</div>
       )}
 
+      {selected.size > 0 && (
+        <div style={{
+          position: "sticky", top: 0, zIndex: 5,
+          background: BB.panelHead, borderBottom: `1px solid ${BB.border}`,
+          padding: "10px 24px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: 12,
+        }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, color: BB.dim }}>
+            {selected.size} SELECTED
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              style={{ ...ghostBtn, opacity: bulkBusy ? 0.5 : 1 }}
+              onClick={() => setSelected(new Set())}
+              disabled={bulkBusy}
+            >
+              CLEAR
+            </button>
+            <button
+              style={{ ...ghostBtn, color: BB.red, borderColor: BB.red, opacity: bulkBusy ? 0.5 : 1 }}
+              onClick={onBulkReject}
+              disabled={bulkBusy}
+            >
+              <X size={12} /> REJECT {selected.size}
+            </button>
+            <button
+              style={{ ...primaryBtn, opacity: bulkBusy ? 0.5 : 1 }}
+              onClick={onBulkApprove}
+              disabled={bulkBusy}
+            >
+              <Check size={12} /> APPROVE {selected.size}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ padding: 24 }}>
         {loading ? (
           <div style={{ color: BB.dim, fontSize: 11 }}>LOADING...</div>
         ) : pending.length === 0 ? (
           <div style={{ color: BB.dim, fontSize: 11, padding: "20px 0" }}>
-            No pending drafts. Use the Claude Code plugin to book trades (coming in Plan 1b).
+            No pending drafts.
           </div>
         ) : (
           pendingGroups.map((g, gi) => (
@@ -240,6 +355,21 @@ export default function PendingDrafts({ onClose, onOpenDraft }) {
               <table style={{ width: "100%", borderCollapse: "collapse", background: BB.panel, border: `1px solid ${BB.border}`, borderTop: 0 }}>
                 <thead>
                   <tr>
+                    <th style={{ ...th, width: 32, textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={g.list.length > 0 && g.list.every((d) => selected.has(d.id))}
+                        ref={(el) => {
+                          if (!el) return;
+                          const some = g.list.some((d) => selected.has(d.id));
+                          const all = g.list.every((d) => selected.has(d.id));
+                          el.indeterminate = some && !all;
+                        }}
+                        onChange={() => toggleSelectGroup(g.list)}
+                        style={{ cursor: "pointer", margin: 0 }}
+                        aria-label={g.isSingle ? "Select draft" : "Select all in batch"}
+                      />
+                    </th>
                     <th style={th}>ID</th>
                     <th style={th}>SUMMARY</th>
                     <th style={th}>CREATED</th>
