@@ -9581,18 +9581,19 @@ export default function TradeBookingForm() {
             <div
               className="mb-3 p-2.5"
               style={{
-                border: `1px solid #fecaca`,
-                background: "#fef2f2",
+                border: "1px solid var(--signal-sell)",
+                background: "var(--signal-sell-bg)",
+                borderRadius: 3,
               }}
             >
               <div
-                className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] font-mono mb-1.5"
-                style={{ color: BB.red }}
+                className="flex items-center gap-2 text-[10px] uppercase tracking-[0.06em] font-mono mb-1.5 font-semibold"
+                style={{ color: "var(--signal-sell)" }}
               >
                 <AlertCircle size={12} />
                 <span>Validation · {errors.length} issue{errors.length > 1 ? "s" : ""}</span>
               </div>
-              <ul className="text-[11px] space-y-0.5 font-mono" style={{ color: "#7f1d1d" }}>
+              <ul className="text-[11px] space-y-0.5 font-mono" style={{ color: "var(--signal-sell)" }}>
                 {errors.map((e, i) => (
                   <li key={i}>· {e}</li>
                 ))}
@@ -9609,12 +9610,13 @@ export default function TradeBookingForm() {
                   type="button"
                   onClick={() => submitDraft("patch")}
                   disabled={draftLoading}
-                  className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
+                  className="flex-1 py-3 text-[12px] font-semibold uppercase transition-colors font-mono"
                   style={{
-                    background: BB.surface2,
-                    color: BB.dim,
-                    border: `1px solid ${BB.border}`,
-                    letterSpacing: "0.28em",
+                    background: "var(--paper)",
+                    color: "var(--ink)",
+                    border: "1px solid var(--rule-2)",
+                    letterSpacing: "0.05em",
+                    borderRadius: 3,
                     cursor: draftLoading ? "not-allowed" : "pointer",
                     opacity: draftLoading ? 0.5 : 1,
                   }}
@@ -9625,12 +9627,13 @@ export default function TradeBookingForm() {
                   type="button"
                   onClick={() => submitDraft("approve")}
                   disabled={draftLoading}
-                  className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
+                  className="flex-1 py-3 text-[12px] font-semibold uppercase transition-colors font-mono"
                   style={{
-                    background: BB.orange,
-                    color: "#ffffff",
-                    border: `1px solid ${BB.orange}`,
-                    letterSpacing: "0.28em",
+                    background: "var(--panel)",
+                    color: "var(--panel-ink)",
+                    border: "1px solid var(--panel)",
+                    letterSpacing: "0.05em",
+                    borderRadius: 3,
                     cursor: draftLoading ? "not-allowed" : "pointer",
                     opacity: draftLoading ? 0.5 : 1,
                   }}
@@ -9642,19 +9645,20 @@ export default function TradeBookingForm() {
             <button
               onClick={handleSubmit}
               disabled={!canSubmit || isSubmitting}
-              className="flex-1 py-3 text-[12px] font-semibold uppercase tracking-[0.28em] transition-colors font-mono"
+              className="flex-1 py-3 text-[12px] font-semibold uppercase transition-colors font-mono"
               style={{
-                background: canSubmit && !isSubmitting ? BB.orange : BB.surface2,
-                color: canSubmit && !isSubmitting ? "#ffffff" : BB.faint,
-                border: `1px solid ${canSubmit && !isSubmitting ? BB.orange : BB.border}`,
+                background: canSubmit && !isSubmitting ? "var(--panel)" : "var(--paper-2)",
+                color: canSubmit && !isSubmitting ? "var(--panel-ink)" : "var(--ink-4)",
+                border: `1px solid ${canSubmit && !isSubmitting ? "var(--panel)" : "var(--rule-2)"}`,
                 cursor: canSubmit && !isSubmitting ? "pointer" : "not-allowed",
-                letterSpacing: "0.28em",
+                letterSpacing: "0.05em",
+                borderRadius: 3,
               }}
               onMouseEnter={(ev) => {
-                if (canSubmit && !isSubmitting) ev.currentTarget.style.background = BB.amber;
+                if (canSubmit && !isSubmitting) ev.currentTarget.style.background = "#232017";
               }}
               onMouseLeave={(ev) => {
-                if (canSubmit && !isSubmitting) ev.currentTarget.style.background = BB.orange;
+                if (canSubmit && !isSubmitting) ev.currentTarget.style.background = "var(--panel)";
               }}
             >
               {isSubmitting
@@ -9675,19 +9679,20 @@ export default function TradeBookingForm() {
             )}
             <button
               onClick={handleReset}
-              className="px-5 text-[11px] uppercase tracking-[0.24em] transition-colors flex items-center gap-2 font-mono"
+              className="px-5 text-[11px] uppercase tracking-[0.05em] transition-colors flex items-center gap-2 font-mono"
               style={{
-                background: BB.surface2,
-                color: BB.dim,
-                border: `1px solid ${BB.border}`,
+                background: "var(--paper)",
+                color: "var(--ink-3)",
+                border: "1px solid var(--rule-2)",
+                borderRadius: 3,
               }}
               onMouseEnter={(ev) => {
                 ev.currentTarget.style.borderColor = BB.red;
                 ev.currentTarget.style.color = BB.red;
               }}
               onMouseLeave={(ev) => {
-                ev.currentTarget.style.borderColor = BB.border;
-                ev.currentTarget.style.color = BB.dim;
+                ev.currentTarget.style.borderColor = "var(--rule-2)";
+                ev.currentTarget.style.color = "var(--ink-3)";
               }}
             >
               <RotateCcw size={12} /> Reset
