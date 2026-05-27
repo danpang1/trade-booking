@@ -25,6 +25,8 @@ fi
 
 echo "Starting token-refresh API server on http://localhost:5181 (background)"
 # Snapshot reference_data.instrument_token_grouped on startup + hourly HH:15 UTC.
+# Point server.js at the project venv so auth/booking Python scripts find bcrypt/psycopg2/pymysql.
+export PYTHON="$(pwd)/.venv/bin/python3"
 node server.js > server.log 2>&1 &
 SERVER_PID=$!
 trap "kill $SERVER_PID 2>/dev/null" EXIT

@@ -23,6 +23,7 @@ import sys
 import uuid
 
 import draft_db
+from draft_insert import _is_missing_or_midnight
 
 
 def _insert_batch(body: dict) -> dict:
@@ -53,16 +54,15 @@ def _insert_batch(body: dict) -> dict:
         payload = t.get("payload")
         # Stamp user_id with "claude:" prefix so the row's booker is
         # attributed to the Claude Code path (see draft_insert.py).
-        # Also default trade_date / value_date to now (UTC) when the
-        # client doesn't supply them. Each trade in the batch defaults
-        # independently — a single batch can mix explicit-dated and
-        # default-dated rows.
+        # Also default trade_date / value_date to now (UTC) when missing
+        # OR when supplied as exact UTC midnight — see draft_insert.py
+        # for the rationale.
         if isinstance(payload, dict):
             now_iso = datetime.now(timezone.utc).isoformat()
             defaults = {"user_id": f"claude:{acting}"}
-            if not payload.get("trade_date"):
+            if _is_missing_or_midnight(payload.get("trade_date")):
                 defaults["trade_date"] = now_iso
-            if not payload.get("value_date"):
+            if _is_missing_or_midnight(payload.get("value_date")):
                 defaults["value_date"] = now_iso
             payload = {**payload, **defaults}
         draft_db.validate_payload_for_category(cat, payload)

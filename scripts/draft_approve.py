@@ -59,11 +59,26 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         f"approve not implemented for category {category}"
                     )
 
+                # Approving a draft is the human "yes, book it" gate, so
+                # the booked row should be CONFIRMED, not PENDING. If the
+                # user manually picked another status (CANCELLED, SETTLED,
+                # etc.) we respect that as the manual override.
+                # Also strip the "claude:" prefix from user_id — the prefix
+                # tags the draft's source for the inbox, but the live trade
+                # in trades_cashflow should attribute to the bare username
+                # (matches what a form-booked trade looks like). The Claude
+                # Code provenance is still preserved on bookings_draft.source.
+                if isinstance(payload, dict):
+                    patched = dict(payload)
+                    if patched.get("status") == "PENDING":
+                        patched["status"] = "CONFIRMED"
+                    uid = patched.get("user_id")
+                    if isinstance(uid, str) and uid.startswith("claude:"):
+                        patched["user_id"] = uid[len("claude:"):]
+                    payload = patched
+
                 # IN-PROCESS insert into trades_cashflow on the SAME cursor.
-                # The booker prefix ("claude:<username>") was stamped onto
-                # payload.user_id at draft creation (draft_insert.py /
-                # draft_batch_insert.py), so this path passes it through
-                # unchanged. The human approver is preserved separately on
+                # The human approver is preserved separately on
                 # bookings_draft.approved_by.
                 # If this raises, the enclosing `with conn:` block rolls back
                 # both the UPDATE above AND any partial INSERT.

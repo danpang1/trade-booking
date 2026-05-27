@@ -11,7 +11,7 @@ import { resolve, dirname, extname, normalize, sep } from "path";
 import { fileURLToPath } from "url";
 import { platform } from "os";
 
-const PYTHON = platform() === "win32" ? "python" : "python3";
+const PYTHON = process.env.PYTHON || (platform() === "win32" ? "python" : "python3");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = 5181;
 

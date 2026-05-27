@@ -20,6 +20,24 @@ import sys
 import draft_db
 
 
+def _is_missing_or_midnight(v) -> bool:
+    """True if v is empty, or parses to a datetime at exact 00:00:00 UTC."""
+    if not v:
+        return True
+    if not isinstance(v, str):
+        return False
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    except ValueError:
+        # "2026-05-27" (date-only) doesn't have a time component → treat as midnight
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
+    return dt.hour == 0 and dt.minute == 0 and dt.second == 0 and dt.microsecond == 0
+
+
 def _insert(payload_in: dict) -> tuple[dict, bool]:
     category = draft_db.validate_category(payload_in.get("category"))
     payload = payload_in.get("payload")
@@ -34,15 +52,16 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
     # attributed to the Claude Code booking path — drafts only exist
     # because Claude Code (or the plugin) submitted them.
     # Also default trade_date / value_date to the draft creation time
-    # (now, UTC) when the client doesn't supply them — saves Claude /
-    # plugins having to compute timestamps for the common "book it
-    # dated today" case. Explicit values pass through unchanged.
+    # when missing OR when supplied as exact UTC midnight. The midnight
+    # case catches CLI/agent submissions that strip the time component
+    # ("2026-05-27T00:00:00+00:00"); the user wants those to reflect
+    # the actual moment of submission, not 00:00 of the day.
     if isinstance(payload, dict):
         now_iso = datetime.now(timezone.utc).isoformat()
         defaults = {"user_id": f"claude:{acting}"}
-        if not payload.get("trade_date"):
+        if _is_missing_or_midnight(payload.get("trade_date")):
             defaults["trade_date"] = now_iso
-        if not payload.get("value_date"):
+        if _is_missing_or_midnight(payload.get("value_date")):
             defaults["value_date"] = now_iso
         payload = {**payload, **defaults}
     # Shape validation against the live cashflow_db rules — same code
