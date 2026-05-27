@@ -9585,29 +9585,9 @@ export default function TradeBookingForm() {
             </div>
           </Section>
 
-          {errors.length > 0 && (
-            <div
-              className="mb-3 p-2.5"
-              style={{
-                border: "1px solid var(--signal-sell)",
-                background: "var(--signal-sell-bg)",
-                borderRadius: 3,
-              }}
-            >
-              <div
-                className="flex items-center gap-2 text-[10px] uppercase tracking-[0.06em] font-mono mb-1.5 font-semibold"
-                style={{ color: "var(--signal-sell)" }}
-              >
-                <AlertCircle size={12} />
-                <span>Validation · {errors.length} issue{errors.length > 1 ? "s" : ""}</span>
-              </div>
-              <ul className="text-[11px] space-y-0.5 font-mono" style={{ color: "var(--signal-sell)" }}>
-                {errors.map((e, i) => (
-                  <li key={i}>· {e}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Validation block now lives in the right column, between the
+              JSON pane and the Backend wire-up panel, so the command bar
+              isn't pushed down by a tall error list. */}
 
           {/* ════ COMMAND BAR ════ */}
               <SubmitFeedback feedback={feedback} onDismiss={() => setFeedback(null)} />
@@ -9776,6 +9756,30 @@ export default function TradeBookingForm() {
                     </>
                   )}
                 </div>
+              </div>
+            )}
+
+            {errors.length > 0 && (
+              <div
+                className="mt-3 p-2.5"
+                style={{
+                  border: "1px solid var(--signal-sell)",
+                  background: "var(--signal-sell-bg)",
+                  borderRadius: 3,
+                }}
+              >
+                <div
+                  className="flex items-center gap-2 text-[10px] uppercase tracking-[0.06em] font-mono mb-1.5 font-semibold"
+                  style={{ color: "var(--signal-sell)" }}
+                >
+                  <AlertCircle size={12} />
+                  <span>Validation · {errors.length} issue{errors.length > 1 ? "s" : ""}</span>
+                </div>
+                <ul className="text-[11px] space-y-0.5 font-mono" style={{ color: "var(--signal-sell)" }}>
+                  {errors.map((e, i) => (
+                    <li key={i}>· {e}</li>
+                  ))}
+                </ul>
               </div>
             )}
 
