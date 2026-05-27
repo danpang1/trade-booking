@@ -8365,11 +8365,15 @@ export default function TradeBookingForm() {
           className="text-[22px] font-semibold mt-1"
           style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
         >
-          {amendingDealRef
-            ? `Amend a ${(form.category || "trade").toLowerCase()}`
-            : draftId
-            ? `Review draft`
-            : `Book a ${(form.category || "trade").toLowerCase()} trade`}
+          {(() => {
+            // Loans / cashflows aren't conversationally "trades", so we
+            // drop the "trade" suffix for those two; spot/future keep it.
+            const cat = (form.category || "trade").toLowerCase();
+            const noun = (cat === "loan" || cat === "cashflow") ? cat : `${cat} trade`;
+            if (amendingDealRef) return `Amend a ${noun}`;
+            if (draftId) return `Review draft`;
+            return `Book a ${noun}`;
+          })()}
         </div>
       </div>
       <ProductTabs
