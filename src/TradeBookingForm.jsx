@@ -6152,6 +6152,25 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
           return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
         };
+
+        // Regroup the flat (cpty, asset) entries into one card per
+        // counterparty. The order from kpis.exposure is preserved:
+        // counterparties by total notional desc, assets within each by
+        // notional desc. Doing the regroup at render-time keeps the
+        // memo's data shape useful for any future flat consumers.
+        const byCpty = [];
+        const seen = new Map();
+        for (const e of kpis.exposure) {
+          let g = seen.get(e.cpty);
+          if (!g) {
+            g = { cpty: e.cpty, assets: [], totalLoans: 0 };
+            seen.set(e.cpty, g);
+            byCpty.push(g);
+          }
+          g.assets.push({ asset: e.asset, notional: e.notional, loans: e.loans });
+          g.totalLoans += e.loans;
+        }
+
         return (
           <div
             className="mb-3"
@@ -6163,6 +6182,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               overflow: "hidden",
             }}
           >
+            {/* Section header bar */}
             <div style={{
               padding: "8px 12px",
               borderBottom: "1px solid var(--rule)",
@@ -6174,7 +6194,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 textTransform: "uppercase", letterSpacing: "0.06em",
                 fontWeight: 500,
               }}>
-                Live exposure · {kpis.cptyCount} counterpart{kpis.cptyCount === 1 ? "y" : "ies"}
+                Live exposure · {kpis.cptyCount} counterpart{kpis.cptyCount === 1 ? "y" : "ies"} · {kpis.liveCount} loan{kpis.liveCount === 1 ? "" : "s"}
               </span>
               <span style={{
                 fontSize: 10, color: "var(--ink-4)",
@@ -6183,64 +6203,89 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 by counterparty × asset
               </span>
             </div>
-            <table
-              style={{
-                width: "100%", borderCollapse: "collapse", fontSize: 12,
-              }}
-            >
-              <thead>
-                <tr style={{
-                  background: "var(--paper-2)",
-                  color: "var(--ink-3)",
-                  fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
-                  fontWeight: 500,
-                  borderBottom: "1px solid var(--rule)",
-                }}>
-                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Counterparty</th>
-                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Asset</th>
-                  <th style={{ textAlign: "right", padding: "6px 12px" }}>Notional</th>
-                  <th style={{ textAlign: "right", padding: "6px 12px", width: 80 }}>Loans</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kpis.exposure.map((e, i) => {
-                  // Repeat-suppress the counterparty cell within a run so
-                  // the eye groups rows by cpty without manual scanning.
-                  const prev = kpis.exposure[i - 1];
-                  const sameCpty = prev && prev.cpty === e.cpty;
-                  const altBg = i % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
-                  return (
-                    <tr key={`${e.cpty}-${e.asset}`} style={{
-                      background: altBg,
-                      borderTop: "1px solid var(--rule)",
+
+            {/* Counterparty cards — responsive grid (auto-fit, min 240px). */}
+            <div style={{
+              padding: 12,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: 10,
+              background: "var(--paper)",
+            }}>
+              {byCpty.map((g) => (
+                <div
+                  key={g.cpty}
+                  style={{
+                    background: "var(--paper-2)",
+                    border: "1px solid var(--rule-2)",
+                    borderLeft: "3px solid var(--status-confirmed)",
+                    borderRadius: 3,
+                    padding: "10px 12px",
+                    display: "flex", flexDirection: "column", gap: 8,
+                  }}
+                >
+                  {/* Counterparty header — name + loan-count chip */}
+                  <div style={{
+                    display: "flex", alignItems: "baseline",
+                    justifyContent: "space-between", gap: 8,
+                  }}>
+                    <div style={{
+                      fontSize: 11, color: "var(--ink)",
+                      fontWeight: 600,
+                      textTransform: "uppercase", letterSpacing: "0.04em",
+                      overflow: "hidden", textOverflow: "ellipsis",
+                      whiteSpace: "nowrap", flex: 1, minWidth: 0,
+                    }} title={g.cpty}>
+                      {g.cpty}
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 600,
+                      color: "var(--ink-3)",
+                      background: "var(--paper)",
+                      border: "1px solid var(--rule-2)",
+                      padding: "1px 6px", borderRadius: 2,
+                      letterSpacing: "0.06em", textTransform: "uppercase",
+                      lineHeight: 1.2, whiteSpace: "nowrap",
                     }}>
-                      <td style={{
-                        padding: "6px 12px",
-                        color: sameCpty ? "var(--ink-4)" : "var(--ink)",
-                        fontWeight: sameCpty ? 400 : 600,
-                      }}>
-                        {sameCpty ? <span style={{ opacity: 0.5 }}>↳</span> : e.cpty}
-                      </td>
-                      <td style={{ padding: "6px 12px", color: "var(--ink)", fontWeight: 500 }}>
-                        {e.asset}
-                      </td>
-                      <td style={{
-                        padding: "6px 12px", textAlign: "right",
-                        fontVariantNumeric: "tabular-nums", color: "var(--ink)",
-                      }}>
-                        {fmtNum(e.notional)}
-                      </td>
-                      <td style={{
-                        padding: "6px 12px", textAlign: "right",
-                        fontVariantNumeric: "tabular-nums", color: "var(--ink-3)",
-                      }}>
-                        {e.loans}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      {g.totalLoans} loan{g.totalLoans === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  {/* Asset rows — asset symbol · notional · loan count */}
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto auto",
+                    columnGap: 10, rowGap: 3,
+                    alignItems: "baseline",
+                    fontSize: 12,
+                  }}>
+                    {g.assets.map((a) => (
+                      <React.Fragment key={a.asset}>
+                        <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
+                          {a.asset}
+                        </span>
+                        <span style={{
+                          color: "var(--ink)",
+                          fontVariantNumeric: "tabular-nums",
+                          textAlign: "right",
+                        }}>
+                          {fmtNum(a.notional)}
+                        </span>
+                        <span style={{
+                          color: "var(--ink-4)",
+                          fontVariantNumeric: "tabular-nums",
+                          fontSize: 10,
+                          textAlign: "right",
+                          minWidth: 18,
+                        }} title={`${a.loans} loan${a.loans === 1 ? "" : "s"}`}>
+                          ×{a.loans}
+                        </span>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         );
       })()}
