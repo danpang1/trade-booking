@@ -2278,22 +2278,32 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
   if (!open) return null;
 
   const isDrawer = variant === "drawer";
-  // Scrim — design uses a lighter scrim for the drawer (rgba(13,12,10,0.18))
-  // so the underlying blotter remains visually present at ~55% opacity.
+  // Scrim — drawer uses the lighter rgba(13,12,10,0.18) so the blotter
+  // stays visually present at ~55% beneath it. Modal uses the warmer
+  // dark scrim because it's covering more of the canvas.
   const scrim = isDrawer ? "rgba(13,12,10,0.18)" : "rgba(0,0,0,0.5)";
   // Drawer slide-in curve from STYLE_GUIDE §Interactions: 0.18s
   // cubic-bezier(0.2, 0.7, 0.3, 1). Modal keeps the existing 160ms ease.
   const drawerEase = "cubic-bezier(0.2, 0.7, 0.3, 1)";
 
-  const wrapperStyle = isDrawer
-    ? {
-        background: mounted ? scrim : "rgba(0,0,0,0)",
-        transition: "background 180ms ease-out",
-      }
-    : {
-        background: mounted ? scrim : "rgba(0,0,0,0)",
-        transition: "background 160ms ease-out",
-      };
+  // For the centered modal we start the scrim BELOW the dark top chrome
+  // (~80px) so the UTC clock + system-status dots in the header stay
+  // legible while the modal is open. The drawer covers the full canvas
+  // since its right-anchored panel naturally clears the left side.
+  const wrapperTop = isDrawer ? 0 : 80;
+
+  const wrapperStyle = {
+    position: "fixed",
+    top: wrapperTop,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: mounted ? scrim : "rgba(0,0,0,0)",
+    transition: isDrawer ? "background 180ms ease-out" : "background 160ms ease-out",
+    zIndex: 40,
+    overflow: isDrawer ? "hidden" : "auto",
+    padding: isDrawer ? 0 : 16,
+  };
 
   const panelStyle = isDrawer
     ? {
@@ -2320,7 +2330,6 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
 
   return (
     <div
-      className={isDrawer ? "fixed inset-0 z-40 overflow-hidden" : "fixed inset-0 z-40 p-4 overflow-auto"}
       style={wrapperStyle}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -8304,7 +8313,6 @@ export default function TradeBookingForm() {
           )}
           {form.category !== "FUTURE" && (
       <ModalShell
-        variant="drawer"
         open={createDealOpen || Boolean(amendingDealRef) || Boolean(draftId)}
         onClose={() => {
           // A snapshot exists when the form was overlaid with "other"
