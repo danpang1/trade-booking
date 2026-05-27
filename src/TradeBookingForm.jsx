@@ -8406,7 +8406,7 @@ export default function TradeBookingForm() {
 
         {/* ─── MAIN PANEL ─── */}
         <main className="flex-1 min-w-0 overflow-y-auto">
-          {view === "DEAL_ENQUIRY" && (
+          {appView === "booking" && view === "DEAL_ENQUIRY" && (
             <DealEnquiry
               BB={BB}
               onSelect={(row) => loadRowIntoForm(row)}
@@ -8415,7 +8415,7 @@ export default function TradeBookingForm() {
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
-          {view === "LOAN_ENQUIRY" && (
+          {appView === "booking" && view === "LOAN_ENQUIRY" && (
             <LoanEnquiry
               BB={BB}
               // Clicking the deal_ref opens the schedule modal (the
@@ -8426,11 +8426,10 @@ export default function TradeBookingForm() {
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
-          {/* Pending Bookings inbox as a fixed overlay (z-30). When the
-              user opens a draft for editing, the booking-form ModalShell
-              (z-40) opens on top of this overlay — so the inbox stays
-              visible behind the modal instead of being replaced by the
-              main booking page. */}
+          {/* Pending Bookings inbox renders inline in <main> alongside
+              Deal/Loan Enquiry — the dark top chrome (UTC clock + status
+              dots) remains visible above. The booking-form modal still
+              overlays normally when the user opens a draft for editing. */}
           {appView === "pending" && (
             <PendingDrafts
               onClose={() => setAppView("booking")}
@@ -8440,8 +8439,8 @@ export default function TradeBookingForm() {
                 const ok = await loadDraftIntoForm(id);
                 if (!ok) setCameFromPending(false);
                 // Intentionally do NOT change appView — staying on
-                // "pending" keeps the inbox overlay visible behind the
-                // booking-form modal that opens via the draftId state.
+                // "pending" keeps the inbox visible behind the booking
+                // modal that opens via the draftId state.
               }}
             />
           )}

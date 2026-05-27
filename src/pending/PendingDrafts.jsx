@@ -515,10 +515,14 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   ];
 
   return (
+    // Flows inline inside <main> alongside Deal/Loan Enquiry so the dark
+    // top chrome (logo + UTC clock + status dots) stays visible above.
+    // Note: no `position: fixed` here — the modal-style overlay was
+    // replaced when the user asked the inbox to behave like a real page.
     <div style={{
-      position: "fixed", inset: 0, zIndex: 30, overflow: "auto",
       background: BB.bg, color: BB.fg,
       fontFamily: "var(--font-mono)",
+      minHeight: "100%",
     }}>
       {/* ─── Header — serif title + tab control + subtitle + actions ─── */}
       <div style={{
