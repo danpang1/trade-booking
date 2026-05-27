@@ -2,21 +2,21 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Check, X, ExternalLink, RefreshCw } from "lucide-react";
 import { listDrafts, approveDraft, rejectDraft } from "../auth/api.js";
 
-// Altas editorial palette — mirrors TradeBookingForm.jsx BB tokens
-// (bone canvas / chalk panels / hair borders / ink text / tokka blue accent).
+// Token-backed palette — pulls every colour from src/tokens.css so the
+// pending inbox shares the same paper/ink/status surface as the main app.
 const BB = {
-  bg: "#ffffff",           // white canvas
-  panel: "#f8f6f1",        // chalk (table body, group cards)
-  panelHead: "#efece4",    // muted chalk (table header rows, group bar)
-  border: "#d9d4c7",       // hair (primary divider)
-  borderSoft: "#efece4",   // sub-divider (between rows)
-  fg: "#0d0d0d",           // ink (primary text)
-  dim: "#6a665c",          // slate (labels / muted text)
-  faint: "#9a9488",        // helpers
-  accent: "#1f63ea",       // tokka blue (primary CTA)
-  accentDeep: "#1a4fbb",   // tokka blue deep (hover)
-  red: "#b91c1c",          // red-700 (reject / errors)
-  green: "#047857",        // emerald-700 (approve / booked refs)
+  bg:         "var(--paper)",            // primary canvas
+  panel:      "var(--paper-2)",          // table body, group cards
+  panelHead:  "var(--paper-3)",          // header rows, group bar
+  border:     "var(--rule-2)",           // primary divider
+  borderSoft: "var(--rule)",             // sub-divider (between rows)
+  fg:         "var(--ink)",              // primary text
+  dim:        "var(--ink-3)",            // labels / muted text
+  faint:      "var(--ink-4)",            // helpers / disabled
+  accent:     "var(--signal-link)",      // primary CTA
+  accentDeep: "var(--signal-link)",      // hover (no separate deeper tone in design)
+  red:        "var(--signal-sell)",      // reject / errors
+  green:      "var(--signal-buy)",       // approve / booked refs
 };
 
 function fmtDate(iso) {
@@ -46,12 +46,16 @@ function summarize(payload) {
   ].filter(Boolean).join(" · ");
 }
 
-const th = { padding: "8px 12px", textAlign: "left", color: BB.dim, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", background: BB.panelHead, borderBottom: `1px solid ${BB.border}`, fontWeight: 500 };
-const td = { padding: "8px 12px", borderBottom: `1px solid ${BB.borderSoft}`, fontSize: 12, color: BB.fg };
-const primaryBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: BB.accent, color: "#ffffff", border: `1px solid ${BB.accent}`, padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer", borderRadius: 0 };
-const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, background: BB.bg, color: BB.fg, border: `1px solid ${BB.border}`, padding: "4px 10px", fontFamily: "inherit", fontSize: 11, letterSpacing: 1, cursor: "pointer", borderRadius: 0 };
-const iconOK     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: BB.bg, color: BB.green, border: `1px solid ${BB.green}`, padding: 4, cursor: "pointer", borderRadius: 0 };
-const iconNO     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: BB.bg, color: BB.red, border: `1px solid ${BB.red}`, padding: 4, cursor: "pointer", borderRadius: 0 };
+// Table cells — 28px dense rows per STYLE_GUIDE §5; mono 10px uppercase
+// 0.06em-tracked column heads on paper-3 background.
+const th = { padding: "6px 12px", textAlign: "left", color: "var(--ink-3)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", fontWeight: 500 };
+const td = { padding: "6px 12px", borderBottom: "1px solid var(--rule)", fontSize: 12, color: "var(--ink)" };
+// Buttons — STYLE_GUIDE §6.3: mono 11px, 3px radius, hairline border.
+// Primary uses panel bg + panel-ink text; danger keeps signal-sell border/text.
+const primaryBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: "var(--panel)", color: "var(--panel-ink)", border: "1px solid var(--panel)", padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer", borderRadius: 3 };
+const ghostBtn   = { display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper)", color: "var(--ink)", border: "1px solid var(--rule-2)", padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer", borderRadius: 3 };
+const iconOK     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--signal-buy-bg)", color: "var(--signal-buy)", border: "1px solid var(--signal-buy)", padding: 4, cursor: "pointer", borderRadius: 3 };
+const iconNO     = { display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--signal-sell-bg)", color: "var(--signal-sell)", border: "1px solid var(--signal-sell)", padding: 4, cursor: "pointer", borderRadius: 3 };
 
 export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   const [rows, setRows]       = useState([]);
@@ -236,8 +240,30 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
         <td style={{ ...td, color: BB.dim }}>#{d.id}</td>
         <td style={td}>{summarize(d.payload)}</td>
         <td style={{ ...td, color: BB.dim }}>{fmtDate(d.created_at)}</td>
-        <td style={{ ...td, color: d.approved_deal_ref ? BB.green : (d.rejected_at ? BB.red : BB.accent) }}>
-          {d.approved_deal_ref || (d.rejected_at ? "REJECTED" : "PENDING")}
+        <td style={td}>
+          {(() => {
+            // Status pill matches the blotter's design-token treatment so
+            // 'PENDING' here looks identical to PENDING in Deal Enquiry.
+            if (d.approved_deal_ref) {
+              return (
+                <span style={{
+                  fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600,
+                  color: "var(--signal-buy)", letterSpacing: "0.04em",
+                }}>{d.approved_deal_ref}</span>
+              );
+            }
+            const isRejected = !!d.rejected_at;
+            const fg = isRejected ? "var(--status-cancelled)" : "var(--status-pending)";
+            const bg = isRejected ? "var(--status-cancelled-bg)" : "var(--status-pending-bg)";
+            return (
+              <span style={{
+                background: bg, border: `1px solid ${fg}`, color: fg,
+                padding: "2px 6px", borderRadius: 2,
+                fontSize: 10, fontWeight: 600, letterSpacing: "0.06em",
+                textTransform: "uppercase", lineHeight: 1.2,
+              }}>{isRejected ? "Rejected" : "Pending"}</span>
+            );
+          })()}
         </td>
         <td style={td}>
           {isPending && (
@@ -265,14 +291,25 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 30, overflow: "auto",
       background: BB.bg, color: BB.fg,
-      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      fontFamily: "var(--font-mono)",
     }}>
       <div style={{
         padding: "16px 24px", display: "flex", alignItems: "center",
         justifyContent: "space-between", borderBottom: `1px solid ${BB.border}`,
       }}>
-        <div style={{ fontSize: 13, letterSpacing: 2, color: BB.dim }}>
-          PENDING BOOKINGS · {pending.length}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <div style={{
+            fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em",
+            fontFamily: "var(--font-serif)", color: "var(--ink)",
+          }}>
+            Pending Bookings
+          </div>
+          <div style={{
+            fontSize: 11, color: "var(--ink-3)",
+            letterSpacing: "0.06em", textTransform: "uppercase",
+          }}>
+            {pending.length} pending · {approved.length} approved · {rejected.length} rejected
+          </div>
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <button onClick={load} style={ghostBtn}>
@@ -291,13 +328,17 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
       {selected.size > 0 && (
         <div style={{
           position: "sticky", top: 0, zIndex: 5,
-          background: BB.panelHead, borderBottom: `1px solid ${BB.border}`,
+          background: "var(--paper-2)",
+          borderBottom: "2px solid var(--ink)",
           padding: "10px 24px",
           display: "flex", alignItems: "center", justifyContent: "space-between",
           gap: 12,
         }}>
-          <div style={{ fontSize: 11, letterSpacing: 1.5, color: BB.dim }}>
-            {selected.size} SELECTED
+          <div style={{
+            fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-3)",
+            textTransform: "uppercase",
+          }}>
+            {selected.size} selected
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -337,9 +378,10 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
             <div key={g.batchId || `single-${gi}`} style={{ marginBottom: 24 }}>
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                color: BB.dim, fontSize: 11, letterSpacing: 1.5, padding: "8px 12px",
-                background: BB.panelHead, borderBottom: `1px solid ${BB.border}`,
-                border: `1px solid ${BB.border}`, borderBottomWidth: 0,
+                color: "var(--ink-3)", fontSize: 11, letterSpacing: "0.06em",
+                textTransform: "uppercase", padding: "8px 12px",
+                background: "var(--paper-2)",
+                border: "1px solid var(--rule-2)", borderBottomWidth: 0,
               }}>
                 <span>
                   {g.isSingle
