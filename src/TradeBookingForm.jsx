@@ -5905,13 +5905,13 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Loan Enquiry</div>
       </div>
 
-      {/* ─── KPI strip per STYLE_GUIDE §6.7. Four tiles in a row; the
+      {/* ─── KPI strip per STYLE_GUIDE §6.7. Five tiles in a row; the
           full live-exposure breakdown lives in its own panel below. ─── */}
       <div
         className="mb-3"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
           gap: 8,
           alignItems: "stretch",
         }}
@@ -6018,6 +6018,13 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
             tile(hedgeAccent,               "Hedged coverage", `${kpis.hedgePct}%`,
                                             `${kpis.hedgedCount} / ${kpis.liveCount} live`),
+            // Placeholder tile — will swap the "—" / "API pending" pair
+            // for the live Binance VIP loan LTV once the integration is
+            // wired in. Muted border keeps it visually subordinate so
+            // it doesn't read as a real metric while it's a stub.
+            tile("var(--ink-4)",            "Binance VIP · LTV",
+                                            <span style={{ color: "var(--ink-4)" }}>—</span>,
+                                            "API pending"),
           ];
         })()}
       </div>
