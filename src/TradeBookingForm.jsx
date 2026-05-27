@@ -5745,6 +5745,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastFetchedAt, setLastFetchedAt] = useState(null);
+  // Exposure-by-cpty-by-asset panel is hidden by default; clicking the
+  // Active loans KPI tile toggles it open.
+  const [showExposure, setShowExposure] = useState(false);
   const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
@@ -5906,44 +5909,84 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         }}
       >
         {(() => {
-          const tile = (accent, label, value, sub) => (
-            <div
-              key={label}
-              style={{
-                background: "var(--paper)",
-                border: "1px solid var(--rule)",
-                borderLeft: `3px solid ${accent}`,
-                borderRadius: 3,
-                padding: "8px 12px",
-                fontFamily: "var(--font-mono)",
-                minHeight: 64,
-                display: "flex", flexDirection: "column", justifyContent: "space-between",
-              }}
-            >
-              <div style={{
-                fontSize: 10, color: "var(--ink-3)",
-                textTransform: "uppercase", letterSpacing: "0.06em",
-                fontWeight: 500,
-              }}>{label}</div>
-              <div style={{
-                fontSize: 18, fontWeight: 600, color: "var(--ink)",
-                fontVariantNumeric: "tabular-nums",
-                lineHeight: 1.1, marginTop: 4,
-              }}>{value}</div>
-              <div style={{
-                fontSize: 10, color: "var(--ink-3)",
-                marginTop: 2,
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>{sub}</div>
-            </div>
-          );
+          const tile = (accent, label, value, sub, opts = {}) => {
+            const interactive = !!opts.onClick;
+            const Comp = interactive ? "button" : "div";
+            return (
+              <Comp
+                key={label}
+                type={interactive ? "button" : undefined}
+                onClick={opts.onClick}
+                title={opts.title}
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--rule)",
+                  borderLeft: `3px solid ${accent}`,
+                  borderRadius: 3,
+                  padding: "8px 12px",
+                  fontFamily: "var(--font-mono)",
+                  minHeight: 64,
+                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  textAlign: "left",
+                  cursor: interactive ? "pointer" : "default",
+                  transition: "background 120ms ease, border-color 120ms ease",
+                  position: "relative",
+                  ...(opts.active ? { background: "var(--paper-2)" } : {}),
+                }}
+                onMouseEnter={(e) => {
+                  if (interactive) e.currentTarget.style.background = "var(--paper-2)";
+                }}
+                onMouseLeave={(e) => {
+                  if (interactive) e.currentTarget.style.background = opts.active ? "var(--paper-2)" : "var(--paper)";
+                }}
+              >
+                <div style={{
+                  fontSize: 10, color: "var(--ink-3)",
+                  textTransform: "uppercase", letterSpacing: "0.06em",
+                  fontWeight: 500,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <span>{label}</span>
+                  {interactive && (
+                    <span style={{
+                      color: "var(--ink-4)", fontSize: 9,
+                      transform: opts.active ? "rotate(180deg)" : "none",
+                      transition: "transform 120ms ease",
+                    }}>▾</span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: 18, fontWeight: 600, color: "var(--ink)",
+                  fontVariantNumeric: "tabular-nums",
+                  lineHeight: 1.1, marginTop: 4,
+                }}>{value}</div>
+                <div style={{
+                  fontSize: 10, color: "var(--ink-3)",
+                  marginTop: 2,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}>{sub}</div>
+              </Comp>
+            );
+          };
 
           const hedgeAccent = kpis.liveCount === 0
             ? "var(--ink-3)"
             : kpis.hedgePct >= 50 ? "var(--signal-buy)" : "var(--signal-warn)";
 
           return [
-            tile("var(--status-settled)", "Active loans", kpis.liveCount, `of ${kpis.totalCount} on file`),
+            tile(
+              "var(--status-settled)",
+              "Active loans",
+              kpis.liveCount,
+              showExposure ? "hide exposure" : "click to see exposure",
+              {
+                onClick: () => setShowExposure((s) => !s),
+                active: showExposure,
+                title: showExposure
+                  ? "Hide exposure breakdown"
+                  : "Show live exposure by counterparty × asset",
+              },
+            ),
             tile(kpis.maturingSoon > 0 ? "var(--status-pending)" : "var(--ink-3)",
                                             "Maturing · 30d",  kpis.maturingSoon, "next 30 days"),
             tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
@@ -5957,8 +6000,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           LIVE loan into (counterparty, principal_asset) rows showing
           notional + loan count. Sorted by counterparty exposure desc;
           assets within each counterparty by notional desc. Doesn't
-          fake FX — each asset is its own line. ─── */}
-      {kpis.exposure.length > 0 && (() => {
+          fake FX — each asset is its own line. Hidden by default;
+          opens when the Active loans tile is clicked. ─── */}
+      {showExposure && kpis.exposure.length > 0 && (() => {
         const fmtNum = (n) => {
           if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
           if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
