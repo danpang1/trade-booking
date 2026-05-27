@@ -8292,13 +8292,13 @@ export default function TradeBookingForm() {
 
             <NavTabRow
               label="Deal Enquiry"
-              active={view === "DEAL_ENQUIRY"}
-              onClick={() => setView("DEAL_ENQUIRY")}
+              active={appView === "booking" && view === "DEAL_ENQUIRY"}
+              onClick={() => { setAppView("booking"); setView("DEAL_ENQUIRY"); }}
             />
             <NavTabRow
               label="Loan Enquiry"
-              active={view === "LOAN_ENQUIRY"}
-              onClick={() => setView("LOAN_ENQUIRY")}
+              active={appView === "booking" && view === "LOAN_ENQUIRY"}
+              onClick={() => { setAppView("booking"); setView("LOAN_ENQUIRY"); }}
             />
             <NavTabRow
               label={`Pending Bookings${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
