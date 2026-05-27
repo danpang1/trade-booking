@@ -1,6 +1,6 @@
 ---
 name: trade-booking
-description: Submit Tokka Labs Middle Office CASHFLOW trade bookings as drafts. Activates when the user mentions booking a cashflow, OPEX, transfer, funding, or runs `/book`. Validates against live refdata, shows a structured preview, requires explicit `y` confirmation, then shells out to `tokka-mo`. Never makes HTTP calls itself. CASHFLOW only in v0.1 — SPOT is coming in Phase 2.
+description: Submit Tokka Labs Middle Office CASHFLOW trade bookings as drafts. Activates when the user mentions booking a cashflow, OPEX, transfer, funding, or runs `/tokka-mo:trade-booking`. Validates against live refdata, shows a structured preview, requires explicit `y` confirmation, then shells out to `tokka-mo`. Never makes HTTP calls itself. CASHFLOW only in v0.1 — SPOT is coming in Phase 2.
 ---
 
 # Trade Booking — CASHFLOW (v0.1)
@@ -10,7 +10,7 @@ description: Submit Tokka Labs Middle Office CASHFLOW trade bookings as drafts. 
 The user wants to book one or more CASHFLOW trades — they'll say things like:
 - "book a $500K OPEX to TOKKA TREASURY"
 - "submit these 6 cashflows from the Slack thread"
-- "/book"
+- "/tokka-mo:trade-booking"
 - "draft an OUTGOING transfer of 100 USDC to Galaxy"
 
 If the user mentions a SPOT trade ("buy 10 BTC at 95k"), say: "SPOT support ships in Phase 2 — for now, please book SPOT trades through the Middle Office web form." Don't try to handle it.

@@ -3,6 +3,8 @@
 Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
+### Changed
+- Renamed `/book` slash command to `/trade-booking` so the slash menu shows it as `/tokka-mo:trade-booking`, consistent with `/tokka-mo:login` and `/tokka-mo:drafts`.
 
 ## [0.1.0] — 2026-05-26
 ### Added

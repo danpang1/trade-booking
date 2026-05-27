@@ -207,8 +207,21 @@ VALID_CASHFLOW_TYPES = {
 
 
 def _refdata_values(refdata, key, name_field="name"):
-    """Pull a set of names/symbols from a refdata list. Defensive about shapes."""
-    items = refdata.get(key) or []
+    """Pull a set of names/symbols from a refdata list. Defensive about shapes.
+
+    The server returns:
+      - accounts as {broker: [...], exchange: [...], wallet: [...]} — flatten.
+      - tokens as {filter, generated_at, source, tokens: [...]} — unwrap.
+      - everything else as a flat list of {name, ...} dicts.
+    """
+    raw = refdata.get(key)
+    if isinstance(raw, dict):
+        if key == "tokens" and isinstance(raw.get("tokens"), list):
+            items = raw["tokens"]
+        else:
+            items = [x for v in raw.values() if isinstance(v, list) for x in v]
+    else:
+        items = raw or []
     out = set()
     for item in items:
         if isinstance(item, dict):
@@ -221,11 +234,21 @@ def _refdata_values(refdata, key, name_field="name"):
 
 
 def _refdata_portfolio_ids(refdata):
-    """{id: name} so we can validate id + name match together."""
+    """{portfolio_number: name} so we can validate id + name match together.
+
+    The payload's `portfolio_id` field carries the user-facing portfolio
+    NUMBER (e.g. 8000, 8006) — that's what the server matches on. The cache
+    row's `number` field holds that; `id` is just the internal DB row id.
+    Fall back to `id` only if `number` is absent.
+    """
     out = {}
     for p in refdata.get("portfolios") or []:
-        if isinstance(p, dict) and "id" in p and "name" in p:
-            out[p["id"]] = p["name"]
+        if isinstance(p, dict) and "name" in p:
+            key = p.get("number")
+            if key is None:
+                key = p.get("id")
+            if key is not None:
+                out[key] = p["name"]
     return out
 
 
@@ -299,12 +322,27 @@ def validate_cashflow_payload(payload, refdata) -> None:
             f"portfolio_id {payload['portfolio_id']} (expected {expected_name!r})"
         )
 
-    counterparties = _refdata_values(refdata, "counterparties")
-    if payload["counterparty"] not in counterparties:
-        raise ValidationError(
-            f"counterparty {payload['counterparty']!r} not in refdata."
-            f"{_suggest(payload['counterparty'], counterparties)}"
-        )
+    # INTER PTF FUNDING: counterparty is the *other* portfolio's number as a
+    # string of digits, not a named counterparty (server enforces this).
+    if payload["cashflow_type"] == "INTER PTF FUNDING":
+        cp = str(payload["counterparty"])
+        if not cp.isdigit():
+            raise ValidationError(
+                f"counterparty for INTER PTF FUNDING must be a portfolio "
+                f"number (string of digits), got {payload['counterparty']!r}"
+            )
+        if int(cp) not in ports:
+            raise ValidationError(
+                f"counterparty portfolio {cp!r} not in refdata."
+                f"{_suggest(cp, sorted(str(k) for k in ports.keys()))}"
+            )
+    else:
+        counterparties = _refdata_values(refdata, "counterparties")
+        if payload["counterparty"] not in counterparties:
+            raise ValidationError(
+                f"counterparty {payload['counterparty']!r} not in refdata."
+                f"{_suggest(payload['counterparty'], counterparties)}"
+            )
 
     accounts = _refdata_values(refdata, "accounts")
     if payload["account"] not in accounts:
