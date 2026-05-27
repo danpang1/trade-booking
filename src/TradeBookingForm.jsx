@@ -5823,21 +5823,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
   useEffect(() => { fetchRecent(); }, [fetchRecent, refreshSignal]);
 
-  // KPI strip — always reads from the unfiltered `rows` so the totals
-  // reflect the book state, not whatever filter is applied below.
+  // KPI strip + exposure breakdown — always reads the unfiltered `rows`
+  // so totals reflect book state, not whatever filter is applied below.
   const kpis = useMemo(() => {
     const live = rows.filter((r) => r.status === "LIVE");
-
-    // Notional by principal_asset — pre-sorted desc by amount so the
-    // tile can show the dominant asset prominently and a short
-    // "ETH 420 · USDC 1.2M" tail in the sub line.
-    const byAsset = new Map();
-    for (const r of live) {
-      const a = r.principal_asset || "—";
-      const n = parseFloat(r.principal_amount) || 0;
-      byAsset.set(a, (byAsset.get(a) || 0) + n);
-    }
-    const topAssets = [...byAsset.entries()].sort((x, y) => y[1] - x[1]);
 
     // Maturing in next 30 days — slice maturity_date to date-only so a
     // timezone-naive parse doesn't shift the day boundary.
@@ -5859,15 +5848,40 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     }).length;
     const hedgePct = live.length > 0 ? Math.round((hedgedCount / live.length) * 100) : 0;
 
+    // Live exposure matrix — aggregate by (counterparty, asset). Each
+    // entry holds { cpty, asset, notional, loans }. Sorted: counterparty
+    // by total exposure desc; within a counterparty, asset by notional
+    // desc. Same row appears once per (cpty, asset) pair.
+    const cellMap = new Map();   // key: "cpty||asset"
+    const cptyTotal = new Map(); // key: cpty -> rough notional rank (sum of amounts ignoring asset)
+    for (const r of live) {
+      const cpty = r.counterparty || "—";
+      const asset = r.principal_asset || "—";
+      const amt = parseFloat(r.principal_amount) || 0;
+      const key = `${cpty}||${asset}`;
+      const prev = cellMap.get(key) || { cpty, asset, notional: 0, loans: 0 };
+      prev.notional += amt;
+      prev.loans += 1;
+      cellMap.set(key, prev);
+      cptyTotal.set(cpty, (cptyTotal.get(cpty) || 0) + amt);
+    }
+    const exposure = [...cellMap.values()].sort((a, b) => {
+      const at = cptyTotal.get(a.cpty) || 0;
+      const bt = cptyTotal.get(b.cpty) || 0;
+      if (at !== bt) return bt - at;             // counterparty rank
+      if (a.cpty !== b.cpty) return a.cpty.localeCompare(b.cpty);
+      return b.notional - a.notional;            // within cpty, asset rank
+    });
+
     return {
       liveCount: live.length,
       totalCount: rows.length,
-      topAssets,
-      assetCount: byAsset.size,
       maturingSoon,
       openTerm,
       hedgedCount,
       hedgePct,
+      exposure,
+      cptyCount: cptyTotal.size,
     };
   }, [rows]);
 
@@ -5880,15 +5894,13 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Loan Enquiry</div>
       </div>
 
-      {/* ─── KPI strip per STYLE_GUIDE §6.7. Five tiles in a row, each
-          with a 3px coloured left border + label + big number + sub.
-          align-items: stretch so the Notional tile (which stacks every
-          live asset) can grow without breaking the row rhythm. ─── */}
+      {/* ─── KPI strip per STYLE_GUIDE §6.7. Four tiles in a row; the
+          full live-exposure breakdown lives in its own panel below. ─── */}
       <div
         className="mb-3"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
           gap: 8,
           alignItems: "stretch",
         }}
@@ -5926,78 +5938,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             </div>
           );
 
-          const fmtNum = (n) => {
-            if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
-            if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
-            return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-          };
-
-          // Tile 2 — full breakdown by asset. Each row is one principal
-          // asset's live notional, sorted desc. Cross-asset sums aren't
-          // meaningful without FX, so the tile lists rather than totals.
-          const notionalTile = (
-            <div
-              key="notional"
-              style={{
-                background: "var(--paper)",
-                border: "1px solid var(--rule)",
-                borderLeft: "3px solid var(--ink-3)",
-                borderRadius: 3,
-                padding: "8px 12px",
-                fontFamily: "var(--font-mono)",
-                minHeight: 64,
-                display: "flex", flexDirection: "column",
-              }}
-            >
-              <div style={{
-                fontSize: 10, color: "var(--ink-3)",
-                textTransform: "uppercase", letterSpacing: "0.06em",
-                fontWeight: 500,
-                marginBottom: 4,
-              }}>
-                Notional by asset
-              </div>
-              {kpis.topAssets.length === 0 ? (
-                <div style={{
-                  fontSize: 12, color: "var(--ink-3)", marginTop: 2,
-                }}>no live notional</div>
-              ) : (
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto 1fr",
-                  columnGap: 10, rowGap: 2,
-                  fontSize: 12, color: "var(--ink)",
-                  alignItems: "baseline",
-                }}>
-                  {kpis.topAssets.map(([a, n]) => (
-                    <React.Fragment key={a}>
-                      <span style={{ fontWeight: 600 }}>{a}</span>
-                      <span style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}>{fmtNum(n)}</span>
-                    </React.Fragment>
-                  ))}
-                </div>
-              )}
-              <div style={{
-                fontSize: 10, color: "var(--ink-3)", marginTop: 4,
-              }}>
-                {kpis.assetCount === 0
-                  ? "—"
-                  : `${kpis.assetCount} asset${kpis.assetCount === 1 ? "" : "s"} · ${kpis.liveCount} live`}
-              </div>
-            </div>
-          );
-
-          // Tile 5 — green when hedge coverage ≥50%, warn amber below.
           const hedgeAccent = kpis.liveCount === 0
             ? "var(--ink-3)"
             : kpis.hedgePct >= 50 ? "var(--signal-buy)" : "var(--signal-warn)";
 
           return [
             tile("var(--status-settled)", "Active loans", kpis.liveCount, `of ${kpis.totalCount} on file`),
-            notionalTile,
             tile(kpis.maturingSoon > 0 ? "var(--status-pending)" : "var(--ink-3)",
                                             "Maturing · 30d",  kpis.maturingSoon, "next 30 days"),
             tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
@@ -6006,6 +5952,110 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           ];
         })()}
       </div>
+
+      {/* ─── Live exposure by counterparty × asset. Aggregates every
+          LIVE loan into (counterparty, principal_asset) rows showing
+          notional + loan count. Sorted by counterparty exposure desc;
+          assets within each counterparty by notional desc. Doesn't
+          fake FX — each asset is its own line. ─── */}
+      {kpis.exposure.length > 0 && (() => {
+        const fmtNum = (n) => {
+          if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
+          if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
+          return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+        };
+        return (
+          <div
+            className="mb-3"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              borderRadius: 3,
+              fontFamily: "var(--font-mono)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--rule)",
+              background: "var(--paper-2)",
+              display: "flex", alignItems: "baseline", justifyContent: "space-between",
+            }}>
+              <span style={{
+                fontSize: 10, color: "var(--ink-3)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+                fontWeight: 500,
+              }}>
+                Live exposure · {kpis.cptyCount} counterpart{kpis.cptyCount === 1 ? "y" : "ies"}
+              </span>
+              <span style={{
+                fontSize: 10, color: "var(--ink-4)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+              }}>
+                by counterparty × asset
+              </span>
+            </div>
+            <table
+              style={{
+                width: "100%", borderCollapse: "collapse", fontSize: 12,
+              }}
+            >
+              <thead>
+                <tr style={{
+                  background: "var(--paper-2)",
+                  color: "var(--ink-3)",
+                  fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
+                  fontWeight: 500,
+                  borderBottom: "1px solid var(--rule)",
+                }}>
+                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Counterparty</th>
+                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Asset</th>
+                  <th style={{ textAlign: "right", padding: "6px 12px" }}>Notional</th>
+                  <th style={{ textAlign: "right", padding: "6px 12px", width: 80 }}>Loans</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kpis.exposure.map((e, i) => {
+                  // Repeat-suppress the counterparty cell within a run so
+                  // the eye groups rows by cpty without manual scanning.
+                  const prev = kpis.exposure[i - 1];
+                  const sameCpty = prev && prev.cpty === e.cpty;
+                  const altBg = i % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
+                  return (
+                    <tr key={`${e.cpty}-${e.asset}`} style={{
+                      background: altBg,
+                      borderTop: "1px solid var(--rule)",
+                    }}>
+                      <td style={{
+                        padding: "6px 12px",
+                        color: sameCpty ? "var(--ink-4)" : "var(--ink)",
+                        fontWeight: sameCpty ? 400 : 600,
+                      }}>
+                        {sameCpty ? <span style={{ opacity: 0.5 }}>↳</span> : e.cpty}
+                      </td>
+                      <td style={{ padding: "6px 12px", color: "var(--ink)", fontWeight: 500 }}>
+                        {e.asset}
+                      </td>
+                      <td style={{
+                        padding: "6px 12px", textAlign: "right",
+                        fontVariantNumeric: "tabular-nums", color: "var(--ink)",
+                      }}>
+                        {fmtNum(e.notional)}
+                      </td>
+                      <td style={{
+                        padding: "6px 12px", textAlign: "right",
+                        fontVariantNumeric: "tabular-nums", color: "var(--ink-3)",
+                      }}>
+                        {e.loans}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {error && (
         <div
