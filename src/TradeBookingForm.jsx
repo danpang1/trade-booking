@@ -2096,7 +2096,7 @@ const SIDEBAR_CATEGORIES = [
 const ProductTabs = ({ active, onChange, locked = false }) => (
   <div
     className="flex items-end gap-6 px-5 pt-5 pb-0"
-    style={{ borderBottom: `1px solid #d9d4c7` }}
+    style={{ borderBottom: "1px solid var(--rule)" }}
   >
     {SIDEBAR_CATEGORIES.map((c) => {
       const isActive = c.key === active;
@@ -2115,23 +2115,23 @@ const ProductTabs = ({ active, onChange, locked = false }) => (
           className="pb-2 text-[13px] transition-colors"
           style={{
             color: disabled
-              ? "#a5a097"
+              ? "var(--ink-4)"
               : isActive
-              ? "#0d0d0d"
-              : "#6a665c",
+              ? "var(--ink)"
+              : "var(--ink-3)",
             fontWeight: isActive ? 500 : 400,
             borderBottom: isActive
-              ? "2px solid #0d0d0d"
+              ? "2px solid var(--ink)"
               : "2px solid transparent",
             marginBottom: -1,
             cursor: disabled ? "not-allowed" : "pointer",
             background: "transparent",
           }}
           onMouseEnter={(e) => {
-            if (!disabled && !isActive) e.currentTarget.style.color = "#0d0d0d";
+            if (!disabled && !isActive) e.currentTarget.style.color = "var(--ink)";
           }}
           onMouseLeave={(e) => {
-            if (!disabled && !isActive) e.currentTarget.style.color = "#6a665c";
+            if (!disabled && !isActive) e.currentTarget.style.color = "var(--ink-3)";
           }}
         >
           <span className="inline-flex items-center gap-2">
@@ -2141,11 +2141,11 @@ const ProductTabs = ({ active, onChange, locked = false }) => (
                 because we're in amend-locked mode. */}
             {c.comingSoon && (
               <span
-                className="text-[8px] tracking-[0.2em] uppercase font-mono px-1.5 py-0.5"
+                className="text-[8px] tracking-[0.06em] uppercase font-mono px-1.5 py-0.5"
                 style={{
-                  color: "#a5a097",
-                  border: `1px solid #d9d4c7`,
-                  background: "#efeae0",
+                  color: "var(--ink-4)",
+                  border: "1px solid var(--rule-2)",
+                  background: "var(--paper-2)",
                 }}
               >
                 soon
@@ -8336,6 +8336,34 @@ export default function TradeBookingForm() {
           setFeedback(null);
         }}
       >
+      {/* Drawer-specific header — Source Serif title with mode caption.
+          See STYLE_GUIDE §"Create Deal — right-side drawer". The close
+          (✕) and primary status chrome live in ModalShell. */}
+      <div
+        className="px-5 pt-5 pb-3"
+        style={{ borderBottom: "1px solid var(--rule)" }}
+      >
+        <div
+          className="text-[10px] uppercase tracking-[0.06em] font-medium"
+          style={{ color: "var(--ink-3)" }}
+        >
+          {amendingDealRef
+            ? `Amend · ${amendingDealRef}`
+            : draftId
+            ? `Edit Draft · #${draftId}`
+            : "New Deal · Draft"}
+        </div>
+        <div
+          className="text-[22px] font-semibold mt-1"
+          style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
+        >
+          {amendingDealRef
+            ? `Amend a ${(form.category || "trade").toLowerCase()}`
+            : draftId
+            ? `Review draft`
+            : `Book a ${(form.category || "trade").toLowerCase()} trade`}
+        </div>
+      </div>
       <ProductTabs
         active={form.category}
         onChange={(k) => switchCategory(k)}
@@ -8352,18 +8380,18 @@ export default function TradeBookingForm() {
         >
           {draftLoadError && (
             <div style={{
-              padding: "8px 12px", background: "#FF4D4F22",
-              color: "#FF4D4F", border: "1px solid #FF4D4F",
-              fontSize: 12, marginBottom: 12,
+              padding: "8px 12px", background: "var(--signal-sell-bg)",
+              color: "var(--signal-sell)", border: "1px solid var(--signal-sell)",
+              fontSize: 12, marginBottom: 12, borderRadius: 3,
             }}>
               {draftLoadError}
             </div>
           )}
           {draftId && !draftLoadError && (
             <div style={{
-              padding: "8px 12px", background: "#FA8C1622",
-              color: "#FA8C16", border: "1px solid #FA8C16",
-              fontSize: 12, marginBottom: 12,
+              padding: "8px 12px", background: "var(--signal-warn-bg)",
+              color: "var(--signal-warn)", border: "1px solid var(--signal-warn)",
+              fontSize: 12, marginBottom: 12, borderRadius: 3,
             }}>
               {draftLoading
                 ? `Loading draft #${draftId}…`
