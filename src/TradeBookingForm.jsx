@@ -8117,18 +8117,11 @@ export default function TradeBookingForm() {
     return { __html: html };
   };
 
-  // PendingDrafts is NOT an early return — it renders as a fixed-position
-  // overlay (z-30) in the main JSX below, so the booking-form's ModalShell
-  // (z-40) can open ON TOP of the inbox when a draft is edited. See the
-  // `appView === "pending"` render block near the closing JSX.
-
-  if (appView === "tokens") {
-    return <ApiTokens onClose={() => setAppView("booking")} />;
-  }
-
-  if (appView === "users" && user?.role === "admin") {
-    return <UserAdmin onClose={() => setAppView("booking")} />;
-  }
+  // PendingDrafts / ApiTokens / UserAdmin all render inline inside <main>
+  // (see the appView-gated render blocks below) so the dark top chrome —
+  // logo + UTC clock + status dots + sidebar — stays in place across
+  // every route. The booking-form ModalShell still overlays normally
+  // when a draft is opened for editing.
 
   return (
     <TokensContext.Provider value={liveTokens}>
@@ -8443,6 +8436,12 @@ export default function TradeBookingForm() {
                 // modal that opens via the draftId state.
               }}
             />
+          )}
+          {appView === "users" && user?.role === "admin" && (
+            <UserAdmin onClose={() => setAppView("booking")} />
+          )}
+          {appView === "tokens" && (
+            <ApiTokens onClose={() => setAppView("booking")} />
           )}
           {form.category !== "FUTURE" && (
       <ModalShell

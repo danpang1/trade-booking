@@ -56,9 +56,13 @@ export default function ApiTokens({ onClose }) {
   }
 
   return (
+    // Flows inline inside <main> alongside Deal/Loan Enquiry + Pending
+    // Bookings. No outer 100vh / fixed positioning — the parent layout
+    // keeps the top chrome and sidebar in place.
     <div style={{
-      minHeight: "100vh", background: BB.bg, color: BB.fg,
-      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      color: BB.fg,
+      fontFamily: "var(--font-mono)",
+      minHeight: "100%",
     }}>
       <div style={{
         padding: "16px 24px", display: "flex", alignItems: "center",
@@ -68,9 +72,6 @@ export default function ApiTokens({ onClose }) {
         <div style={{ display: "flex", gap: 12 }}>
           <button onClick={() => setShow(true)} style={primaryBtn}>
             <Plus size={14} /> NEW TOKEN
-          </button>
-          <button onClick={onClose} style={ghostBtn}>
-            <X size={14} /> CLOSE
           </button>
         </div>
       </div>
