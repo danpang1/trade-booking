@@ -8294,7 +8294,7 @@ export default function TradeBookingForm() {
               onClick={() => { setAppView("booking"); setView("LOAN_ENQUIRY"); }}
             />
             <NavTabRow
-              label={`Pending Bookings${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+              label={`Approvals${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
               active={appView === "pending"}
               onClick={() => setAppView("pending")}
             />
