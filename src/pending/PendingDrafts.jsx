@@ -590,45 +590,67 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
         </div>
       )}
 
-      {/* Sticky bulk-action bar — only shown on PENDING tab with selection */}
-      {activeTab === "PENDING" && selected.size > 0 && (
-        <div style={{
-          position: "sticky", top: 0, zIndex: 5,
-          background: "var(--paper-2)",
-          borderBottom: "2px solid var(--ink)",
-          padding: "10px 24px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          gap: 12,
-        }}>
+      {/* Bulk-action bar — always rendered on the PENDING tab so the
+          cards beneath don't shift down when a checkbox is clicked.
+          When nothing is selected it shows a faded hint; with a
+          selection it activates the Reject / Approve buttons. */}
+      {activeTab === "PENDING" && (() => {
+        const hasSelection = selected.size > 0;
+        return (
           <div style={{
-            fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-3)",
-            textTransform: "uppercase",
+            position: "sticky", top: 0, zIndex: 5,
+            background: hasSelection ? "var(--paper-2)" : "var(--paper)",
+            borderBottom: hasSelection ? "2px solid var(--ink)" : "1px solid var(--rule)",
+            padding: "10px 24px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            gap: 12,
+            transition: "background 120ms ease, border-color 120ms ease",
           }}>
-            {selected.size} selected
+            <div style={{
+              fontSize: 11, letterSpacing: "0.06em",
+              color: hasSelection ? "var(--ink-3)" : "var(--ink-4)",
+              textTransform: "uppercase",
+            }}>
+              {hasSelection
+                ? `${selected.size} selected`
+                : "Select drafts to bulk approve or reject"}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                style={{
+                  ...ghostBtn,
+                  opacity: hasSelection && !bulkBusy ? 1 : 0.4,
+                  pointerEvents: hasSelection && !bulkBusy ? "auto" : "none",
+                }}
+                onClick={() => setSelected(new Set())}
+                disabled={!hasSelection || bulkBusy}
+              >Clear</button>
+              <button
+                style={{
+                  ...dangerBtn,
+                  opacity: hasSelection && !bulkBusy ? 1 : 0.4,
+                  pointerEvents: hasSelection && !bulkBusy ? "auto" : "none",
+                }}
+                onClick={onBulkReject}
+                disabled={!hasSelection || bulkBusy}
+              >
+                <X size={12} /> Reject {hasSelection ? selected.size : ""} <Kbd>R</Kbd>
+              </button>
+              <button
+                style={{
+                  ...primaryBtn,
+                  opacity: hasSelection && !bulkBusy ? 1 : 0.4,
+                  pointerEvents: hasSelection && !bulkBusy ? "auto" : "none",
+                }}
+                onClick={onBulkApprove}
+                disabled={!hasSelection || bulkBusy}
+              >
+                <Check size={12} /> Approve {hasSelection ? selected.size : ""} <Kbd on>A</Kbd>
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              style={{ ...ghostBtn, opacity: bulkBusy ? 0.5 : 1 }}
-              onClick={() => setSelected(new Set())}
-              disabled={bulkBusy}
-            >Clear</button>
-            <button
-              style={{ ...dangerBtn, opacity: bulkBusy ? 0.5 : 1 }}
-              onClick={onBulkReject}
-              disabled={bulkBusy}
-            >
-              <X size={12} /> Reject {selected.size} <Kbd>R</Kbd>
-            </button>
-            <button
-              style={{ ...primaryBtn, opacity: bulkBusy ? 0.5 : 1 }}
-              onClick={onBulkApprove}
-              disabled={bulkBusy}
-            >
-              <Check size={12} /> Approve {selected.size} <Kbd on>A</Kbd>
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div style={{ padding: "16px 24px 32px" }}>
         {loading ? (
