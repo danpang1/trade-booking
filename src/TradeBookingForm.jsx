@@ -2466,22 +2466,28 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 p-4 overflow-auto"
       style={{
-        background: mounted ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)",
-        transition: "background 160ms ease-out",
+        position: "fixed",
+        top: 80, left: 0, right: 0, bottom: 0,
+        background: mounted ? "rgba(13,12,10,0.18)" : "rgba(0,0,0,0)",
+        transition: "background 180ms ease-out",
+        zIndex: 50,
+        overflow: "hidden",
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="relative max-w-3xl mx-auto"
         style={{
-          background: "#f6f3ec",
-          border: "1px solid #d9d4c7",
-          boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
+          position: "absolute",
+          top: 0, right: 0, bottom: 0,
+          width: "min(70vw, 580px)",
+          background: "var(--paper)",
+          borderLeft: "1px solid var(--rule-2)",
+          boxShadow: "-20px 0 60px rgba(0,0,0,0.18)",
           opacity: mounted ? 1 : 0,
-          transform: mounted ? "translateY(0)" : "translateY(-8px)",
-          transition: "opacity 160ms ease-out, transform 160ms ease-out",
+          transform: mounted ? "translateX(0)" : "translateX(40px)",
+          transition: "opacity 180ms ease-out, transform 180ms cubic-bezier(0.2, 0.7, 0.3, 1)",
+          overflow: "auto",
           fontFamily: "var(--font-mono)",
         }}
       >
@@ -2493,128 +2499,256 @@ function HistoryModal({ open, dealRef, state, onClose }) {
           style={{
             top: 10, right: 10, width: 32, height: 32,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: "#1f1f1f", color: "#f2efe8",
-            fontSize: 20, lineHeight: 1, borderRadius: 16,
+            background: "var(--panel)", color: "var(--panel-ink)",
+            fontSize: 20, lineHeight: 1, borderRadius: 3,
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)", cursor: "pointer",
           }}
         >×</button>
 
-        <div className="px-6 py-5" style={{ borderBottom: "1px solid #d9d4c7" }}>
-          <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Audit Trail</div>
-          <div className="text-[22px] mt-1" style={{ fontFamily: "var(--font-serif)" }}>
-            {dealRef}
+        {/* ── Header — small caption + Source Serif title + summary ── */}
+        <div className="px-5 pt-5 pb-3" style={{ borderBottom: "1px solid var(--rule)" }}>
+          <div
+            className="text-[10px] uppercase tracking-[0.06em] font-medium"
+            style={{ color: "var(--ink-3)" }}
+          >
+            History · {dealRef}
           </div>
-          <div className="text-[11px] opacity-60 mt-1">
-            {state?.loading ? "Loading…" : `${rows.length} version${rows.length === 1 ? "" : "s"} on record`}
+          <div
+            className="text-[22px] font-semibold mt-1"
+            style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
+          >
+            Audit Trail
+          </div>
+          <div className="text-[11px] mt-1" style={{ color: "var(--ink-3)" }}>
+            {state?.loading
+              ? "Loading…"
+              : rows.length === 0
+              ? "No history on record"
+              : `${rows.length} version${rows.length === 1 ? "" : "s"} on record`}
           </div>
         </div>
 
-        <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-          {state?.loading && <div className="text-[12px] opacity-70">Loading audit trail…</div>}
+        {/* ── Body — vertical timeline. Spine + per-event marker. ── */}
+        <div className="px-5 py-5 relative">
+          {state?.loading && (
+            <div className="text-[12px]" style={{ color: "var(--ink-3)" }}>Loading audit trail…</div>
+          )}
           {state?.error && (
-            <div className="text-[12px]" style={{ color: "#7a1f00" }}>
+            <div className="text-[12px]" style={{ color: "var(--signal-sell)" }}>
               Error: {state.error}
             </div>
           )}
           {!state?.loading && !state?.error && rows.length === 0 && (
-            <div className="text-[12px] opacity-70">No history found for this deal_ref.</div>
+            <div className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+              No history found for this deal_ref.
+            </div>
           )}
           {!state?.loading && !state?.error && rows.length > 0 && (
-            <ol className="space-y-3">
-              {rows.map((row, i) => {
-                const d = diffs[i];
-                const version = i + 1;
-                const isLive = row.effective_end == null;
-                return (
-                  <li
-                    key={i}
-                    className="px-3 py-3"
-                    style={{
-                      background: isLive ? "#eef5e9" : "#ffffff",
-                      border: `1px solid ${isLive ? "#7ea66a" : "#d9d4c7"}`,
-                    }}
-                  >
-                    <div className="flex items-baseline justify-between text-[11px]">
-                      <span>
-                        <strong>v{version}</strong>
-                        {isLive && <span className="ml-2 px-1.5 py-0.5 text-[10px]" style={{background: "#1f4a1f", color: "#e8f5e2"}}>LIVE</span>}
-                        {!isLive && d.initial && <span className="ml-2 opacity-60">initial</span>}
-                      </span>
-                      <span className="opacity-70">
-                        by {row.user_id || "—"}
-                        {d.initial && row.draft_approved_by && (
-                          <> · approved by <strong>{row.draft_approved_by}</strong></>
-                        )}
-                      </span>
-                    </div>
-                    <div className="text-[10px] opacity-60 mt-1">
-                      effective {String(row.effective_start).replace("T", " ").slice(0, 19)} UTC
-                      {row.effective_end && (
-                        <> → {String(row.effective_end).replace("T", " ").slice(0, 19)} UTC</>
-                      )}
-                    </div>
+            <>
+              {/* Vertical spine — 1px rule-2 line behind the dot column */}
+              <div style={{
+                position: "absolute",
+                left: 36, top: 24, bottom: 24,
+                width: 1, background: "var(--rule-2)",
+              }} />
 
-                    {d.initial ? (
-                      <div className="mt-2 text-[11px]">
-                        Initial booking:{" "}
-                        {row.txn_type === "LOAN" ? (
-                          <>
-                            <code>{row.loan_type}</code>{" · "}
-                            <code>{row.direction}</code>{" · "}
-                            <code>{row.principal_amount} {row.principal_asset}</code>{" @ "}
-                            <code>{row.interest_rate_pa_pct}% {row.interest_type}</code>{" · status "}
-                            <code>{row.status}</code>
-                            {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
-                          </>
-                        ) : row.txn_type === "SPOT" ? (
-                          <>
-                            <code>{row.direction}</code>{" · "}
-                            <code>{row.base_amount} {row.base_asset}</code>{" @ "}
-                            <code>{row.price}</code>{" · "}
-                            <code>{row.quote_amount} {row.quote_asset}</code>{" · status "}
-                            <code>{row.status}</code>
-                            {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
-                          </>
-                        ) : (
-                          <>
-                            <code>{row.cashflow_type}</code>{" · "}
-                            <code>{row.direction}</code>{" · "}
-                            <code>{row.amount} {row.asset}</code>{" · status "}
-                            <code>{row.status}</code>
-                            {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
-                            {/* Currently-linked loans — pulled from the map
-                                table snapshot. Same for every version row
-                                (the map table is not bitemporal). */}
-                            {Array.isArray(row.mappings) && row.mappings.length > 0 && (
-                              <> · linked to <code>{row.mappings.map((m) => m.counterpart_deal_ref).join(", ")}</code></>
-                            )}
-                          </>
+              {/* Render newest event first (top of timeline) */}
+              {rows.slice().reverse().map((row, ri) => {
+                const i = rows.length - 1 - ri;
+                const d = diffs[i];
+                const isInitial = d.initial;
+                const isLive = row.effective_end == null;
+                // STATUS-only change gets its own kind so the marker
+                // colour and label match the design's STATUS event style.
+                const isStatusOnly = !isInitial
+                  && d.changed.length > 0
+                  && d.changed.every((c) => c.field === "status");
+
+                const marker =
+                  isInitial    ? { color: "var(--status-confirmed)", label: "created" }
+                  : isStatusOnly ? { color: "var(--status-processed)", label: "status" }
+                  : d.changed.length === 0
+                                ? { color: "var(--ink-3)",             label: "no-op" }
+                                : { color: "var(--signal-warn)",       label: "edited" };
+
+                const tsText = String(row.effective_start).replace("T", " ").slice(0, 19) + " UTC";
+
+                return (
+                  <div key={i} style={{
+                    display: "grid",
+                    gridTemplateColumns: "32px 1fr",
+                    gap: 12,
+                    marginBottom: 18,
+                    position: "relative",
+                  }}>
+                    {/* Circular event marker — 2px paper ring + 1px outer
+                        echo of the marker colour, sitting on the spine. */}
+                    <div style={{
+                      width: 12, height: 12, borderRadius: "50%",
+                      background: marker.color,
+                      marginTop: 4, marginLeft: 10,
+                      border: "2px solid var(--paper)",
+                      boxShadow: `0 0 0 1px ${marker.color}`,
+                    }} />
+
+                    <div>
+                      {/* Top row: timestamp · kind pill · by user (+ live) */}
+                      <div style={{
+                        display: "flex", flexWrap: "wrap",
+                        alignItems: "baseline", gap: 8, marginBottom: 4,
+                      }}>
+                        <span style={{
+                          fontSize: 11, color: "var(--ink-3)",
+                          fontVariantNumeric: "tabular-nums",
+                        }}>{tsText}</span>
+                        <span style={{
+                          padding: "2px 6px", borderRadius: 2, lineHeight: 1.2,
+                          background: "var(--paper-2)", color: "var(--ink-3)",
+                          border: "1px solid var(--rule-2)",
+                          fontSize: 10, fontWeight: 600,
+                          letterSpacing: "0.06em", textTransform: "uppercase",
+                        }}>{marker.label}</span>
+                        <span style={{ fontSize: 11, color: "var(--ink)" }}>
+                          by <strong>{row.user_id || "—"}</strong>
+                        </span>
+                        {isLive && (
+                          <span style={{
+                            padding: "2px 6px", borderRadius: 2, lineHeight: 1.2,
+                            background: "var(--status-settled-bg)",
+                            color: "var(--status-settled)",
+                            border: "1px solid var(--status-settled)",
+                            fontSize: 10, fontWeight: 600,
+                            letterSpacing: "0.06em", textTransform: "uppercase",
+                          }}>live</span>
                         )}
                       </div>
-                    ) : d.changed.length === 0 ? (
-                      <div className="mt-2 text-[11px] opacity-70">
-                        (no changes to audited fields)
+
+                      {/* Body content per event kind */}
+                      <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                        {isInitial && (
+                          <>
+                            {/* APPROVE-style sub-line if a draft approver
+                                stamped the initial row. */}
+                            <div style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+                              Initial booking
+                              {row.draft_approved_by && (
+                                <> · approved by <strong style={{ color: "var(--ink)" }}>{row.draft_approved_by}</strong></>
+                              )}
+                            </div>
+                            <div style={{ marginTop: 4, fontSize: 11 }}>
+                              {row.txn_type === "LOAN" ? (
+                                <>
+                                  <code>{row.loan_type}</code>{" · "}
+                                  <code>{row.direction}</code>{" · "}
+                                  <code>{row.principal_amount} {row.principal_asset}</code>{" @ "}
+                                  <code>{row.interest_rate_pa_pct}% {row.interest_type}</code>{" · "}
+                                  status <code>{row.status}</code>
+                                  {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                                </>
+                              ) : row.txn_type === "SPOT" ? (
+                                <>
+                                  <code>{row.direction}</code>{" · "}
+                                  <code>{row.base_amount} {row.base_asset}</code>{" @ "}
+                                  <code>{row.price}</code>{" · "}
+                                  <code>{row.quote_amount} {row.quote_asset}</code>{" · "}
+                                  status <code>{row.status}</code>
+                                  {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                                </>
+                              ) : (
+                                <>
+                                  <code>{row.cashflow_type}</code>{" · "}
+                                  <code>{row.direction}</code>{" · "}
+                                  <code>{row.amount} {row.asset}</code>{" · "}
+                                  status <code>{row.status}</code>
+                                  {row.counterparty && <> · cp <code>{row.counterparty}</code></>}
+                                  {Array.isArray(row.mappings) && row.mappings.length > 0 && (
+                                    <> · linked to <code>{row.mappings.map((m) => m.counterpart_deal_ref).join(", ")}</code></>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {!isInitial && d.changed.length === 0 && (
+                          <div style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+                            (no changes to audited fields)
+                          </div>
+                        )}
+
+                        {!isInitial && d.changed.length > 0 && (
+                          <div>
+                            {d.changed.map((c) => {
+                              const label = AUDIT_FIELD_LABELS[c.field] || c.field;
+                              const from = c.from == null || c.from === "" ? "∅" : String(c.from);
+                              const to   = c.to   == null || c.to   === "" ? "∅" : String(c.to);
+                              // STATUS field gets pill→pill rendering;
+                              // every other field gets sell-bg strikethrough → buy-bg
+                              // diff chips per STYLE_GUIDE §"Audit trail peek".
+                              if (c.field === "status") {
+                                const tone = (s) => {
+                                  switch (s) {
+                                    case "PENDING":   return { bg: "var(--status-pending-bg)",   fg: "var(--status-pending)"   };
+                                    case "CONFIRMED": return { bg: "var(--status-confirmed-bg)", fg: "var(--status-confirmed)" };
+                                    case "PROCESSED": return { bg: "var(--status-processed-bg)", fg: "var(--status-processed)" };
+                                    case "SETTLED":   return { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   };
+                                    case "CANCELLED": return { bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)" };
+                                    default:          return { bg: "var(--paper-2)",             fg: "var(--ink-3)"            };
+                                  }
+                                };
+                                const a = tone(from), b = tone(to);
+                                return (
+                                  <div key={c.field} style={{ marginBottom: 4 }}>
+                                    <span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{label} </span>
+                                    <span style={{
+                                      padding: "2px 6px", borderRadius: 2,
+                                      background: a.bg, color: a.fg,
+                                      fontSize: 11, fontWeight: 600,
+                                      letterSpacing: "0.06em", textTransform: "uppercase",
+                                    }}>{from}</span>
+                                    <span style={{ color: "var(--ink-3)" }}> → </span>
+                                    <span style={{
+                                      padding: "2px 6px", borderRadius: 2,
+                                      background: b.bg, color: b.fg,
+                                      fontSize: 11, fontWeight: 600,
+                                      letterSpacing: "0.06em", textTransform: "uppercase",
+                                    }}>{to}</span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div key={c.field} style={{ marginBottom: 4 }}>
+                                  <span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{label} </span>
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center",
+                                    gap: 6, flexWrap: "wrap", verticalAlign: "middle",
+                                  }}>
+                                    <span style={{
+                                      padding: "2px 6px", borderRadius: 2,
+                                      background: "var(--signal-sell-bg)",
+                                      color: "var(--signal-sell)",
+                                      textDecoration: "line-through",
+                                      fontSize: 11,
+                                    }}>{from}</span>
+                                    <span style={{ color: "var(--ink-3)" }}>→</span>
+                                    <span style={{
+                                      padding: "2px 6px", borderRadius: 2,
+                                      background: "var(--signal-buy-bg)",
+                                      color: "var(--signal-buy)",
+                                      fontSize: 11,
+                                    }}>{to}</span>
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <ul className="mt-2 space-y-1 text-[11px]">
-                        {d.changed.map((c) => (
-                          <li key={c.field}>
-                            <strong>{AUDIT_FIELD_LABELS[c.field] || c.field}:</strong>{" "}
-                            <span style={{ color: "#7a1f00", textDecoration: "line-through" }}>
-                              {c.from === null || c.from === "" ? "∅" : String(c.from)}
-                            </span>
-                            {"  →  "}
-                            <span style={{ color: "#1f4a1f" }}>
-                              {c.to === null || c.to === "" ? "∅" : String(c.to)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
+                    </div>
+                  </div>
                 );
-              }).reverse()}
-            </ol>
+              })}
+            </>
           )}
         </div>
       </div>
