@@ -572,9 +572,6 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
             <button onClick={load} style={ghostBtn} title="Refresh">
               <RefreshCw size={14} />
             </button>
-            <button onClick={onClose} style={ghostBtn} title="Close">
-              <X size={14} />
-            </button>
           </div>
         </div>
         <div style={{
