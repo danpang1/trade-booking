@@ -2242,8 +2242,17 @@ function SubmitFeedback({ feedback, onDismiss }) {
   );
 }
 
-// Fixed-position overlay wrapper for the Create Deal / amend form.
-function ModalShell({ open, onClose, children }) {
+// Fixed-position overlay wrapper for the Create Deal / amend form and
+// for full-screen export modals.
+//
+// variant="modal"  (default) → centered card, 95vw max-1600px, dark scrim,
+//                              fade + slight translate-y transition.
+// variant="drawer"           → right-anchored panel, 60vw max-1180px, light
+//                              scrim, slide-in from the right per STYLE_GUIDE
+//                              §"Create Deal — right-side drawer". Used by
+//                              the booking form so the blotter stays
+//                              visible underneath.
+function ModalShell({ open, onClose, children, variant = "modal" }) {
   // Two-frame mount → triggers the CSS transition (opacity + slight
   // scale on the inner panel). Without this, the element renders at
   // its final state and the transition has nothing to animate from.
@@ -2267,27 +2276,55 @@ function ModalShell({ open, onClose, children }) {
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const isDrawer = variant === "drawer";
+  // Scrim — design uses a lighter scrim for the drawer (rgba(13,12,10,0.18))
+  // so the underlying blotter remains visually present at ~55% opacity.
+  const scrim = isDrawer ? "rgba(13,12,10,0.18)" : "rgba(0,0,0,0.5)";
+  // Drawer slide-in curve from STYLE_GUIDE §Interactions: 0.18s
+  // cubic-bezier(0.2, 0.7, 0.3, 1). Modal keeps the existing 160ms ease.
+  const drawerEase = "cubic-bezier(0.2, 0.7, 0.3, 1)";
+
+  const wrapperStyle = isDrawer
+    ? {
+        background: mounted ? scrim : "rgba(0,0,0,0)",
+        transition: "background 180ms ease-out",
+      }
+    : {
+        background: mounted ? scrim : "rgba(0,0,0,0)",
+        transition: "background 160ms ease-out",
+      };
+
+  const panelStyle = isDrawer
+    ? {
+        position: "absolute",
+        top: 0, right: 0, bottom: 0,
+        width: "min(60vw, 1180px)",
+        background: "var(--paper)",
+        borderLeft: "1px solid var(--rule-2)",
+        boxShadow: "-20px 0 60px rgba(0,0,0,0.18)",
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateX(0)" : "translateX(40px)",
+        transition: `opacity 180ms ease-out, transform 180ms ${drawerEase}`,
+        overflow: "auto",
+      }
+    : {
+        width: "min(95vw, 1600px)",
+        background: "var(--paper-2)",
+        border: "1px solid var(--rule-2)",
+        boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateY(0)" : "translateY(-8px)",
+        transition: "opacity 160ms ease-out, transform 160ms ease-out",
+      };
+
   return (
     <div
-      className="fixed inset-0 z-40 p-4 overflow-auto"
-      style={{
-        background: mounted ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)",
-        transition: "background 160ms ease-out",
-      }}
+      className={isDrawer ? "fixed inset-0 z-40 overflow-hidden" : "fixed inset-0 z-40 p-4 overflow-auto"}
+      style={wrapperStyle}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div
-        className="relative mx-auto"
-        style={{
-          width: "min(95vw, 1600px)",
-          background: "#f6f3ec",
-          border: "1px solid #d9d4c7",
-          boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
-          opacity: mounted ? 1 : 0,
-          transform: mounted ? "translateY(0)" : "translateY(-8px)",
-          transition: "opacity 160ms ease-out, transform 160ms ease-out",
-        }}
-      >
+      <div className={isDrawer ? "" : "relative mx-auto"} style={panelStyle}>
         <button
           type="button"
           onClick={onClose}
@@ -2301,11 +2338,11 @@ function ModalShell({ open, onClose, children }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "#1f1f1f",
-            color: "#f2efe8",
+            background: "var(--panel)",
+            color: "var(--panel-ink)",
             fontSize: 20,
             lineHeight: 1,
-            borderRadius: 16,
+            borderRadius: isDrawer ? 3 : 16,
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
             cursor: "pointer",
           }}
@@ -8267,6 +8304,7 @@ export default function TradeBookingForm() {
           )}
           {form.category !== "FUTURE" && (
       <ModalShell
+        variant="drawer"
         open={createDealOpen || Boolean(amendingDealRef) || Boolean(draftId)}
         onClose={() => {
           // A snapshot exists when the form was overlaid with "other"
