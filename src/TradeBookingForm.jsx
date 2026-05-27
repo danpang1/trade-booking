@@ -2469,25 +2469,24 @@ function HistoryModal({ open, dealRef, state, onClose }) {
       style={{
         position: "fixed",
         top: 80, left: 0, right: 0, bottom: 0,
-        background: mounted ? "rgba(13,12,10,0.18)" : "rgba(0,0,0,0)",
-        transition: "background 180ms ease-out",
+        background: mounted ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)",
+        transition: "background 160ms ease-out",
         zIndex: 50,
-        overflow: "hidden",
+        overflow: "auto",
+        padding: 16,
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        className="relative mx-auto"
         style={{
-          position: "absolute",
-          top: 0, right: 0, bottom: 0,
-          width: "min(70vw, 580px)",
+          width: "min(90vw, 720px)",
           background: "var(--paper)",
-          borderLeft: "1px solid var(--rule-2)",
-          boxShadow: "-20px 0 60px rgba(0,0,0,0.18)",
+          border: "1px solid var(--rule-2)",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.3)",
           opacity: mounted ? 1 : 0,
-          transform: mounted ? "translateX(0)" : "translateX(40px)",
-          transition: "opacity 180ms ease-out, transform 180ms cubic-bezier(0.2, 0.7, 0.3, 1)",
-          overflow: "auto",
+          transform: mounted ? "translateY(0)" : "translateY(-8px)",
+          transition: "opacity 160ms ease-out, transform 160ms ease-out",
           fontFamily: "var(--font-mono)",
         }}
       >
@@ -2502,6 +2501,7 @@ function HistoryModal({ open, dealRef, state, onClose }) {
             background: "var(--panel)", color: "var(--panel-ink)",
             fontSize: 20, lineHeight: 1, borderRadius: 3,
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)", cursor: "pointer",
+            border: "none",
           }}
         >×</button>
 
