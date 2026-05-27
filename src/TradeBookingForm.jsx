@@ -5881,13 +5881,16 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       </div>
 
       {/* ─── KPI strip per STYLE_GUIDE §6.7. Five tiles in a row, each
-          with a 3px coloured left border + label + big number + sub. ─── */}
+          with a 3px coloured left border + label + big number + sub.
+          align-items: stretch so the Notional tile (which stacks every
+          live asset) can grow without breaking the row rhythm. ─── */}
       <div
         className="mb-3"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
           gap: 8,
+          alignItems: "stretch",
         }}
       >
         {(() => {
@@ -5929,17 +5932,63 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
           };
 
-          // Tile 2 — top asset in big mono, rest in the sub line.
-          const topOne = kpis.topAssets[0];
-          const tail = kpis.topAssets.slice(1, 3)
-            .map(([a, n]) => `${a} ${fmtNum(n)}`)
-            .join(" · ");
-          const notionalValue = topOne
-            ? <span>{topOne[0]} <span style={{ fontWeight: 400 }}>{fmtNum(topOne[1])}</span></span>
-            : "—";
-          const notionalSub = tail
-            ? `+ ${tail}${kpis.assetCount > 3 ? ` · +${kpis.assetCount - 3} more` : ""}`
-            : (kpis.assetCount === 0 ? "no live notional" : "1 asset");
+          // Tile 2 — full breakdown by asset. Each row is one principal
+          // asset's live notional, sorted desc. Cross-asset sums aren't
+          // meaningful without FX, so the tile lists rather than totals.
+          const notionalTile = (
+            <div
+              key="notional"
+              style={{
+                background: "var(--paper)",
+                border: "1px solid var(--rule)",
+                borderLeft: "3px solid var(--ink-3)",
+                borderRadius: 3,
+                padding: "8px 12px",
+                fontFamily: "var(--font-mono)",
+                minHeight: 64,
+                display: "flex", flexDirection: "column",
+              }}
+            >
+              <div style={{
+                fontSize: 10, color: "var(--ink-3)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+                fontWeight: 500,
+                marginBottom: 4,
+              }}>
+                Notional by asset
+              </div>
+              {kpis.topAssets.length === 0 ? (
+                <div style={{
+                  fontSize: 12, color: "var(--ink-3)", marginTop: 2,
+                }}>no live notional</div>
+              ) : (
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr",
+                  columnGap: 10, rowGap: 2,
+                  fontSize: 12, color: "var(--ink)",
+                  alignItems: "baseline",
+                }}>
+                  {kpis.topAssets.map(([a, n]) => (
+                    <React.Fragment key={a}>
+                      <span style={{ fontWeight: 600 }}>{a}</span>
+                      <span style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}>{fmtNum(n)}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
+              <div style={{
+                fontSize: 10, color: "var(--ink-3)", marginTop: 4,
+              }}>
+                {kpis.assetCount === 0
+                  ? "—"
+                  : `${kpis.assetCount} asset${kpis.assetCount === 1 ? "" : "s"} · ${kpis.liveCount} live`}
+              </div>
+            </div>
+          );
 
           // Tile 5 — green when hedge coverage ≥50%, warn amber below.
           const hedgeAccent = kpis.liveCount === 0
@@ -5948,7 +5997,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
           return [
             tile("var(--status-settled)", "Active loans", kpis.liveCount, `of ${kpis.totalCount} on file`),
-            tile("var(--ink-3)",           "Notional · top assets", notionalValue, notionalSub),
+            notionalTile,
             tile(kpis.maturingSoon > 0 ? "var(--status-pending)" : "var(--ink-3)",
                                             "Maturing · 30d",  kpis.maturingSoon, "next 30 days"),
             tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
