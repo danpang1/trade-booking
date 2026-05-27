@@ -4628,8 +4628,8 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
     <div className="px-5 pt-4 pb-8">
       <div className="mb-3">
         <div
-          className="text-[22px]"
-          style={{ fontFamily: "var(--font-serif)" }}
+          className="text-[26px] font-semibold"
+          style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
         >Deal Enquiry</div>
       </div>
 
@@ -4646,25 +4646,25 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       <div
         className="mb-3"
         style={{
-          background: "#ffffff",
-          border: "1px solid #e9e7e2",
+          background: "var(--paper)",
+          border: "1px solid var(--rule)",
           fontFamily: "var(--font-mono)",
         }}
       >
         {/* Header strip — label, date toggle, clear all */}
         <div
           className="flex items-center justify-between"
-          style={{ padding: "8px 16px", borderBottom: "1px solid #f3f1ec" }}
+          style={{ padding: "8px 16px", borderBottom: "1px solid var(--rule)" }}
         >
           <div className="flex items-baseline gap-2.5">
             <span
-              className="text-[10px] tracking-[0.28em] uppercase"
-              style={{ color: "#8a857a", fontWeight: 500 }}
+              className="text-[10px] tracking-[0.06em] uppercase"
+              style={{ color: "var(--ink-3)", fontWeight: 500 }}
             >Filters</span>
             {filtersActive && (
               <span
-                className="text-[9px] tracking-[0.22em] uppercase"
-                style={{ color: "#b45309" }}
+                className="text-[9px] tracking-[0.06em] uppercase"
+                style={{ color: "var(--signal-warn)" }}
               >· Active</span>
             )}
           </div>
@@ -4672,10 +4672,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
             <button
               type="button"
               onClick={() => setShowDates((s) => !s)}
-              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
               style={{
                 background: "transparent",
-                color: "#1f1f1f",
+                color: "var(--ink)",
                 border: "none",
                 padding: "4px 0",
                 cursor: "pointer",
@@ -4683,17 +4683,17 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
             >
               {showDates ? "− Hide dates" : "+ Date filters"}
               {!showDates && hasDateFilter && (
-                <span style={{ color: "#b45309", marginLeft: 4 }}>· Active</span>
+                <span style={{ color: "var(--signal-warn)", marginLeft: 4 }}>· Active</span>
               )}
             </button>
             <button
               type="button"
               onClick={clearFilters}
               disabled={!filtersActive}
-              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
               style={{
                 background: "transparent",
-                color: filtersActive ? "#1f1f1f" : "#cdc8bb",
+                color: filtersActive ? "var(--ink)" : "var(--ink-4)",
                 border: "none",
                 padding: "4px 0",
                 cursor: filtersActive ? "pointer" : "not-allowed",
@@ -4704,10 +4704,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               onClick={exportCsv}
               disabled={totalRows === 0}
               title={totalRows === 0 ? "No rows to export" : `Download ${totalRows} row${totalRows === 1 ? "" : "s"} as CSV`}
-              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
               style={{
                 background: "transparent",
-                color: totalRows === 0 ? "#cdc8bb" : "#1f1f1f",
+                color: totalRows === 0 ? "var(--ink-4)" : "var(--ink)",
                 border: "none",
                 padding: "4px 0",
                 cursor: totalRows === 0 ? "not-allowed" : "pointer",
@@ -4717,10 +4717,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               type="button"
               onClick={() => setShowTradeBookingsModal(true)}
               title="Pick a date range and portfolios, then download a CSV of trade bookings"
-              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
               style={{
                 background: "transparent",
-                color: "#1f1f1f",
+                color: "var(--ink)",
                 border: "none",
                 padding: "4px 0",
                 cursor: "pointer",
