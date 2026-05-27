@@ -5746,8 +5746,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [error, setError] = useState(null);
   const [lastFetchedAt, setLastFetchedAt] = useState(null);
   // Exposure-by-cpty-by-asset panel is hidden by default; clicking the
-  // Active loans KPI tile toggles it open.
+  // Active loans KPI tile toggles it open. Same pattern for the
+  // upcoming-expiry list which expands from the Upcoming expiry tile.
   const [showExposure, setShowExposure] = useState(false);
+  const [showExpiring, setShowExpiring] = useState(false);
   const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
@@ -5831,15 +5833,21 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const kpis = useMemo(() => {
     const live = rows.filter((r) => r.status === "LIVE");
 
-    // Maturing in next 30 days — slice maturity_date to date-only so a
-    // timezone-naive parse doesn't shift the day boundary.
+    // Upcoming expiry — every LIVE loan with a maturity_date in the
+    // next 30 days, soonest first. Slice maturity_date to date-only so
+    // a timezone-naive parse doesn't shift the day boundary.
     const todayMs = Date.parse(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
     const in30Ms  = todayMs + 30 * 86_400_000;
-    const maturingSoon = live.filter((r) => {
-      if (!r.maturity_date) return false;
-      const ms = Date.parse(String(r.maturity_date).slice(0, 10) + "T00:00:00Z");
-      return !Number.isNaN(ms) && ms >= todayMs && ms <= in30Ms;
-    }).length;
+    const upcomingExpiry = live
+      .map((r) => {
+        if (!r.maturity_date) return null;
+        const ms = Date.parse(String(r.maturity_date).slice(0, 10) + "T00:00:00Z");
+        if (Number.isNaN(ms) || ms < todayMs || ms > in30Ms) return null;
+        const daysLeft = Math.round((ms - todayMs) / 86_400_000);
+        return { row: r, ms, daysLeft };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.ms - b.ms);
 
     const openTerm = live.filter((r) => !r.maturity_date).length;
 
@@ -5879,7 +5887,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     return {
       liveCount: live.length,
       totalCount: rows.length,
-      maturingSoon,
+      upcomingExpiry,
       openTerm,
       hedgedCount,
       hedgePct,
@@ -5973,6 +5981,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             ? "var(--ink-3)"
             : kpis.hedgePct >= 50 ? "var(--signal-buy)" : "var(--signal-warn)";
 
+          const expiringCount = kpis.upcomingExpiry.length;
           return [
             tile(
               "var(--status-settled)",
@@ -5987,14 +5996,149 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   : "Show live exposure by counterparty × asset",
               },
             ),
-            tile(kpis.maturingSoon > 0 ? "var(--status-pending)" : "var(--ink-3)",
-                                            "Maturing · 30d",  kpis.maturingSoon, "next 30 days"),
+            tile(
+              expiringCount > 0 ? "var(--status-pending)" : "var(--ink-3)",
+              "Upcoming expiry",
+              expiringCount,
+              showExpiring
+                ? "hide upcoming"
+                : expiringCount > 0
+                  ? "click to see loans"
+                  : "none in 30d",
+              {
+                onClick: expiringCount > 0 ? () => setShowExpiring((s) => !s) : undefined,
+                active: showExpiring,
+                title: expiringCount > 0
+                  ? (showExpiring
+                      ? "Hide upcoming-expiry list"
+                      : "Show LIVE loans with maturity in the next 30 days")
+                  : "No LIVE loans maturing in the next 30 days",
+              },
+            ),
             tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
             tile(hedgeAccent,               "Hedged coverage", `${kpis.hedgePct}%`,
                                             `${kpis.hedgedCount} / ${kpis.liveCount} live`),
           ];
         })()}
       </div>
+
+      {/* ─── Upcoming expiry — LIVE loans whose maturity_date is in
+          the next 30 days, soonest first. Hidden by default; opens
+          when the Upcoming expiry tile is clicked. ─── */}
+      {showExpiring && kpis.upcomingExpiry.length > 0 && (() => {
+        const fmtNum = (n) => {
+          if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
+          if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
+          return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+        };
+        return (
+          <div
+            className="mb-3"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              borderRadius: 3,
+              fontFamily: "var(--font-mono)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--rule)",
+              background: "var(--paper-2)",
+              display: "flex", alignItems: "baseline", justifyContent: "space-between",
+            }}>
+              <span style={{
+                fontSize: 10, color: "var(--ink-3)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+                fontWeight: 500,
+              }}>
+                Upcoming expiry · {kpis.upcomingExpiry.length} loan{kpis.upcomingExpiry.length === 1 ? "" : "s"}
+              </span>
+              <span style={{
+                fontSize: 10, color: "var(--ink-4)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+              }}>
+                next 30 days · soonest first
+              </span>
+            </div>
+            <table
+              style={{
+                width: "100%", borderCollapse: "collapse", fontSize: 12,
+              }}
+            >
+              <thead>
+                <tr style={{
+                  background: "var(--paper-2)",
+                  color: "var(--ink-3)",
+                  fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
+                  fontWeight: 500,
+                  borderBottom: "1px solid var(--rule)",
+                }}>
+                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Deal ref</th>
+                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Counterparty</th>
+                  <th style={{ textAlign: "right", padding: "6px 12px" }}>Principal</th>
+                  <th style={{ textAlign: "left",  padding: "6px 12px" }}>Maturity</th>
+                  <th style={{ textAlign: "right", padding: "6px 12px", width: 80 }}>Days left</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kpis.upcomingExpiry.map((e, i) => {
+                  const r = e.row;
+                  const altBg = i % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
+                  // <7d is the design's "soon" threshold — warn the row
+                  // border so the eye catches it.
+                  const urgent = e.daysLeft <= 7;
+                  return (
+                    <tr key={r.deal_ref} style={{
+                      background: altBg,
+                      borderTop: "1px solid var(--rule)",
+                      borderLeft: urgent ? "3px solid var(--signal-warn)" : "3px solid transparent",
+                    }}>
+                      <td style={{ padding: "6px 12px" }}>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(r)}
+                          style={{
+                            background: "transparent", border: "none", padding: 0,
+                            color: "var(--signal-link)", cursor: "pointer", font: "inherit",
+                            borderBottom: "1px dotted var(--signal-link)",
+                          }}
+                          title="Open in Loan Schedule"
+                        >{r.deal_ref}</button>
+                      </td>
+                      <td style={{ padding: "6px 12px", color: "var(--ink-2)" }}>
+                        {r.counterparty || "—"}
+                      </td>
+                      <td style={{
+                        padding: "6px 12px", textAlign: "right",
+                        fontVariantNumeric: "tabular-nums", color: "var(--ink)",
+                      }}>
+                        {fmtNum(parseFloat(r.principal_amount) || 0)}{" "}
+                        <span style={{ color: "var(--ink-3)" }}>{r.principal_asset || ""}</span>
+                      </td>
+                      <td style={{
+                        padding: "6px 12px", color: "var(--ink-3)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}>
+                        {String(r.maturity_date).slice(0, 10)}
+                      </td>
+                      <td style={{
+                        padding: "6px 12px", textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                        color: urgent ? "var(--signal-warn)" : "var(--ink-2)",
+                        fontWeight: urgent ? 600 : 500,
+                      }}>
+                        {e.daysLeft === 0 ? "today" : `${e.daysLeft}d`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* ─── Live exposure by counterparty × asset. Aggregates every
           LIVE loan into (counterparty, principal_asset) rows showing
