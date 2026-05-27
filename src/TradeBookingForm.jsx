@@ -6004,7 +6004,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 ? "hide upcoming"
                 : expiringCount > 0
                   ? "click to see loans"
-                  : "none in 30d",
+                  : "no upcoming expiries",
               {
                 onClick: expiringCount > 0 ? () => setShowExpiring((s) => !s) : undefined,
                 active: showExpiring,
