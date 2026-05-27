@@ -1,14 +1,75 @@
 @import "tailwindcss";
 
-/* Altas editorial baseline — mirrors the dashboard's bone/ink palette.
-   All other styling stays scoped inside TradeBookingForm.jsx. */
+/* Design tokens (paper/ink/status/signal/density/type/space/radius) and
+   reusable .tk-* component classes. Single source of truth — also published
+   in design_handoff_trade_booking/tokens.css as the design reference. */
+@import "./tokens.css";
+
+/* Expose design tokens to Tailwind v4 utilities (`bg-paper`, `text-ink`,
+   `font-serif`, `text-fs-26`, `rounded-card`, …). `inline` keeps the
+   variables sourced from :root in tokens.css rather than redeclaring them. */
+@theme inline {
+  --color-paper:        var(--paper);
+  --color-paper-2:      var(--paper-2);
+  --color-paper-3:      var(--paper-3);
+  --color-panel:        var(--panel);
+  --color-panel-ink:    var(--panel-ink);
+  --color-panel-ink-2:  var(--panel-ink-2);
+
+  --color-ink:          var(--ink);
+  --color-ink-2:        var(--ink-2);
+  --color-ink-3:        var(--ink-3);
+  --color-ink-4:        var(--ink-4);
+
+  --color-rule:         var(--rule);
+  --color-rule-2:       var(--rule-2);
+
+  --color-status-pending:      var(--status-pending);
+  --color-status-pending-bg:   var(--status-pending-bg);
+  --color-status-confirmed:    var(--status-confirmed);
+  --color-status-confirmed-bg: var(--status-confirmed-bg);
+  --color-status-processed:    var(--status-processed);
+  --color-status-processed-bg: var(--status-processed-bg);
+  --color-status-settled:      var(--status-settled);
+  --color-status-settled-bg:   var(--status-settled-bg);
+  --color-status-cancelled:    var(--status-cancelled);
+  --color-status-cancelled-bg: var(--status-cancelled-bg);
+
+  --color-signal-buy:     var(--signal-buy);
+  --color-signal-buy-bg:  var(--signal-buy-bg);
+  --color-signal-sell:    var(--signal-sell);
+  --color-signal-sell-bg: var(--signal-sell-bg);
+  --color-signal-warn:    var(--signal-warn);
+  --color-signal-warn-bg: var(--signal-warn-bg);
+  --color-signal-link:    var(--signal-link);
+
+  --font-serif: var(--font-serif);
+  --font-mono:  var(--font-mono);
+  --font-sans:  var(--font-sans);
+
+  --text-fs-10: var(--fs-10);
+  --text-fs-11: var(--fs-11);
+  --text-fs-12: var(--fs-12);
+  --text-fs-13: var(--fs-13);
+  --text-fs-15: var(--fs-15);
+  --text-fs-18: var(--fs-18);
+  --text-fs-22: var(--fs-22);
+  --text-fs-26: var(--fs-26);
+
+  --radius-sharp: var(--radius-xs);
+  --radius-cell:  var(--radius-sm);
+  --radius-card:  var(--radius-md);
+}
+
+/* Baseline — paper background, ink text, mono everywhere by default.
+   Section/page titles opt into the serif via .tk-serif or `font-serif`. */
 html,
 body,
 #root {
   margin: 0;
-  background-color: #ffffff;
-  color: #0d0d0d;
-  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
 }
 
 /* Force 24-hour time on datetime-local / time inputs.
