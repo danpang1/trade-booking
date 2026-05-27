@@ -15,7 +15,7 @@ const overlay = {
 const panel = {
   background: BB.panel, border: `1px solid ${BB.border}`,
   width: 540, maxHeight: "90vh", overflow: "auto", padding: 20,
-  fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   color: BB.fg, fontSize: 12,
 };
 

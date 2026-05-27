@@ -140,49 +140,52 @@ function shortAddr(addr) {
 // bone/ink/hair tokens (see dashboard/src/index.css @theme block).
 // Same token names as before so downstream usage stays uniform.
 // ═════════════════════════════════════════════════════════════
+// Each value is a CSS var reference into src/tokens.css so the palette is
+// driven by the design system rather than fixed hex. Field names stay the
+// same so all downstream call sites (style={{ background: BB.surface }}, etc.)
+// keep working with no change.
 const BB = {
-  bg: "#ffffff",           // white (canvas)
-  surface: "#f8f6f1",      // chalk (panels)
-  surface2: "#f8f6f1",     // chalk (inputs)
-  border: "#d9d4c7",       // hair (hairline borders)
-  borderHot: "#0d0d0d",    // ink (focus / hover)
-  orange: "#1f63ea",       // tokka blue (primary accent — sampled from logo)
-  amber: "#1a4fbb",        // tokka blue deep (headline / status)
-  yellow: "#0d0d0d",       // ink (active input values — readable on chalk)
-  cyan: "#0e7490",         // cyan-700 (IDs / refs)
-  green: "#047857",        // emerald-700 (BUY / BOOKED / positive)
-  red: "#b91c1c",          // red-700 (SELL / errors)
-  magenta: "#86198f",      // fuchsia-800 (section accents)
-  text: "#0d0d0d",         // ink (primary text)
-  dim: "#3a3834",          // graphite (secondary text)
-  mute: "#6a665c",         // slate (labels)
-  faint: "#9a9488",        // muted (helpers)
+  bg:        "var(--paper)",       // primary canvas
+  surface:   "var(--paper-2)",     // alt row, sidebar, filter strip
+  surface2:  "var(--paper-2)",     // input default bg
+  border:    "var(--rule-2)",      // input + hairline borders
+  borderHot: "var(--ink)",         // focus / hover
+  orange:    "var(--signal-link)", // primary accent — link blue
+  amber:     "var(--ink)",         // headline ink — no brand accent on chrome
+  yellow:    "var(--ink)",         // active input values
+  cyan:      "var(--signal-link)", // IDs / refs
+  green:     "var(--signal-buy)",  // BUY / BOOKED / positive
+  red:       "var(--signal-sell)", // SELL / errors
+  magenta:   "var(--ink-2)",       // section accents (saturation reserved for status)
+  text:      "var(--ink)",         // primary text
+  dim:       "var(--ink-2)",       // secondary text
+  mute:      "var(--ink-3)",       // labels, hints
+  faint:     "var(--ink-4)",       // disabled, placeholder
 };
 
-// Pre-built className constants — using arbitrary Tailwind values
-// to keep the theme scoped without touching index.css.
+// Pre-built className constants — reference design tokens via arbitrary
+// values pointing at the CSS vars in src/tokens.css.
+//   rest:  rule-2 border on paper-2
+//   hover: ink-3 border on paper
+//   focus: ink border on paper
 const cls = {
   label:
-    "block text-[10px] uppercase tracking-[0.18em] text-[#3a3834] mb-1 font-mono",
-  // Rest → hover → focus progression:
-  //   rest:  hair border #d9d4c7 on chalk #f8f6f1
-  //   hover: slate border #6a665c on white #ffffff  (lifted feel)
-  //   focus: ink border #0d0d0d on white #ffffff
+    "block text-[10px] uppercase tracking-[0.06em] text-[var(--ink-3)] mb-1 font-mono",
   input:
-    "w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono " +
-    "hover:border-[#6a665c] hover:bg-[#ffffff] " +
-    "focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] " +
-    "placeholder:text-[#9a9488] rounded-none transition-colors caret-[#1f63ea]",
+    "w-full bg-[var(--paper-2)] border border-[var(--rule-2)] px-2.5 py-1.5 text-[12px] text-[var(--ink)] font-mono " +
+    "hover:border-[var(--ink-3)] hover:bg-[var(--paper)] " +
+    "focus:outline-none focus:border-[var(--ink)] focus:bg-[var(--paper)] " +
+    "placeholder:text-[var(--ink-4)] rounded-[3px] transition-colors caret-[var(--signal-link)]",
   select:
-    "w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono " +
-    "hover:border-[#6a665c] hover:bg-[#ffffff] " +
-    "focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] " +
-    "rounded-none appearance-none cursor-pointer pr-7 transition-colors",
+    "w-full bg-[var(--paper-2)] border border-[var(--rule-2)] px-2.5 py-1.5 text-[12px] text-[var(--ink)] font-mono " +
+    "hover:border-[var(--ink-3)] hover:bg-[var(--paper)] " +
+    "focus:outline-none focus:border-[var(--ink)] focus:bg-[var(--paper)] " +
+    "rounded-[3px] appearance-none cursor-pointer pr-7 transition-colors",
   textarea:
-    "w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono " +
-    "hover:border-[#6a665c] hover:bg-[#ffffff] " +
-    "focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] " +
-    "placeholder:text-[#9a9488] rounded-none resize-none transition-colors",
+    "w-full bg-[var(--paper-2)] border border-[var(--rule-2)] px-2.5 py-1.5 text-[12px] text-[var(--ink)] font-mono " +
+    "hover:border-[var(--ink-3)] hover:bg-[var(--paper)] " +
+    "focus:outline-none focus:border-[var(--ink)] focus:bg-[var(--paper)] " +
+    "placeholder:text-[var(--ink-4)] rounded-[3px] resize-none transition-colors",
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -2218,7 +2221,7 @@ function SubmitFeedback({ feedback, onDismiss }) {
         background: palette.bg,
         color: palette.text,
         border: `1px solid ${palette.border}`,
-        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
       }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -2433,7 +2436,7 @@ function HistoryModal({ open, dealRef, state, onClose }) {
           opacity: mounted ? 1 : 0,
           transform: mounted ? "translateY(0)" : "translateY(-8px)",
           transition: "opacity 160ms ease-out, transform 160ms ease-out",
-          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
         }}
       >
         <button
@@ -2452,7 +2455,7 @@ function HistoryModal({ open, dealRef, state, onClose }) {
 
         <div className="px-6 py-5" style={{ borderBottom: "1px solid #d9d4c7" }}>
           <div className="text-[11px] tracking-[0.25em] uppercase opacity-60">Audit Trail</div>
-          <div className="text-[22px] mt-1" style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}>
+          <div className="text-[22px] mt-1" style={{ fontFamily: "var(--font-serif)" }}>
             {dealRef}
           </div>
           <div className="text-[11px] opacity-60 mt-1">
@@ -2995,7 +2998,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
           opacity: mounted ? 1 : 0,
           transform: mounted ? "translateY(0)" : "translateY(-8px)",
           transition: "opacity 160ms ease-out, transform 160ms ease-out",
-          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
         }}
       >
         <button
@@ -3019,7 +3022,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
               Direction-aware: LEND → "LOAN TO X", BORROW → "LOAN FROM X". */}
           <div
             className="text-[22px] mt-1 leading-tight"
-            style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+            style={{ fontFamily: "var(--font-serif)" }}
           >
             {dealRef}
             {loan && (
@@ -3031,7 +3034,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                     editorial feel for the surrounding text. */}
                 <span
                   style={{
-                    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontVariantNumeric: "tabular-nums",
                     fontFeatureSettings: '"tnum"',
                     fontSize: "0.92em",
@@ -3260,7 +3263,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
               </div>
             </div>
             <div className="overflow-x-auto" style={{ border: "1px solid #efece4" }}>
-              <table className="w-full text-[11px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
+              <table className="w-full text-[11px]" style={{ fontFamily: "var(--font-mono)" }}>
                 <thead>
                   <tr style={{ background: "#efece4", color: "#6a665c" }}>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Start Date</th>
@@ -3345,11 +3348,11 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                       return (
                         <tr key={i} style={{ borderTop: "1px solid #efece4" }}>
                           {/* Start Date */}
-                          <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                          <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {fmtScheduleDate(p.startMs)}
                           </td>
                           {/* Maturity Date */}
-                          <td className="px-2 py-2 whitespace-nowrap">
+                          <td className="px-2 py-1.5 whitespace-nowrap">
                             {p.endMs != null ? (
                               <span style={{ color: "#0d0d0d" }}>{fmtScheduleDate(p.endMs)}</span>
                             ) : (
@@ -3360,11 +3363,11 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                             )}
                           </td>
                           {/* Portfolio */}
-                          <td className="px-2 py-2 whitespace-nowrap">{loan.portfolio_id ?? "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{loan.portfolio_id ?? "—"}</td>
                           {/* Portfolio Name */}
-                          <td className="px-2 py-2 whitespace-nowrap">{loan.portfolio_name || "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{loan.portfolio_name || "—"}</td>
                           {/* Asset */}
-                          <td className="px-2 py-2 whitespace-nowrap">{principalAsset || "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{principalAsset || "—"}</td>
                           {/* Amount */}
                           <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {fmt(p.notional)}
@@ -3374,7 +3377,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                           {/* Amount (USD) — notional × USD rate, placeholder */}
                           <td className="px-2 py-2 text-right whitespace-nowrap">{dash}</td>
                           {/* Interest Calc Date */}
-                          <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                          <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {p.calcEndMs != null ? fmtScheduleDate(p.calcEndMs) : dash}
                           </td>
                           {/* Interest Rate P.A. (%) */}
@@ -3382,7 +3385,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                             {loan.interest_rate_pa_pct ?? 0}
                           </td>
                           {/* Interest Asset */}
-                          <td className="px-2 py-2 whitespace-nowrap">{interestAsset || "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{interestAsset || "—"}</td>
                           {/* Accrued Interest */}
                           <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {p.days > 0 ? (
@@ -3411,9 +3414,9 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                             {p.netPaid > 0 ? fmt(p.netPaid) : dash}
                           </td>
                           {/* Loan Type */}
-                          <td className="px-2 py-2 whitespace-nowrap">{loan.loan_type || "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{loan.loan_type || "—"}</td>
                           {/* Counterparty */}
-                          <td className="px-2 py-2 whitespace-nowrap">{loan.counterparty || "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{loan.counterparty || "—"}</td>
                           {/* Comment — editable, auto-saved onBlur. Keyed
                               by trigger cashflow deal_ref (stable across
                               cashflow trade_date amends). If a row has no
@@ -3421,7 +3424,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                               fallback when no PRINCIPAL_DISBURSE mapping
                               exists), the cell is disabled with a tooltip
                               prompting the user to link a cashflow first. */}
-                          <td className="px-2 py-2 whitespace-nowrap">
+                          <td className="px-2 py-1.5 whitespace-nowrap">
                             {(() => {
                               const trigRef = p.triggerDealRef;
                               const noTrigger = !trigRef;
@@ -3627,10 +3630,10 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                   const acc = perRowAccrued[i];
                   return (
                     <tr key={m.counterpart_deal_ref + "/" + i} style={{ borderTop: "1px solid #efece4" }}>
-                      <td className="px-2 py-2 whitespace-nowrap">
+                      <td className="px-2 py-1.5 whitespace-nowrap">
                         <HoverTip text={m.trade_date}>{fmtTs(m.trade_date)}</HoverTip>
                       </td>
-                      <td className="px-2 py-2 whitespace-nowrap">
+                      <td className="px-2 py-1.5 whitespace-nowrap">
                         <button
                           type="button"
                           title="Open cashflow in form"
@@ -3641,15 +3644,15 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                           }}
                         >{m.counterpart_deal_ref}</button>
                       </td>
-                      <td className="px-2 py-2 whitespace-nowrap">{typeBadge(m.mapping_type)}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">{m.direction || "—"}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{typeBadge(m.mapping_type)}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{m.direction || "—"}</td>
                       <td
                         className="px-2 py-2 text-right whitespace-nowrap font-mono"
                         style={{ color: isOutgoing ? "#b91c1c" : "#047857" }}
                       >
                         {signed}
                       </td>
-                      <td className="px-2 py-2 whitespace-nowrap">{m.asset || "—"}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{m.asset || "—"}</td>
                       <td className="px-2 py-2 text-right whitespace-nowrap font-mono" style={{ color: "#0d0d0d" }}>
                         {acc != null ? (
                           <HoverTip
@@ -3672,7 +3675,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                           <span style={{ opacity: 0.4 }}>—</span>
                         )}
                       </td>
-                      <td className="px-2 py-2 whitespace-nowrap" style={{ color: "#6a665c" }}>
+                      <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: "#6a665c" }}>
                         {m.cashflow_type || "—"}
                       </td>
                     </tr>
@@ -3785,7 +3788,7 @@ function HoverTip({ text, children, placement = "top" }) {
             boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
             pointerEvents: "none",
             zIndex: 1000,
-            fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             // Pre-measurement: render invisible to avoid a one-frame flash
             // at the unclamped position before useLayoutEffect runs.
             visibility: clampedLeft != null ? "visible" : "hidden",
@@ -3830,7 +3833,7 @@ function FloatingToast({ toast, onDismiss }) {
         color: "#e8f5e2",
         border: "1px solid #2e5a2e",
         boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         opacity: mounted ? 1 : 0,
         transform: mounted ? "translateY(0)" : "translateY(8px)",
         transition: "opacity 160ms ease-out, transform 160ms ease-out",
@@ -3861,7 +3864,7 @@ function ConflictModal({ open, dealRef, message, onReload, onClose }) {
         style={{
           background: "#f6f3ec",
           border: "1px solid #d9d4c7",
-          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
         }}
       >
         <div className="text-[13px] font-medium mb-2">Booking already amended</div>
@@ -3969,7 +3972,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
   }, [from, to, portfolios, downloading, onClose, onError]);
 
   const dateInputStyle = {
-    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: 12,
     padding: "6px 8px",
     border: "1px solid #d9d4c7",
@@ -3983,7 +3986,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
         <div
           className="text-[22px]"
           style={{
-            fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+            fontFamily: "var(--font-serif)",
             marginBottom: 18,
           }}
         >Download Trade Bookings</div>
@@ -4404,7 +4407,7 @@ function EnquiryPaginationBar({
         padding: "8px 12px",
         border: `1px solid ${BB?.border || "#d9d4c7"}`,
         background: "#ffffff",
-        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: 11,
         color: "#6a665c",
       }}
@@ -4626,7 +4629,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       <div className="mb-3">
         <div
           className="text-[22px]"
-          style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+          style={{ fontFamily: "var(--font-serif)" }}
         >Deal Enquiry</div>
       </div>
 
@@ -4645,7 +4648,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         style={{
           background: "#ffffff",
           border: "1px solid #e9e7e2",
-          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
         }}
       >
         {/* Header strip — label, date toggle, clear all */}
@@ -4898,11 +4901,14 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         )}
       </div>
 
-      <div className="overflow-x-auto" style={{ border: `1px solid ${BB?.border || "#d9d4c7"}` }}>
-        <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace", borderCollapse: "collapse", minWidth: "100%" }}>
-          <thead>
-            <tr style={{ background: BB?.surface || "#f6f3ec", color: BB?.mute || "#666" }}>
-              <th className="px-2 py-2 whitespace-nowrap text-center" aria-label="Refresh">
+      <div className="overflow-x-auto" style={{ border: `1px solid ${BB.border}` }}>
+        <table className="w-full text-[12px]" style={{ fontFamily: "var(--font-mono)", borderCollapse: "collapse", minWidth: "100%" }}>
+          <thead className="sticky top-0 z-10">
+            <tr
+              className="text-[10px] uppercase tracking-[0.06em] font-medium"
+              style={{ background: "var(--paper-2)", color: "var(--ink-3)", borderBottom: "1px solid var(--rule)" }}
+            >
+              <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Refresh">
                 <button
                   type="button"
                   onClick={fetchRecent}
@@ -4942,19 +4948,19 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                   >↻</span>
                 </button>
               </th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Updated Date</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Deal Type</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio Name</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Counterparty</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Details</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Trade Type</th>
-              <th className="px-3 py-2 text-right whitespace-nowrap">Fees</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Trade Date</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Value Date</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Account</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Updated Date</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Deal Reference</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Deal Type</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Portfolio</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Portfolio Name</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Counterparty</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Details</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Trade Type</th>
+              <th className="px-3 py-1.5 text-right whitespace-nowrap">Fees</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Trade Date</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Value Date</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Account</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -4989,18 +4995,19 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                 </td>
               </tr>
             )}
-            {pagedRows.map((r) => {
+            {pagedRows.map((r, idx) => {
               // Month Year is intentionally NOT rendered in the GUI but is
               // still part of the audit schema — when CSV export is added,
               // include it derived from trade_date as Month YYYY (UTC).
+              const altBg = idx % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
               return (
                 <tr
                   key={r.deal_ref}
-                  style={{ background: BB?.bg || "#ffffff", borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = BB?.bg || "#ffffff"}
+                  style={{ background: altBg, borderTop: "1px solid var(--rule)" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = altBg}
                 >
-                  <td className="px-2 py-2 whitespace-nowrap">
+                  <td className="px-2 py-1.5 whitespace-nowrap">
                     <button
                       type="button"
                       title="View audit trail"
@@ -5025,10 +5032,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       }}
                     ><History size={12} strokeWidth={1.75} /></button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <HoverTip text={r.effective_start}>{fmtTs(r.effective_start)}</HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <button
                       type="button"
                       title="Open in form to amend"
@@ -5036,19 +5043,20 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       className="align-middle"
                       style={{
                         background: "transparent", border: "none", padding: 0,
-                        color: "#1f63ea", cursor: "pointer", font: "inherit",
+                        color: "var(--signal-link)", cursor: "pointer", font: "inherit",
+                        borderBottom: "1px dotted var(--signal-link)",
                       }}
                     >{r.deal_ref}</button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.txn_type}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_id}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.portfolio_name || "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.txn_type}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.portfolio_id}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.portfolio_name || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <HoverTip text={r.counterparty_id || (r.counterparty ? "(no refdata id)" : "")}>
                       {r.counterparty || "—"}
                     </HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     {summarizeDeal(r)}
                     {(() => {
                       const mapSummary = summarizeMappings(r);
@@ -5079,19 +5087,19 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                               border: "none",
                               padding: 0,
                               font: "inherit",
-                              color: "#1f63ea",
+                              color: "var(--signal-link)",
                               textDecoration: "underline dotted",
                               textUnderlineOffset: 3,
-                              textDecorationColor: "rgba(31,99,234,0.5)",
+                              textDecorationColor: "color-mix(in srgb, var(--signal-link) 50%, transparent)",
                               cursor: clickable ? "pointer" : "default",
                             }}
                             onMouseEnter={(e) => {
                               if (clickable) {
-                                e.currentTarget.style.textDecorationColor = "#1f63ea";
+                                e.currentTarget.style.textDecorationColor = "var(--signal-link)";
                               }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.textDecorationColor = "rgba(31,99,234,0.5)";
+                              e.currentTarget.style.textDecorationColor = "color-mix(in srgb, var(--signal-link) 50%, transparent)";
                             }}
                             title={clickable ? `Open ${firstRef} in Loan Schedule` : undefined}
                           >{mapSummary}</button>
@@ -5099,7 +5107,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       );
                     })()}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.cashflow_type || r.loan_type || (r.txn_type === "SPOT" ? r.direction : "") || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.cashflow_type || r.loan_type || (r.txn_type === "SPOT" ? r.direction : "") || "—"}</td>
                   {/* CSV export should still emit asset/amount/fee_asset/fee_amount
                       as four separate columns per the audit schema, even though
                       the table only renders the fee pair. Loan rows have no
@@ -5109,10 +5117,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
                       : "—"}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <HoverTip text={r.trade_date}>{fmtTs(r.trade_date)}</HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     {/* Loan rows label the column "Value Date" but the
                         underlying field is maturity_date (NULL = open-term). */}
                     {r.value_date || r.maturity_date ? (
@@ -5123,25 +5131,32 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       <span style={{ opacity: 0.55 }}>open-term</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.account || "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {/* Status pill — colour-coded to match the cashflow
-                        lifecycle: pending → confirmed → processed →
-                        settled (terminal-OK), or cancelled (terminal-NOK). */}
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.account || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    {/* Status pill — sourced from design tokens; pill
+                        border colour matches the foreground per the style
+                        guide (consistent colour across pill, dot, row
+                        border, footer histogram for the same status). */}
                     {(() => {
                       const s = r.status || "";
-                      const styles = {
-                        PENDING:   { bg: "#fcf6e8", border: "#d6c694", color: "#7a5a00" },
-                        CONFIRMED: { bg: "#eef0f6", border: "#c8cde0", color: "#1f63ea" },
-                        PROCESSED: { bg: "#eaf2ee", border: "#a3c4ad", color: "#22593c" },
-                        SETTLED:   { bg: "#eef5e9", border: "#7ea66a", color: "#1f4a1f" },
-                        CANCELLED: { bg: "#fff0eb", border: "#e08a6a", color: "#7a1f00" },
+                      const tokens = {
+                        PENDING:   { bg: "var(--status-pending-bg)",   fg: "var(--status-pending)"   },
+                        CONFIRMED: { bg: "var(--status-confirmed-bg)", fg: "var(--status-confirmed)" },
+                        PROCESSED: { bg: "var(--status-processed-bg)", fg: "var(--status-processed)" },
+                        SETTLED:   { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
+                        CANCELLED: { bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)" },
                       };
-                      const e = styles[s] || { bg: "#f6f3ec", border: "#d9d4c7", color: "#1f1f1f" };
+                      const e = tokens[s] || { bg: "var(--paper-2)", fg: "var(--ink-3)" };
                       return (
                         <span
-                          className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
-                          style={{ background: e.bg, border: `1px solid ${e.border}`, color: e.color }}
+                          className="px-1.5 py-0.5 text-[10px] tracking-[0.06em] uppercase font-semibold"
+                          style={{
+                            background: e.bg,
+                            border: `1px solid ${e.fg}`,
+                            color: e.fg,
+                            borderRadius: 2,
+                            lineHeight: 1.2,
+                          }}
                         >{s || "—"}</span>
                       );
                     })()}
@@ -5346,7 +5361,7 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
   }, [from, to, accrual, portfolios, downloading, onClose, onError]);
 
   const dateInputStyle = {
-    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: 12,
     padding: "6px 8px",
     border: "1px solid #d9d4c7",
@@ -5360,7 +5375,7 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
         <div
           className="text-[22px]"
           style={{
-            fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+            fontFamily: "var(--font-serif)",
             marginBottom: 18,
           }}
         >Download Loan Schedule</div>
@@ -5633,7 +5648,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       <div className="mb-3">
         <div
           className="text-[22px]"
-          style={{ fontFamily: "'Cormorant Garamond', 'EB Garamond', Georgia, serif" }}
+          style={{ fontFamily: "var(--font-serif)" }}
         >Loan Enquiry</div>
       </div>
 
@@ -5652,7 +5667,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         style={{
           background: "#ffffff",
           border: "1px solid #e9e7e2",
-          fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
         }}
       >
         {/* Header strip — label, date toggle, clear all */}
@@ -5905,11 +5920,14 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       </div>
 
       {/* ─── Table ─── */}
-      <div className="overflow-x-auto" style={{ border: `1px solid ${BB?.border || "#d9d4c7"}` }}>
-        <table className="w-full text-[12px]" style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>
-          <thead>
-            <tr style={{ background: BB?.surface || "#f6f3ec", color: BB?.mute || "#666" }}>
-              <th className="px-2 py-2 whitespace-nowrap text-center" aria-label="Refresh">
+      <div className="overflow-x-auto" style={{ border: `1px solid ${BB.border}` }}>
+        <table className="w-full text-[12px]" style={{ fontFamily: "var(--font-mono)" }}>
+          <thead className="sticky top-0 z-10">
+            <tr
+              className="text-[10px] uppercase tracking-[0.06em] font-medium"
+              style={{ background: "var(--paper-2)", color: "var(--ink-3)", borderBottom: "1px solid var(--rule)" }}
+            >
+              <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Refresh">
                 <button
                   type="button"
                   onClick={fetchRecent}
@@ -5973,17 +5991,20 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 </td>
               </tr>
             )}
-            {pagedRows.map((r) => {
+            {pagedRows.map((r, idx) => {
               const principalNum = parseFloat(r.principal_amount) || 0;
               const principalFmt = principalNum.toLocaleString("en-US", { maximumFractionDigits: 5 });
               const mapCount = (r.mappings || []).length;
               const mapTotal = (r.mappings || []).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+              const altBg = idx % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
               return (
                 <tr
                   key={r.deal_ref}
-                  style={{ background: BB?.bg || "#ffffff", borderTop: `1px solid ${BB?.border || "#d9d4c7"}` }}
+                  style={{ background: altBg, borderTop: "1px solid var(--rule)" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = altBg}
                 >
-                  <td className="px-2 py-2 whitespace-nowrap text-center">
+                  <td className="px-2 py-1.5 whitespace-nowrap text-center">
                     <button
                       type="button"
                       title="View audit trail"
@@ -6008,12 +6029,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       }}
                     ><History size={12} strokeWidth={1.75} /></button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <HoverTip text={r.first_effective_start || r.effective_start}>
                       {fmtTs(r.first_effective_start || r.effective_start)}
                     </HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <button
                       type="button"
                       title="Open in form to amend"
@@ -6021,16 +6042,17 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       className="align-middle"
                       style={{
                         background: "transparent", border: "none", padding: 0,
-                        color: "#1f63ea", cursor: "pointer", font: "inherit",
+                        color: "var(--signal-link)", cursor: "pointer", font: "inherit",
+                        borderBottom: "1px dotted var(--signal-link)",
                       }}
                     >{r.deal_ref}</button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.direction}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.loan_type}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.direction}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.loan_type}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     {r.portfolio_id}{r.portfolio_name ? <span style={{ opacity: 0.65 }}> · {r.portfolio_name}</span> : null}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <HoverTip text={r.counterparty_id || (r.counterparty ? "(no refdata id)" : "")}>
                       {r.counterparty || "—"}
                     </HoverTip>
@@ -6041,10 +6063,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {r.interest_rate_pa_pct ?? "—"}% <span style={{ opacity: 0.65 }}>{r.interest_type || ""}</span>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <HoverTip text={r.trade_date}>{fmtTs(r.trade_date)}</HoverTip>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     {r.maturity_date ? (
                       <HoverTip text={r.maturity_date}>{fmtTs(r.maturity_date)}</HoverTip>
                     ) : (
@@ -6056,14 +6078,14 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     const isY = !!r.is_hedged;
                     return (
                       <>
-                        <td className="px-3 py-2 whitespace-nowrap text-center">
+                        <td className="px-3 py-1.5 whitespace-nowrap text-center">
                           {isY ? (
                             <span style={{ color: "#1f4a1f", fontWeight: 600 }}>Y</span>
                           ) : (
                             <span style={{ opacity: 0.4 }}>—</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
+                        <td className="px-3 py-1.5 whitespace-nowrap">
                           {cov.status === "PROJECTED" ? (
                             <HoverTip
                               text={`projected from hedged_qty ${r.hedged_qty} ${r.hedged_asset || r.interest_asset || ""} / daily accrual`}
@@ -6079,7 +6101,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       </>
                     );
                   })()}
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <span
                       className="px-1.5 py-0.5 text-[10px]"
                       style={{
@@ -6099,7 +6121,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       }}
                     >{r.status}</span>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     {mapCount === 0 ? (
                       <span style={{ opacity: 0.55 }}>—</span>
                     ) : (
@@ -7935,7 +7957,7 @@ export default function TradeBookingForm() {
       style={{
         background: BB.bg,
         color: BB.text,
-        fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
       }}
     >
       {/* ════ BANNER — one clean black strip ════ */}
@@ -8155,7 +8177,7 @@ export default function TradeBookingForm() {
                       background: BB.text,
                       color: "#f2efe8",
                       fontFamily:
-                        "'Cormorant Garamond', 'EB Garamond', Georgia, serif",
+                        "var(--font-serif)",
                     }}
                   >
                     {initial}
@@ -8432,7 +8454,7 @@ export default function TradeBookingForm() {
             <Field label="Created By" required span={4}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
                 <span style={{ fontSize: 11, color: "#7d7d7d", letterSpacing: 1 }}>BOOKED BY</span>
-                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}>{form.created_by || user?.username || "—"}</span>
+                <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "var(--font-mono)" }}>{form.created_by || user?.username || "—"}</span>
               </div>
             </Field>
             {form.category === "CASHFLOW" && (
@@ -9733,7 +9755,7 @@ export default function TradeBookingForm() {
               fontSize: 9,
               letterSpacing: 0.5,
               color: "#5d5d5d",
-              fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
             }}
           >
             © 2026 Tokka Labs - Middle Office.

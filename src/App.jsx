@@ -52,7 +52,7 @@ function AuthFooter() {
       position: "fixed", bottom: 4, left: 0, right: 0,
       textAlign: "center", fontSize: 9, letterSpacing: 0.5,
       color: "#5d5d5d",
-      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      fontFamily: "var(--font-mono)",
       pointerEvents: "none", zIndex: 1,
     }}>
       © 2026 Tokka Labs - Middle Office.

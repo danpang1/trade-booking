@@ -41,7 +41,7 @@ export default function LoginPage({ banner, onSwitchToRegister }) {
     <div style={{
       minHeight: "100vh", background: BB.bg, color: BB.fg,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      fontFamily: "var(--font-mono)",
     }}>
       <form onSubmit={submit} style={{
         width: 360, padding: 32, background: BB.panel,

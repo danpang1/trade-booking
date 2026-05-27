@@ -84,7 +84,7 @@ export default function UserAdmin({ onClose }) {
   return (
     <div style={{
       minHeight: "100vh", background: BB.bg, color: BB.fg,
-      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      fontFamily: "var(--font-mono)",
     }}>
       <div style={{
         padding: "16px 24px", display: "flex", alignItems: "center",

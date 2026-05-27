@@ -62,7 +62,7 @@ export default function UserEditModal({ mode, user, isLastAdmin, onClose, onSave
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{
         width: 420, padding: 24, background: BB.panel,
         border: `1px solid ${BB.border}`,
-        fontFamily: "'IBM Plex Mono', ui-monospace, monospace", color: BB.fg,
+        fontFamily: "var(--font-mono)", color: BB.fg,
       }}>
         <div style={{ fontSize: 13, letterSpacing: 2, color: BB.dim, marginBottom: 16 }}>
           {isCreate ? "NEW USER" : `EDIT USER #${user.id}`}
