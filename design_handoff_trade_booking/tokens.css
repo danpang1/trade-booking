@@ -1,0 +1,221 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Tokka Labs · Trade Management System
+   Design tokens — single source of truth
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Type families */
+  --font-serif: "Source Serif 4", "IBM Plex Serif", Georgia, serif;
+  --font-mono:  "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --font-sans:  "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Surface — paper, panel inks */
+  --paper:      #ffffff;   /* primary background */
+  --paper-2:    #f6f5f2;   /* row alt, sidebar, filter strip */
+  --paper-3:    #ecebe7;   /* panel inset, KPI strip backdrop */
+  --panel:      #0d0c0a;   /* top chrome, dark inserts (JSON pane) */
+  --panel-ink:  #ece8dc;   /* text on panel */
+  --panel-ink-2:#8a8678;   /* secondary text on panel */
+
+  /* Ink — text and iconography */
+  --ink:        #161513;   /* primary text (warm black) */
+  --ink-2:      #46423b;   /* secondary text */
+  --ink-3:      #6e695f;   /* tertiary, labels */
+  --ink-4:      #a09a90;   /* disabled, placeholder */
+
+  /* Hairlines */
+  --rule:       #e6e3dd;   /* light divider */
+  --rule-2:     #c9c5bd;   /* input border, stronger hairline */
+  --rule-ink:   var(--ink);/* heavy divider for footer separator */
+
+  /* Semantic — status / direction. Reserve saturation for signal. */
+  --status-pending:        #a37312;
+  --status-pending-bg:     #f8ebcb;
+  --status-confirmed:      #3a5fb0;
+  --status-confirmed-bg:   #e2e9f6;
+  --status-processed:      #2a7560;
+  --status-processed-bg:   #dfeee7;
+  --status-settled:        #1f6f4a;
+  --status-settled-bg:     #dff0e3;
+  --status-cancelled:      #7a7363;
+  --status-cancelled-bg:   #e6e2d6;
+
+  --signal-buy:            #1f6f4a;   /* long, received, credit, approved */
+  --signal-buy-bg:         #dff0e3;
+  --signal-sell:           #a83838;   /* short, paid, debit, rejected, error */
+  --signal-sell-bg:        #f5dcd7;
+  --signal-warn:           #a35c12;
+  --signal-warn-bg:        #f8e5c8;
+  --signal-link:           #365dbb;
+
+  /* Density */
+  --row-h-dense:    28px;  /* default blotter row */
+  --row-h-comfy:    36px;
+  --row-h-card:     52px;  /* ledger / cashflow rows */
+
+  /* Spacing scale (4px base) */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+
+  /* Radius — institutional sharpness; never above 4 */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+
+  /* Type scale */
+  --fs-10: 10px;   /* labels, hints */
+  --fs-11: 11px;   /* dense body, kbd */
+  --fs-12: 12px;   /* default body, table cells */
+  --fs-13: 13px;   /* emphasised mono */
+  --fs-15: 15px;   /* section header */
+  --fs-18: 18px;   /* KPI number */
+  --fs-22: 22px;   /* drawer / panel title */
+  --fs-26: 26px;   /* page title */
+  --fs-42: 42px;   /* hero serif (rare) */
+
+  /* Letter spacing */
+  --ls-tight:  -0.01em;  /* serif headings */
+  --ls-flat:    0em;
+  --ls-label:   0.06em;  /* uppercase labels */
+
+  /* Z-index */
+  --z-chrome:   10;
+  --z-drawer:   100;
+  --z-overlay:  200;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Reusable utility classes (optional — feel free to inline as needed)
+   ───────────────────────────────────────────────────────────────────────── */
+
+.tk-serif { font-family: var(--font-serif); letter-spacing: var(--ls-tight); }
+.tk-mono  { font-family: var(--font-mono); }
+.tk-num   { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.tk-up    { text-transform: uppercase; letter-spacing: var(--ls-label); }
+
+.tk-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  font-weight: 500;
+}
+
+.tk-rule  { background: var(--rule); height: 1px; }
+.tk-vrule { background: var(--rule); width: 1px; align-self: stretch; }
+
+/* Status pill — drop-in component */
+.tk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  line-height: 1.2;
+  border: 1px solid transparent;
+}
+.tk-pill.is-pending   { background: var(--status-pending-bg);   color: var(--status-pending);   border-color: var(--status-pending); }
+.tk-pill.is-confirmed { background: var(--status-confirmed-bg); color: var(--status-confirmed); border-color: var(--status-confirmed); }
+.tk-pill.is-processed { background: var(--status-processed-bg); color: var(--status-processed); border-color: var(--status-processed); }
+.tk-pill.is-settled   { background: var(--status-settled-bg);   color: var(--status-settled);   border-color: var(--status-settled); }
+.tk-pill.is-cancelled { background: var(--status-cancelled-bg); color: var(--status-cancelled); border-color: var(--status-cancelled); }
+.tk-pill.is-buy       { background: var(--signal-buy-bg);       color: var(--signal-buy);       border-color: var(--signal-buy); }
+.tk-pill.is-sell      { background: var(--signal-sell-bg);      color: var(--signal-sell);      border-color: var(--signal-sell); }
+.tk-pill.is-warn      { background: var(--signal-warn-bg);      color: var(--signal-warn);      border-color: var(--signal-warn); }
+.tk-pill.is-muted     { background: var(--paper-2);             color: var(--ink-3);            border-color: var(--rule-2); }
+
+/* Status dot — 6px circle, same colour as the pill */
+.tk-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+/* Default button — sharp, hairline border */
+.tk-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  padding: 6px 10px;
+  border: 1px solid var(--rule-2);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.tk-btn:hover    { background: var(--paper-2); }
+.tk-btn.primary  { background: var(--panel); color: var(--panel-ink); border-color: var(--panel); }
+.tk-btn.primary:hover { background: #232017; }
+.tk-btn.danger   { color: var(--signal-sell); border-color: var(--signal-sell); }
+
+/* Input */
+.tk-input {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  padding: 6px 8px;
+  border: 1px solid var(--rule-2);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.tk-input:focus   { border-color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--ink-2); }
+.tk-input.is-error{ border-color: var(--signal-sell); box-shadow: inset 0 0 0 1px var(--signal-sell); }
+
+/* Link — dotted underline */
+.tk-link {
+  color: var(--signal-link);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--signal-link);
+  cursor: pointer;
+}
+
+/* Keyboard glyph */
+.tk-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  padding: 1px 5px;
+  border: 1px solid var(--rule-2);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+/* Filter chip — used in chip rows above tables */
+.tk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 4px 10px;
+  border: 1px solid var(--rule-2);
+  background: transparent;
+  color: var(--ink-2);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.tk-chip.is-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.tk-chip-count     { color: var(--ink-3); font-weight: 500; }
+.tk-chip.is-active .tk-chip-count { color: var(--paper-3); }
+
+/* Blotter row */
+.tk-tr             { min-height: var(--row-h-dense); border-bottom: 1px solid var(--rule); transition: background 0.08s; }
+.tk-tr:hover       { background: var(--paper-2); }
+.tk-tr.is-selected { background: var(--paper-3); box-shadow: inset 3px 0 0 var(--ink); }
+.tk-tr.is-alt      { background: rgba(0,0,0,0.015); }
