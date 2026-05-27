@@ -5823,13 +5823,139 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
   useEffect(() => { fetchRecent(); }, [fetchRecent, refreshSignal]);
 
+  // KPI strip — always reads from the unfiltered `rows` so the totals
+  // reflect the book state, not whatever filter is applied below.
+  const kpis = useMemo(() => {
+    const live = rows.filter((r) => r.status === "LIVE");
+
+    // Notional by principal_asset — pre-sorted desc by amount so the
+    // tile can show the dominant asset prominently and a short
+    // "ETH 420 · USDC 1.2M" tail in the sub line.
+    const byAsset = new Map();
+    for (const r of live) {
+      const a = r.principal_asset || "—";
+      const n = parseFloat(r.principal_amount) || 0;
+      byAsset.set(a, (byAsset.get(a) || 0) + n);
+    }
+    const topAssets = [...byAsset.entries()].sort((x, y) => y[1] - x[1]);
+
+    // Maturing in next 30 days — slice maturity_date to date-only so a
+    // timezone-naive parse doesn't shift the day boundary.
+    const todayMs = Date.parse(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
+    const in30Ms  = todayMs + 30 * 86_400_000;
+    const maturingSoon = live.filter((r) => {
+      if (!r.maturity_date) return false;
+      const ms = Date.parse(String(r.maturity_date).slice(0, 10) + "T00:00:00Z");
+      return !Number.isNaN(ms) && ms >= todayMs && ms <= in30Ms;
+    }).length;
+
+    const openTerm = live.filter((r) => !r.maturity_date).length;
+
+    // is_hedged is a tinyint in MySQL → could come back as 0/1, "0"/"1",
+    // true/false, or null. Coerce defensively.
+    const hedgedCount = live.filter((r) => {
+      const v = r.is_hedged;
+      return v === true || v === 1 || v === "1" || v === "true";
+    }).length;
+    const hedgePct = live.length > 0 ? Math.round((hedgedCount / live.length) * 100) : 0;
+
+    return {
+      liveCount: live.length,
+      totalCount: rows.length,
+      topAssets,
+      assetCount: byAsset.size,
+      maturingSoon,
+      openTerm,
+      hedgedCount,
+      hedgePct,
+    };
+  }, [rows]);
+
   return (
     <div className="px-5 pt-4 pb-8">
       <div className="mb-3">
         <div
-          className="text-[22px]"
-          style={{ fontFamily: "var(--font-serif)" }}
+          className="text-[26px] font-semibold"
+          style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
         >Loan Enquiry</div>
+      </div>
+
+      {/* ─── KPI strip per STYLE_GUIDE §6.7. Five tiles in a row, each
+          with a 3px coloured left border + label + big number + sub. ─── */}
+      <div
+        className="mb-3"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gap: 8,
+        }}
+      >
+        {(() => {
+          const tile = (accent, label, value, sub) => (
+            <div
+              key={label}
+              style={{
+                background: "var(--paper)",
+                border: "1px solid var(--rule)",
+                borderLeft: `3px solid ${accent}`,
+                borderRadius: 3,
+                padding: "8px 12px",
+                fontFamily: "var(--font-mono)",
+                minHeight: 64,
+                display: "flex", flexDirection: "column", justifyContent: "space-between",
+              }}
+            >
+              <div style={{
+                fontSize: 10, color: "var(--ink-3)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+                fontWeight: 500,
+              }}>{label}</div>
+              <div style={{
+                fontSize: 18, fontWeight: 600, color: "var(--ink)",
+                fontVariantNumeric: "tabular-nums",
+                lineHeight: 1.1, marginTop: 4,
+              }}>{value}</div>
+              <div style={{
+                fontSize: 10, color: "var(--ink-3)",
+                marginTop: 2,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>{sub}</div>
+            </div>
+          );
+
+          const fmtNum = (n) => {
+            if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
+            if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
+            return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+          };
+
+          // Tile 2 — top asset in big mono, rest in the sub line.
+          const topOne = kpis.topAssets[0];
+          const tail = kpis.topAssets.slice(1, 3)
+            .map(([a, n]) => `${a} ${fmtNum(n)}`)
+            .join(" · ");
+          const notionalValue = topOne
+            ? <span>{topOne[0]} <span style={{ fontWeight: 400 }}>{fmtNum(topOne[1])}</span></span>
+            : "—";
+          const notionalSub = tail
+            ? `+ ${tail}${kpis.assetCount > 3 ? ` · +${kpis.assetCount - 3} more` : ""}`
+            : (kpis.assetCount === 0 ? "no live notional" : "1 asset");
+
+          // Tile 5 — green when hedge coverage ≥50%, warn amber below.
+          const hedgeAccent = kpis.liveCount === 0
+            ? "var(--ink-3)"
+            : kpis.hedgePct >= 50 ? "var(--signal-buy)" : "var(--signal-warn)";
+
+          return [
+            tile("var(--status-settled)", "Active loans", kpis.liveCount, `of ${kpis.totalCount} on file`),
+            tile("var(--ink-3)",           "Notional · top assets", notionalValue, notionalSub),
+            tile(kpis.maturingSoon > 0 ? "var(--status-pending)" : "var(--ink-3)",
+                                            "Maturing · 30d",  kpis.maturingSoon, "next 30 days"),
+            tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
+            tile(hedgeAccent,               "Hedged coverage", `${kpis.hedgePct}%`,
+                                            `${kpis.hedgedCount} / ${kpis.liveCount} live`),
+          ];
+        })()}
       </div>
 
       {error && (
