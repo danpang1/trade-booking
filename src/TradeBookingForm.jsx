@@ -6147,11 +6147,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           fake FX — each asset is its own line. Hidden by default;
           opens when the Active loans tile is clicked. ─── */}
       {showExposure && kpis.exposure.length > 0 && (() => {
-        const fmtNum = (n) => {
-          if (Math.abs(n) >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
-          if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
-          return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-        };
+        // Full notional — comma-separated, up to 6 fractional digits so
+        // small-decimal assets (BTC, ETH) still read precisely.
+        const fmtNum = (n) =>
+          n.toLocaleString("en-US", { maximumFractionDigits: 6 });
         return (
           <div
             className="mb-3"
@@ -6161,6 +6160,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               borderRadius: 3,
               fontFamily: "var(--font-mono)",
               overflow: "hidden",
+              maxWidth: 720,
             }}
           >
             <div style={{
