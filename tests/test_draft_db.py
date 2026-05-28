@@ -142,12 +142,11 @@ def test_validate_payload_for_category_cashflow_unknown_network_raises():
 
 
 def test_validate_payload_for_category_cashflow_unknown_type_raises():
-    """The server enforces the same 11-item cashflow_type enum that the
-    form's dropdown uses, so a non-standard type like 'TRADING FEES' gets
-    a 400 instead of silently passing through to a draft with a blank
-    dropdown for the human reviewer."""
+    """The server enforces the same cashflow_type enum the form's dropdown
+    uses, so a non-standard type gets a 400 instead of silently passing
+    through to a draft with a blank dropdown for the human reviewer."""
     payload = {
-        "cashflow_type": "TRADING FEES",  # not in the 11-item list
+        "cashflow_type": "MADE UP TYPE",  # not in the enum
         "direction": "OUTGOING",
         "entity": "TOKKA LABS PTE LTD",
         "portfolio_id": 8888,
