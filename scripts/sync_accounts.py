@@ -1,15 +1,15 @@
 """Sync the account reference lists from MySQL → JSON file.
 
 Source : sg-ro-mysql.internal.tokkalabs.com, `reference_data.account_exchange`,
-         `account_wallet`, `account_broker`
+         `account_wallet`, `account_broker`, `account_bank`
 Target : trade-booking/public/refdata/accounts.json
 Filter : deletedAt IS NULL AND (status IS NULL OR status='ACTIVE')
          AND (type IS NULL OR type NOT LIKE '%SHADOW%')
 
-Produces one combined JSON with three keys so the React form can
-populate its EXCHANGE / WALLET / BROKER pickers from a single fetch:
+Produces one combined JSON with four keys so the React form can
+populate its EXCHANGE / WALLET / BROKER / BANK pickers from a single fetch:
 
-    { "exchange": [...], "wallet": [...], "broker": [...] }
+    { "exchange": [...], "wallet": [...], "broker": [...], "bank": [...] }
 
 Each row is { name, venue, portfolio } — same shape the form has been
 consuming from the static src/data/accounts.js snapshot it replaces.
@@ -33,6 +33,7 @@ TABLES = [
     ("exchange", "account_exchange", "exchangeName"),
     ("wallet", "account_wallet", "walletType"),
     ("broker", "account_broker", "exchangeName"),
+    ("bank", "account_bank", "bankName"),
 ]
 
 
@@ -96,6 +97,21 @@ def main() -> None:
         cur = conn.cursor()
         for key, table, venue_col in TABLES:
             out[key] = _fetch(cur, table, venue_col)
+        # counterparty_settlement_crypto: CP-owned wallets (test wallets,
+        # vendor payment wallets, etc.). Schema differs from account_wallet:
+        # owner is `ownerName` (a counterparty name), venue is `blockchain`,
+        # no portfolio linkage. Pulled here so cashflow validation accepts
+        # these as account names; UI form picker doesn't surface them yet.
+        cur.execute(
+            "SELECT name, blockchain AS venue, ownerName AS owner "
+            "FROM counterparty_settlement_crypto "
+            "WHERE deletedAt IS NULL AND (status IS NULL OR status='ACTIVE') "
+            "ORDER BY name"
+        )
+        out["crypto_settlement"] = [
+            {"name": r[0], "venue": r[1] or "", "owner": r[2] or ""}
+            for r in cur.fetchall()
+        ]
     finally:
         conn.close()
 

@@ -197,10 +197,13 @@ REQUIRED_CASHFLOW_FIELDS = (
 )
 VALID_DIRECTIONS = {"INCOMING", "OUTGOING"}
 VALID_STATUSES = {"PENDING", "CONFIRMED", "PROCESSED", "SETTLED", "CANCELLED"}
-VALID_ACCOUNT_TYPES = {"EXCHANGE", "WALLET", "BROKER"}
+VALID_ACCOUNT_TYPES = {"EXCHANGE", "WALLET", "BROKER", "BANK"}
 VALID_CASHFLOW_TYPES = {
     "INTER PTF FUNDING", "RETAINER FEES", "OPEX",
+    "OPEX - OTHER EXPENSE", "OPEX - CONTRA ACC",
     "OTHER INCOME", "OTHER EXPENSE", "TRANSFER FEES",
+    "TRADING FEES", "TRADING REWARDS",
+    "STRATEGY TESTING EXPENSE", "STRATEGY TESTING RETURNED",
     "INTEREST EXPENSE", "INTEREST INCOME", "WITHHOLDING TAX",
     "LOAN", "LOAN REPAYMENT",
 }
@@ -210,7 +213,7 @@ def _refdata_values(refdata, key, name_field="name"):
     """Pull a set of names/symbols from a refdata list. Defensive about shapes.
 
     The server returns:
-      - accounts as {broker: [...], exchange: [...], wallet: [...]} — flatten.
+      - accounts as {broker: [...], exchange: [...], wallet: [...], bank: [...]} — flatten.
       - tokens as {filter, generated_at, source, tokens: [...]} — unwrap.
       - everything else as a flat list of {name, ...} dicts.
     """

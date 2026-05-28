@@ -86,6 +86,17 @@ cur.execute("""
     ORDER BY commonIdentifier ASC, id ASC
 """)
 rows = cur.fetchall()
+
+# Union with `instrument_fiat` so fiat ccys (USD, EUR, etc.) book as
+# `asset` on cashflow trades — same validator pathway, same picker.
+cur.execute("""
+    SELECT id, name
+    FROM instrument_fiat
+    WHERE deletedAt IS NULL AND (status IS NULL OR status='ACTIVE')
+      AND name IS NOT NULL AND name <> ''
+    ORDER BY name ASC, id ASC
+""")
+fiat_rows = cur.fetchall()
 conn.close()
 
 seen = set()
@@ -96,14 +107,20 @@ for _id, sym, name in rows:
         continue
     seen.add(s)
     tokens.append({"symbol": s, "name": (name or "").strip()})
+for _id, name in fiat_rows:
+    s = (name or "").strip()
+    if not s or s in seen:
+        continue
+    seen.add(s)
+    tokens.append({"symbol": s, "name": s, "kind": "FIAT"})
 
-print(f"unique tokens: {len(tokens)}")
+print(f"unique tokens: {len(tokens)} (fiat: {len(fiat_rows)})")
 
 # ── public/tokens.json (runtime fetch) ───────────────────────
 JSON_OUT.parent.mkdir(parents=True, exist_ok=True)
 payload = {
     "generated_at": datetime.now(timezone.utc).isoformat(),
-    "source": "reference_data.instrument_token_grouped",
+    "source": "reference_data.instrument_token_grouped + instrument_fiat",
     "filter": "deletedAt IS NULL AND status='ACTIVE'",
     "tokens": tokens,
 }

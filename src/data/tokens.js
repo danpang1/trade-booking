@@ -980,6 +980,7 @@ export const TOKENS = [
   { symbol: "ZRX", name: "0X PROTOCOL TOKEN" },
   { symbol: "ZUZALU", name: "ZUZALU INU" },
   { symbol: "ZZ", name: "ZIGZAG" },
+  { symbol: "USD", name: "USD" },
 ];
 
 export const ASSET_SYMBOLS = TOKENS.map((t) => t.symbol);

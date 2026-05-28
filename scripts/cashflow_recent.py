@@ -1,6 +1,6 @@
 """List the N most recent live cashflow rows for the Deal Enquiry view.
 
-Reads `{"limit": N}` from stdin (default 20, max 200).
+Reads `{"limit": N}` from stdin (default 20, max 2000).
 Writes {"ok": true, "rows": [...]} to stdout.
 
 Manual smoke:
@@ -26,7 +26,7 @@ def main() -> int:
     except (TypeError, ValueError):
         print(json.dumps({"ok": False, "error": "limit must be integer"}))
         return 3
-    limit = max(1, min(200, limit))
+    limit = max(1, min(2000, limit))
 
     conn = cashflow_db.connect()
     try:

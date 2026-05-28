@@ -108,11 +108,14 @@ VALID_STATUSES = {"PENDING", "CONFIRMED", "PROCESSED", "SETTLED", "CANCELLED"}
 # same 400 when a non-standard type leaks through.
 VALID_CASHFLOW_TYPES = {
     "INTER PTF FUNDING", "RETAINER FEES", "OPEX",
+    "OPEX - OTHER EXPENSE", "OPEX - CONTRA ACC",
     "OTHER INCOME", "OTHER EXPENSE", "TRANSFER FEES",
+    "TRADING FEES", "TRADING REWARDS",
+    "STRATEGY TESTING EXPENSE", "STRATEGY TESTING RETURNED",
     "INTEREST EXPENSE", "INTEREST INCOME", "WITHHOLDING TAX",
     "LOAN", "LOAN REPAYMENT",
 }
-VALID_ACCOUNT_TYPES = {"EXCHANGE", "WALLET", "BROKER"}
+VALID_ACCOUNT_TYPES = {"EXCHANGE", "WALLET", "BROKER", "BANK"}
 # Mirrors PRIORITY + ALL_ALPHABETICAL union in src/data/networks.js.
 # Uppercase only — same case-convention as the form's dropdown.
 VALID_NETWORKS = {
@@ -167,7 +170,7 @@ def _load_accounts_set() -> set:
     with open(REFDATA_DIR / "accounts.json", encoding="utf-8") as f:
         data = json.load(f)
     out = set()
-    for kind in ("exchange", "wallet", "broker"):
+    for kind in ("exchange", "wallet", "broker", "bank", "crypto_settlement"):
         for a in data.get(kind, []):
             if a.get("name"):
                 out.add(a["name"])

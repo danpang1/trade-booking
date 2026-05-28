@@ -50,13 +50,15 @@ let USER_PROFILES = {};
 let ACCOUNTS_EXCHANGE = [];
 let ACCOUNTS_WALLET = [];
 let ACCOUNTS_BROKER = [];
+let ACCOUNTS_BANK = [];
 
 // Static UI labels for the Account Type select. The data behind each
-// key (EXCHANGE/WALLET/BROKER) is fetched at runtime — see fetchRefdataOnce.
+// key (EXCHANGE/WALLET/BROKER/BANK) is fetched at runtime — see fetchRefdataOnce.
 const ACCOUNT_VENUE_TYPES = [
   { key: "EXCHANGE", label: "Exchange" },
   { key: "WALLET", label: "Wallet" },
   { key: "BROKER", label: "Brokerage" },
+  { key: "BANK", label: "Bank" },
 ];
 
 async function fetchRefdataOnce() {
@@ -96,6 +98,7 @@ async function fetchRefdataOnce() {
     if (Array.isArray(accounts.exchange)) ACCOUNTS_EXCHANGE = accounts.exchange;
     if (Array.isArray(accounts.wallet))   ACCOUNTS_WALLET   = accounts.wallet;
     if (Array.isArray(accounts.broker))   ACCOUNTS_BROKER   = accounts.broker;
+    if (Array.isArray(accounts.bank))     ACCOUNTS_BANK     = accounts.bank;
   }
   return {
     counterparties: counterparties?.length ?? 0,
@@ -104,7 +107,8 @@ async function fetchRefdataOnce() {
     accounts:
       (Array.isArray(accounts?.exchange) ? accounts.exchange.length : 0) +
       (Array.isArray(accounts?.wallet)   ? accounts.wallet.length   : 0) +
-      (Array.isArray(accounts?.broker)   ? accounts.broker.length   : 0),
+      (Array.isArray(accounts?.broker)   ? accounts.broker.length   : 0) +
+      (Array.isArray(accounts?.bank)     ? accounts.bank.length     : 0),
   };
 }
 
@@ -223,9 +227,15 @@ const CASHFLOW_TYPES = [
   "INTER PTF FUNDING",
   "RETAINER FEES",
   "OPEX",
+  "OPEX - OTHER EXPENSE",
+  "OPEX - CONTRA ACC",
   "OTHER INCOME",
   "OTHER EXPENSE",
   "TRANSFER FEES",
+  "TRADING FEES",
+  "TRADING REWARDS",
+  "STRATEGY TESTING EXPENSE",
+  "STRATEGY TESTING RETURNED",
   "INTEREST EXPENSE",
   "INTEREST INCOME",
   "WITHHOLDING TAX",
@@ -4786,8 +4796,8 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       // filteredRows). The `mappings` array on each cashflow still
       // shows linked loans inline (chip in the Details column).
       const [cfRes, spotRes] = await Promise.all([
-        api("/api/cashflow/recent?limit=20").then((r) => r.json()),
-        api("/api/spot/recent?limit=20").then((r) => r.json()),
+        api("/api/cashflow/recent?limit=2000").then((r) => r.json()),
+        api("/api/spot/recent?limit=2000").then((r) => r.json()),
       ]);
       if (!cfRes.ok) throw new Error(cfRes.error || "cashflow fetch failed");
       if (!spotRes.ok) throw new Error(spotRes.error || "spot fetch failed");
@@ -7509,11 +7519,14 @@ export default function TradeBookingForm() {
 
   // Accounts available for the chosen portfolio + venue type. Empty if portfolio
   // not selected, so the picker doesn't show every account before context is set.
+  // BANK is special: refdata stores bank accounts against the legal entity
+  // (linkedPortfolioName = "TOKKA LABS PTE LTD" etc.) rather than a portfolio,
+  // so we match on entity instead of portfolio name.
   const accountOptions = useMemo(() => {
-    const portfolioName = PORTFOLIOS.find(
+    const ptf = PORTFOLIOS.find(
       (p) => String(p.number) === String(form.portfolio)
-    )?.name;
-    if (!portfolioName) return [];
+    );
+    if (!ptf) return [];
     const pool =
       form.account_venue_type === "EXCHANGE"
         ? ACCOUNTS_EXCHANGE
@@ -7521,18 +7534,24 @@ export default function TradeBookingForm() {
         ? ACCOUNTS_WALLET
         : form.account_venue_type === "BROKER"
         ? ACCOUNTS_BROKER
+        : form.account_venue_type === "BANK"
+        ? ACCOUNTS_BANK
         : [];
-    return pool.filter((a) => a.portfolio === portfolioName);
+    if (form.account_venue_type === "BANK") {
+      return pool.filter((a) => a.portfolio === ptf.entity);
+    }
+    return pool.filter((a) => a.portfolio === ptf.name);
   }, [form.portfolio, form.account_venue_type]);
 
   // INTER PTF FUNDING mirror-leg accounts. For mirror trades, the counterparty
   // field holds the counterparty portfolio's number — the leg-2 account belongs
-  // to THAT portfolio, not the booking portfolio.
+  // to THAT portfolio, not the booking portfolio. BANK matches on entity (see
+  // accountOptions comment) rather than portfolio name.
   const mirrorAccountOptions = useMemo(() => {
-    const portfolioName = PORTFOLIOS.find(
+    const ptf = PORTFOLIOS.find(
       (p) => String(p.number) === String(form.counterparty)
-    )?.name;
-    if (!portfolioName) return [];
+    );
+    if (!ptf) return [];
     const pool =
       form.cf_mirror_account_venue_type === "EXCHANGE"
         ? ACCOUNTS_EXCHANGE
@@ -7540,8 +7559,13 @@ export default function TradeBookingForm() {
         ? ACCOUNTS_WALLET
         : form.cf_mirror_account_venue_type === "BROKER"
         ? ACCOUNTS_BROKER
+        : form.cf_mirror_account_venue_type === "BANK"
+        ? ACCOUNTS_BANK
         : [];
-    return pool.filter((a) => a.portfolio === portfolioName);
+    if (form.cf_mirror_account_venue_type === "BANK") {
+      return pool.filter((a) => a.portfolio === ptf.entity);
+    }
+    return pool.filter((a) => a.portfolio === ptf.name);
   }, [form.counterparty, form.cf_mirror_account_venue_type]);
 
   // INTER PTF FUNDING auto-comment. Produces strings like:

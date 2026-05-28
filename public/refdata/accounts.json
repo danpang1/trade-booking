@@ -1953,6 +1953,11 @@
       "portfolio": "TOKKA LABS - TREASURY"
     },
     {
+      "name": "WALLET_TREASURY_FOMO_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
       "name": "WALLET_TREASURY_HOPE_INTERMEDIATE_BTC",
       "venue": "HOPE WALLET",
       "portfolio": "TOKKA LABS - TREASURY"
@@ -2073,6 +2078,1010 @@
       "name": "TK006@IBKR",
       "venue": "INTERACTIVE BROKERS",
       "portfolio": "TOKKA LABS - TREASURY"
+    }
+  ],
+  "bank": [
+    {
+      "name": "DBS BANK",
+      "venue": "DBS BANK LIMITED",
+      "portfolio": ""
+    }
+  ],
+  "crypto_settlement": [
+    {
+      "name": "0x Monthly Fees Payment",
+      "venue": "ETHEREUM",
+      "owner": "ZEROEX INC (0X LABS)"
+    },
+    {
+      "name": "0x Monthly Fees Payment_Wallet 2",
+      "venue": "ETHEREUM",
+      "owner": "ZEROEX INC (0X LABS)"
+    },
+    {
+      "name": "0XRICK LIMITED USDT 02",
+      "venue": "ETHEREUM",
+      "owner": "0XRICK LIMITED"
+    },
+    {
+      "name": "0XRICK LIMITED USDT ERC20",
+      "venue": "ETHEREUM",
+      "owner": "0XRICK LIMITED"
+    },
+    {
+      "name": "0XRICK_LIMITED_BTC",
+      "venue": "BITCOIN",
+      "owner": "0XRICK LIMITED"
+    },
+    {
+      "name": "0XRICK_LOAN_ETH_01 (DC)",
+      "venue": "ETHEREUM",
+      "owner": "0XRICK LIMITED"
+    },
+    {
+      "name": "0XRICK_LOAN_EVM",
+      "venue": "ETHEREUM",
+      "owner": "0XRICK LIMITED"
+    },
+    {
+      "name": "0XRICK_LTD_LOAN_02_ETH",
+      "venue": "ETHEREUM",
+      "owner": "0XRICK LIMITED"
+    },
+    {
+      "name": "1INCH BLOCKRAZOR SUBSCRIPTION 01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "1INCH LIMITED - MONTHLY FEE PAYMENT",
+      "venue": "ETHEREUM",
+      "owner": "1INCH LIMITED"
+    },
+    {
+      "name": "1INCH LIMITED - MONTHLY FEE PAYMENT_1",
+      "venue": "ETHEREUM",
+      "owner": "1INCH LIMITED"
+    },
+    {
+      "name": "1INCH MONTHLY API PAYMENT (COWSWAP) INTERMEDIATE  WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "1INCHFUSION_BSC_01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ABBY_SOL_FORBACKED_TESTING_ADDRESS",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ACROSS_REFUND_CHASE_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "ACROSS"
+    },
+    {
+      "name": "AGORA_MINT_AUSD_01",
+      "venue": "ETHEREUM",
+      "owner": "AGORA FINANCE"
+    },
+    {
+      "name": "AGORA_REDEEM_AUSD_01",
+      "venue": "ETHEREUM",
+      "owner": "AGORA FINANCE"
+    },
+    {
+      "name": "AGORA_REDEEM_AVAX_01",
+      "venue": "AVALANCHE",
+      "owner": "AGORA FINANCE"
+    },
+    {
+      "name": "ALTERNITY_BTC_01",
+      "venue": "BITCOIN",
+      "owner": "ALTERNITY FUND LTD"
+    },
+    {
+      "name": "ANDREW CRYPDEFI WALLET",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ANDREW_LIFFEY_SOLANA_TESTING_ADDRESS",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ANDREW_LIFFEY_SOLANA_TESTING_ADDRESS_2",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "AUDIT_PAYMENT_01",
+      "venue": "ETHEREUM",
+      "owner": "ADEVAR LABS INC"
+    },
+    {
+      "name": "BACKED_AAPL_01",
+      "venue": "SOLANA",
+      "owner": "BACKED.FI"
+    },
+    {
+      "name": "BACKED_NVDAx_01",
+      "venue": "SOLANA",
+      "owner": "BACKED.FI"
+    },
+    {
+      "name": "BACKED_SATOSHI_TEST_01",
+      "venue": "SOLANA",
+      "owner": "BACKED.FI"
+    },
+    {
+      "name": "BACKED_SATOSHI_TEST_02",
+      "venue": "SOLANA",
+      "owner": "BACKED.FI"
+    },
+    {
+      "name": "BACKED_TEST_SOL_01",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "BEBOP_BSC_01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "BEBOP LTD"
+    },
+    {
+      "name": "BEBOP_MONTHLY_TRADING_FEE",
+      "venue": "ETHEREUM",
+      "owner": "BEBOP LTD"
+    },
+    {
+      "name": "BITGLOBAL WBTC ADDRESS",
+      "venue": "ETHEREUM",
+      "owner": "BITGO TRUST COMPANY INC"
+    },
+    {
+      "name": "BITGLOBAL_MONTHLY_SUBS",
+      "venue": "ETHEREUM",
+      "owner": "BITGLOBAL"
+    },
+    {
+      "name": "BITGLOBAL_MONTHLY_SUBS_01",
+      "venue": "ETHEREUM",
+      "owner": "BITGLOBAL"
+    },
+    {
+      "name": "BLOCKPI_DIRECT",
+      "venue": "ETHEREUM",
+      "owner": "BLOCKPI NETWORK"
+    },
+    {
+      "name": "BLOCKPI_SUBSCRIPTION_YAQING",
+      "venue": "ETHEREUM",
+      "owner": "BLOCKPI NETWORK"
+    },
+    {
+      "name": "BLOCKSMITH",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "BLUEFIN_TEST_WALLET",
+      "venue": "SUI",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "Brahma protocol airdrop hunting",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "BTC LOAN WALLET",
+      "venue": "BITCOIN",
+      "owner": "SPRING MUD LIMITED"
+    },
+    {
+      "name": "CDA BLOCKRAZOR SUBSCRIPTION",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CDA BLOCKRAZOR SUBSCRIPTION - 2",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CDA TON API 01",
+      "venue": "TON",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CDA TON API DTON - 1",
+      "venue": "TON",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CDA TON API TEST",
+      "venue": "TON",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CDA TON API TEST 2",
+      "venue": "TON",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CDA TON API TEST 3",
+      "venue": "TON",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CHENGUO_WALLET_01",
+      "venue": "ETHEREUM",
+      "owner": "CHEN GUO"
+    },
+    {
+      "name": "CIRCLE INTERNET ACCOUNT (SG)",
+      "venue": "ETHEREUM",
+      "owner": "CIRCLE INTERNET FINANCIAL"
+    },
+    {
+      "name": "COINBASE_ARB",
+      "venue": "ARBITRUM",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "COINBASE_BTC",
+      "venue": "BITCOIN",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "COINBASE_ETH",
+      "venue": "ETHEREUM",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "COINBASE_SATOSHI_TEST_01",
+      "venue": "ETHEREUM",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "COINROUTES MONTHLY PAYMENT",
+      "venue": "ETHEREUM",
+      "owner": "COINROUTES INC"
+    },
+    {
+      "name": "COW_TEST_ROHAN_01",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "COWSWAP_BONDING_POOL_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "COWSWAP DAO"
+    },
+    {
+      "name": "COWSWAP_STAGING_AVAX_01",
+      "venue": "AVALANCHE",
+      "owner": "COWSWAP DAO"
+    },
+    {
+      "name": "COWSWAP_STAGING_POL_01",
+      "venue": "POLYGON",
+      "owner": "COWSWAP DAO"
+    },
+    {
+      "name": "CROSS CHAIN TEST ACCOUNT _ LINEA",
+      "venue": "LINEA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CROSS-CHAIN WALLET PMM TESTING",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "CROSS-CHAIN WALLET PMM TESTING - ARB",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "DBS_ADA_01",
+      "venue": "CARDANO",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_ADA_02",
+      "venue": "CARDANO",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_28",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_29",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_30",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_31",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_32",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_33",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_34",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_35",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_36",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BCH_37",
+      "venue": "BITCOIN CASH",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_53",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_54",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_55",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_56",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_57",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_58",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_59",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_60",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_61",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_62",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_63",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_64",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_BTC_65",
+      "venue": "BITCOIN",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_DOT_01",
+      "venue": "POLKADOT",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_DOT_02",
+      "venue": "POLKADOT",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_DOT_03",
+      "venue": "POLKADOT",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_ETH_02",
+      "venue": "ETHEREUM",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_ETH_03",
+      "venue": "ETHEREUM",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_XRP_01",
+      "venue": "RIPPLE",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DBS_XRP_02",
+      "venue": "RIPPLE",
+      "owner": "DBS DIGITAL EXCHANGE (DDEX)"
+    },
+    {
+      "name": "DEBANK_MONTHLY_01",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "Dominic_Testwallet_sol_01",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "DOMINIC_TESTWALLET_SOL_02",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "DOURO_LOAN_01",
+      "venue": "ETHEREUM",
+      "owner": "DOURO LABS"
+    },
+    {
+      "name": "ec001@Bitget_Sol_01",
+      "venue": "SOLANA",
+      "owner": "BITGET"
+    },
+    {
+      "name": "ECHO009@GATE_TEST_SOL_01",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "echocreek_BD_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "ALTERNITY FUND LTD"
+    },
+    {
+      "name": "echocreek_BD_ETH_02",
+      "venue": "ETHEREUM",
+      "owner": "ALTERNITY FUND LTD"
+    },
+    {
+      "name": "echocreek_DB_03",
+      "venue": "ETHEREUM",
+      "owner": "ALTERNITY FUND LTD"
+    },
+    {
+      "name": "ECT001 BINANCE TEST ACCOUNT",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ECT002@BINANCE",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "EMMANUEL_TEST_SOL",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ESHAN_ALKIMIYA_TEST_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ETHGAS_WALLET_EVM_01",
+      "venue": "ETHEREUM",
+      "owner": "DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)"
+    },
+    {
+      "name": "ETHGAS_WALLET_EVM_02",
+      "venue": "ETHEREUM",
+      "owner": "DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)"
+    },
+    {
+      "name": "FELIX_GOZALI_SOLANA_TEST_WALLET",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "FELIX_TEST_WALLET_SOLANA",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "FOMO_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "FOMO PAY PTE LTD"
+    },
+    {
+      "name": "GMR_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "GMR LIMITED"
+    },
+    {
+      "name": "GMR_LOAN_BTC_01",
+      "venue": "BITCOIN",
+      "owner": "GMR LIMITED"
+    },
+    {
+      "name": "Hashflow Monthly Fees Payment",
+      "venue": "ETHEREUM",
+      "owner": "HASHFLOW FOUNDATION"
+    },
+    {
+      "name": "HELIUS_SENDER_01",
+      "venue": "SOLANA",
+      "owner": "HELIUS BLOCKCHAIN TECHNOLOGIES, INC."
+    },
+    {
+      "name": "HIMANSHU TEST WALLET",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "HIMANSHU_REYANETWORK_ETH",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "HONG_WEI_TEST_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN TEST WALLET",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN TEST WALLET - BASE",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN TEST WALLET - ETH",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN TEST WALLET - ETH - 02",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN TEST WALLET - ETH - 03",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN_KOK_SOLANA_TEST_WALLET",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN_KOK_SOLANA_TEST_WALLET_02",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHAN_TEST_WALLET_03",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JOHANTESTBLOXROUTEAORI_ARB",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "JUPITER_MONTHLY_FEES_SOL",
+      "venue": "SOLANA",
+      "owner": "JUPITER"
+    },
+    {
+      "name": "JUPITER_MONTHLY_FEES_SOL_02",
+      "venue": "SOLANA",
+      "owner": "JUPITER"
+    },
+    {
+      "name": "JUPITERZ_TRADING_FEE_ADDRESS",
+      "venue": "SOLANA",
+      "owner": "JUPITER Z"
+    },
+    {
+      "name": "KYBER_FEES_MONTHLY",
+      "venue": "ETHEREUM",
+      "owner": "KYBERSWAP"
+    },
+    {
+      "name": "LOAN INTEREST PAYMENT WALLET",
+      "venue": "ETHEREUM",
+      "owner": "SPRING MUD LIMITED"
+    },
+    {
+      "name": "LOAN REPAYMENT ADDRESS_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "SQUID"
+    },
+    {
+      "name": "MARAT_TEST_WALLET_BASE_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MAX_TEST_WALLET_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MAX_TEST_WALLET_ETH_02",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MAX_TEST_WALLET_ETH_03",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MAXENCE_GAS_WALLET_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MAXENCE_TEST_WALLET_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MAXENCE_TEST_WALLET_ARB_01",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MOHAMMED_TEST_WALLET_BASE_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "MOON@COINBASE_ARB_01",
+      "venue": "ARBITRUM",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "MOON@COINBASE_ARB_02",
+      "venue": "ARBITRUM",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "MOON@COINBASE_UNICHAIN_01",
+      "venue": "UNICHAIN",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "MOON@LBANK",
+      "venue": "ETHEREUM",
+      "owner": "LBANK EXCHANGE"
+    },
+    {
+      "name": "NATIVE MONTHLY TRADING FEES",
+      "venue": "ETHEREUM",
+      "owner": "NATIVE TECHNOLOGY LIMITED"
+    },
+    {
+      "name": "NATIVE MONTHLY TRADING FEES 02",
+      "venue": "ETHEREUM",
+      "owner": "NATIVE TECHNOLOGY LIMITED"
+    },
+    {
+      "name": "NATIVE_ARBITRUM_01",
+      "venue": "ARBITRUM",
+      "owner": "NATIVE TECHNOLOGY LIMITED"
+    },
+    {
+      "name": "NATIVE_ETH_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "OKXSG_TKT001_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "PARADEX WARRANT EXERCISE",
+      "venue": "ETHEREUM",
+      "owner": "PARADEX"
+    },
+    {
+      "name": "PAXOS - ETHEREUM",
+      "venue": "ETHEREUM",
+      "owner": "PAXOS GLOBAL PTE LTD (PAXOS)"
+    },
+    {
+      "name": "PAXOS - SOLANA",
+      "venue": "SOLANA",
+      "owner": "PAXOS GLOBAL PTE LTD (PAXOS)"
+    },
+    {
+      "name": "PAXOS_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "PAXOS GLOBAL PTE LTD (PAXOS)"
+    },
+    {
+      "name": "PCS Monthly Fees Payment",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "PANCAKESWAP (PCS)"
+    },
+    {
+      "name": "PMM_SOL_PHEONIX_CHALAKA_TEST_WALLET",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "PRABHAT_TEST_WALLET_HYPEREVM_01",
+      "venue": "HYPEREVM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "PROPELLERHEADS AG",
+      "venue": "ETHEREUM",
+      "owner": "PROPELLERHEADS AG"
+    },
+    {
+      "name": "SAURABH_TEST_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SEARCHER.WTF_EVM_01",
+      "venue": "ETHEREUM",
+      "owner": "SEARCHER.WTF"
+    },
+    {
+      "name": "SHANKAI_TEST_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SHINAMI MONTHLY PAYMENT",
+      "venue": "ETHEREUM",
+      "owner": "SHINAMI"
+    },
+    {
+      "name": "SHINAMI_WALLET_SUI_01",
+      "venue": "SUI",
+      "owner": "SHINAMI"
+    },
+    {
+      "name": "SK_TESTWALLET",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SMU Research - Test Funds",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SODEX_TEST_BASE_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SOSO_REBAL_ARB_01",
+      "venue": "ARBITRUM",
+      "owner": "SOSOVALUE"
+    },
+    {
+      "name": "SOSO_REBAL_BASE_01",
+      "venue": "BASE",
+      "owner": "SOSOVALUE"
+    },
+    {
+      "name": "SPENCER_COWSWAP_TEST_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SPENCER_SSB_PER_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SPENCER_TEST_ACCOUNT_BINANCE",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "SPENCER_XIAO_SOL_WALLET",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "T1 LABS INC. INVESTMENT USDC ADDRESS",
+      "venue": "ETHEREUM",
+      "owner": "T1 LABS INC. (T1 PROTOCOL)"
+    },
+    {
+      "name": "TEST - CROSS CHAIN WALLET - BASE",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "TEST - CROSSCHAIN WALLET",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "TESTING_ABBY_HBAR",
+      "venue": "HEDERA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "TK001@COINBASE_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "COINBASE"
+    },
+    {
+      "name": "TK821_BINANCEALPHA",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "BINANCE_ALPHA"
+    },
+    {
+      "name": "TOKKA TREASURY - ETH - 01 - LOAN",
+      "venue": "ETHEREUM",
+      "owner": "TOKKA TREASURY"
+    },
+    {
+      "name": "TPLUS_LAB_INVESTMENT_EVM_01",
+      "venue": "ETHEREUM",
+      "owner": "TPLUS LABS INC"
+    },
+    {
+      "name": "TRAVEX TEST EC001 BINANCE",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "USDC (ETH) TO USDH (HEVM)",
+      "venue": "ETHEREUM",
+      "owner": "NATIVE MARKETS"
+    },
+    {
+      "name": "USDH (HEVM) TO USDC (ETH)",
+      "venue": "HYPEREVM",
+      "owner": "NATIVE MARKETS"
+    },
+    {
+      "name": "WALLET_JOHANTEST_BSC_01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "WALLET_SSB_LIQUIDATION_EVM_04",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "XIANG_LONG_TEST_WALLET",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_BINANCE_TEST_ACCOUNT",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_BINANCE_TESTING",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_TEST_ACCOUNT_ARB_01",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_TEST_WALLET_SOL_01",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_TEST_WALLET_SOL_02",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_WALLET_1INCH_PAYMENT",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YQ_JAY_SOL_01",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YUKUN_TEST_BSC_01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YUKUN_TEST_WALLET_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YUKUN_WANG_SOL_TEST_WALLET",
+      "venue": "SOLANA",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ZHICHAO_TEST_WALLET_BASE_01",
+      "venue": "BASE",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ZHICHAO_TEST_WALLET_ETH_01",
+      "venue": "ETHEREUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "ZHONGQUAN_MM_TEST_WALLET",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
     }
   ]
 }

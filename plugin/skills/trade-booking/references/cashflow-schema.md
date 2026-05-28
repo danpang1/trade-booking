@@ -4,14 +4,14 @@ The 14 required fields a CASHFLOW draft must carry. The plugin's local validator
 
 | Field | Type | Notes |
 |---|---|---|
-| `cashflow_type` | enum | One of: `INTER PTF FUNDING`, `RETAINER FEES`, `OPEX`, `OTHER INCOME`, `OTHER EXPENSE`, `TRANSFER FEES`, `INTEREST EXPENSE`, `INTEREST INCOME`, `WITHHOLDING TAX`, `LOAN`, `LOAN REPAYMENT` |
+| `cashflow_type` | enum | One of: `INTER PTF FUNDING`, `RETAINER FEES`, `OPEX`, `OPEX - OTHER EXPENSE`, `OPEX - CONTRA ACC`, `OTHER INCOME`, `OTHER EXPENSE`, `TRANSFER FEES`, `TRADING FEES`, `TRADING REWARDS`, `STRATEGY TESTING EXPENSE`, `STRATEGY TESTING RETURNED`, `INTEREST EXPENSE`, `INTEREST INCOME`, `WITHHOLDING TAX`, `LOAN`, `LOAN REPAYMENT` |
 | `direction` | enum | `INCOMING` or `OUTGOING` |
 | `entity` | string | Legal entity. Common values: `TOKKA LABS PTE LTD`, `ECHO CREEK LIMITED`, `IMAGINE LABS PTE LTD`, `NATIVE TECHNOLOGY LIMITED`, `RANGE PROTOCOL LIMITED` |
 | `portfolio_id` | int | Must match an `id` in `tokka-mo refdata` |
 | `portfolio_name` | string | Must match the name of `portfolio_id`'s row in `tokka-mo refdata` |
 | `counterparty` | string | Must match a `name` in `tokka-mo refdata`. Falls back to `TOKKA TREASURY` for OPEX where vendor isn't catalogued yet |
 | `account` | string | Must match an `account` name in `tokka-mo refdata` (e.g. `TK006@BINANCE`) |
-| `account_type` | enum | `EXCHANGE`, `WALLET`, or `BROKER` |
+| `account_type` | enum | `EXCHANGE`, `WALLET`, `BROKER`, or `BANK` |
 | `asset` | string | Must match a `symbol` in `tokka-mo refdata` (e.g. `USDC`) |
 | `amount` | numeric string | Positive magnitude. Server derives signed amount from `direction` |
 | `trade_date` | ISO 8601 + tz | When the booking is recorded (typically "now") |

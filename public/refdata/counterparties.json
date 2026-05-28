@@ -1,523 +1,19 @@
 [
   {
-    "id": 56,
-    "name": "0XRICK LIMITED",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 119,
-    "name": "1INCH FUSION+",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 5,
-    "name": "1INCH LIMITED",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 37,
-    "name": "21SHARES US LLC",
-    "type": "TRADING VENUE",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 81,
-    "name": "ACROSS",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 171,
-    "name": "ADEVAR LABS INC",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "VENDOR"
-  },
-  {
-    "id": 121,
-    "name": "AERODROME",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 58,
-    "name": "AGORA FINANCE",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 60,
-    "name": "AIRSWAP",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 124,
-    "name": "ALGEBRA FINANCE",
-    "type": "TRADING VENUE",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 50,
-    "name": "ALKIMIYA",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 104,
-    "name": "ALTERNITY FUND LTD",
-    "type": "LENDER",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 116,
-    "name": "AMBIENT FINANCE",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 137,
-    "name": "APTOS",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 33,
-    "name": "AQUA PROTOCOL",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 14,
-    "name": "ARBITRUM",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 17,
-    "name": "AVALANCHE",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 179,
-    "name": "AXELAR",
-    "type": "PROTOCOL",
-    "subType": "LENDER"
-  },
-  {
-    "id": 147,
-    "name": "BACKED.FI",
-    "type": "ISSUER",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 161,
-    "name": "BACKPACK",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 16,
-    "name": "BASE",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 103,
-    "name": "BEBOP LTD",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 108,
-    "name": "BERACHAIN",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 118,
-    "name": "BERASWAP",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
     "id": 1,
     "name": "BINANCE",
     "type": "TRADING VENUE",
     "subType": "EXCHANGE (CEX)"
   },
   {
-    "id": 177,
-    "name": "BINANCE INVESTMENTS CO. LTD",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 13,
-    "name": "BINANCE SMART CHAIN",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 129,
-    "name": "BINANCE_ALPHA",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 38,
-    "name": "BITCOIN",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 42,
-    "name": "BITCOIN CASH",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 173,
-    "name": "BITGET",
+    "id": 2,
+    "name": "OKX",
     "type": "TRADING VENUE",
     "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 154,
-    "name": "BITGLOBAL",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "VENDOR"
-  },
-  {
-    "id": 80,
-    "name": "BITGO TRUST COMPANY INC",
-    "type": "TRADING VENUE",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 156,
-    "name": "BITMEX",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 45,
-    "name": "BLAST",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 23,
-    "name": "BLITZ",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 63,
-    "name": "BLOCKPI NETWORK",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 25,
-    "name": "BLUEFIN",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 21,
-    "name": "BYBIT",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 39,
-    "name": "CARDANO",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 107,
-    "name": "CELO",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 152,
-    "name": "CENTRIFUGE",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 90,
-    "name": "CETUS PROTOCOL",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 26,
-    "name": "CHAINFLIP",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 157,
-    "name": "CHEN GUO",
-    "type": "NOT APPLICABLE",
-    "subType": "INDIVIDUAL"
-  },
-  {
-    "id": 178,
-    "name": "CHEN GUO (GORDON)",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 47,
-    "name": "CIRCLE INTERNET FINANCIAL",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 169,
-    "name": "CITREA",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 87,
-    "name": "COINBASE",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 167,
-    "name": "COINROUTES INC",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "SERVICE PROVIDER"
-  },
-  {
-    "id": 72,
-    "name": "CONNEXT FOUNDATION - EVERCLEAR",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 32,
-    "name": "COWSWAP DAO",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
   },
   {
     "id": 3,
     "name": "DBS DIGITAL EXCHANGE (DDEX)",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 78,
-    "name": "DEDUST",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 27,
-    "name": "DEXALOT",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 51,
-    "name": "DIGITAL FORCE LTD.",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 94,
-    "name": "DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)",
-    "type": "INVESTMENT",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 96,
-    "name": "DOGE",
-    "type": "BLOCKCHAIN",
-    "subType": "NOT APPLICABLE"
-  },
-  {
-    "id": 155,
-    "name": "DOURO LABS",
-    "type": "PROTOCOL",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 110,
-    "name": "DRIFT",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 28,
-    "name": "DYDX",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 176,
-    "name": "ECHOCREEK LTD",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 74,
-    "name": "ETHENA LABS GMBH",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 12,
-    "name": "ETHEREUM",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 141,
-    "name": "ETHGAS",
-    "type": "TRADING VENUE",
-    "subType": "VENDOR"
-  },
-  {
-    "id": 162,
-    "name": "FRAX",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 11,
-    "name": "GATE",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 146,
-    "name": "GMR LIMITED",
-    "type": "LENDER",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 136,
-    "name": "GNOSIS",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 34,
-    "name": "GRVT MARKETS LIMITED (GML)",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 6,
-    "name": "HASHFLOW FOUNDATION",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 170,
-    "name": "HEDERA",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 175,
-    "name": "HELIUS BLOCKCHAIN TECHNOLOGIES, INC.",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 9,
-    "name": "HUOBI",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 143,
-    "name": "HYPERCORE",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 132,
-    "name": "HYPEREVM",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 22,
-    "name": "HYPERLIQUID",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 29,
-    "name": "INJECTIVE",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 145,
-    "name": "INTERACTIVE BROKERS",
-    "type": "TRADING VENUE",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 115,
-    "name": "IZISWAP",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 100,
-    "name": "IZUMI",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 99,
-    "name": "JITO NETWORK",
-    "type": "PROTOCOL",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 75,
-    "name": "JUPITER",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 106,
-    "name": "JUPITER Z",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 130,
-    "name": "KANA LABS LIMITED",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 117,
-    "name": "KODIAK",
-    "type": "TRADING VENUE",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 166,
-    "name": "KRAKEN",
     "type": "TRADING VENUE",
     "subType": "EXCHANGE (CEX)"
   },
@@ -528,142 +24,16 @@
     "subType": "EXCHANGE (CEX)"
   },
   {
-    "id": 125,
-    "name": "KYBERSWAP",
+    "id": 5,
+    "name": "1INCH LIMITED",
     "type": "PROTOCOL",
     "subType": "SMART CONTRACTS"
   },
   {
-    "id": 64,
-    "name": "LBANK EXCHANGE",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 168,
-    "name": "LI.FI",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 127,
-    "name": "LIGHTER",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 30,
-    "name": "LINEA",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 66,
-    "name": "MANTLE",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 158,
-    "name": "MANTRA",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 84,
-    "name": "MAYAN FOUNDATION",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 86,
-    "name": "MERCHANT MOE",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 53,
-    "name": "META PROTOCOL INTERNATIONAL, INC (ZETA)",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 19,
-    "name": "MEXC",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 151,
-    "name": "MIDAS SOFTWARDS GMBH",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 62,
-    "name": "MODE",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 163,
-    "name": "NATIVE MARKETS",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 36,
-    "name": "NATIVE TECHNOLOGY LIMITED",
-    "type": "TRADING VENUE",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 2,
-    "name": "OKX",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 139,
-    "name": "OKX (SG)",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (CEX)"
-  },
-  {
-    "id": 144,
-    "name": "OKX DEX",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 101,
-    "name": "OKX DEX AGGREGATOR",
+    "id": 6,
+    "name": "HASHFLOW FOUNDATION",
     "type": "PROTOCOL",
     "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 150,
-    "name": "ONDO GLOBAL MARKETS (BVI) LIMITED",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 149,
-    "name": "ONDO USDY LLC",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 123,
-    "name": "OPTIMEX",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 15,
-    "name": "OPTIMISM",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
   },
   {
     "id": 7,
@@ -672,50 +42,56 @@
     "subType": "SMART CONTRACTS"
   },
   {
-    "id": 89,
-    "name": "PANCAKESWAP-X",
+    "id": 8,
+    "name": "ZEROEX INC (0X LABS)",
     "type": "PROTOCOL",
     "subType": "SMART CONTRACTS"
   },
   {
-    "id": 24,
-    "name": "PARADEX",
+    "id": 9,
+    "name": "HUOBI",
     "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
+    "subType": "EXCHANGE (CEX)"
   },
   {
-    "id": 61,
-    "name": "PARASWAP",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 73,
-    "name": "PAXOS GLOBAL PTE LTD (PAXOS)",
+    "id": 11,
+    "name": "GATE",
     "type": "TRADING VENUE",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+    "subType": "EXCHANGE (CEX)"
   },
   {
-    "id": 180,
-    "name": "PAYWARD, INC.",
-    "type": "LENDER",
-    "subType": "LENDER"
-  },
-  {
-    "id": 133,
-    "name": "PEAQ",
+    "id": 12,
+    "name": "ETHEREUM",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 160,
-    "name": "PLASMA",
+    "id": 13,
+    "name": "BINANCE SMART CHAIN",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 40,
-    "name": "POLKADOT",
+    "id": 14,
+    "name": "ARBITRUM",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 15,
+    "name": "OPTIMISM",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 16,
+    "name": "BASE",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 17,
+    "name": "AVALANCHE",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
   },
@@ -726,16 +102,100 @@
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 52,
-    "name": "PRM LBS LIMITED (ARKIS)",
+    "id": 19,
+    "name": "MEXC",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 20,
+    "name": "VERTEX PROTOCOL",
     "type": "TRADING VENUE",
     "subType": "EXCHANGE (DEX)"
   },
   {
-    "id": 98,
-    "name": "PROPELLERHEADS AG",
-    "type": "INVESTMENT",
-    "subType": "CORPORATION"
+    "id": 21,
+    "name": "BYBIT",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 22,
+    "name": "HYPERLIQUID",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 23,
+    "name": "BLITZ",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 24,
+    "name": "PARADEX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 25,
+    "name": "BLUEFIN",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 26,
+    "name": "CHAINFLIP",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 27,
+    "name": "DEXALOT",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 28,
+    "name": "DYDX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 29,
+    "name": "INJECTIVE",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 30,
+    "name": "LINEA",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 31,
+    "name": "ZETA",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 32,
+    "name": "COWSWAP DAO",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 33,
+    "name": "AQUA PROTOCOL",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 34,
+    "name": "GRVT MARKETS LIMITED (GML)",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
   },
   {
     "id": 35,
@@ -744,16 +204,34 @@
     "subType": "CORPORATION"
   },
   {
-    "id": 76,
-    "name": "RAYDIUM",
+    "id": 36,
+    "name": "NATIVE TECHNOLOGY LIMITED",
     "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
+    "subType": "CORPORATION"
   },
   {
-    "id": 92,
-    "name": "REYA",
+    "id": 37,
+    "name": "21SHARES US LLC",
     "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 38,
+    "name": "BITCOIN",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 39,
+    "name": "CARDANO",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 40,
+    "name": "POLKADOT",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
   },
   {
     "id": 41,
@@ -762,14 +240,8 @@
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 126,
-    "name": "ROUTER PROTOCOL",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 159,
-    "name": "SAGAEVM",
+    "id": 42,
+    "name": "BITCOIN CASH",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
   },
@@ -780,16 +252,16 @@
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 112,
-    "name": "SEARCHER.WTF",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "CORPORATION"
+    "id": 44,
+    "name": "ZKSYNC",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
   },
   {
-    "id": 140,
-    "name": "SHADOW",
-    "type": "TRADING VENUE",
-    "subType": "SMART CONTRACTS"
+    "id": 45,
+    "name": "BLAST",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
   },
   {
     "id": 46,
@@ -798,16 +270,16 @@
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 93,
-    "name": "SHINAMI",
-    "type": "SERVICE PROVIDER/VENDOR",
-    "subType": "CORPORATION"
+    "id": 47,
+    "name": "CIRCLE INTERNET FINANCIAL",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
   },
   {
-    "id": 148,
-    "name": "SODEX",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
+    "id": 48,
+    "name": "TESTING ACCOUNTS",
+    "type": "NOT APPLICABLE",
+    "subType": "INDIVIDUAL"
   },
   {
     "id": 49,
@@ -816,22 +288,28 @@
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 134,
-    "name": "SONEIUM",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 111,
-    "name": "SONIC",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 105,
-    "name": "SOSOVALUE",
+    "id": 50,
+    "name": "ALKIMIYA",
     "type": "TRADING VENUE",
     "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 51,
+    "name": "DIGITAL FORCE LTD.",
+    "type": "LENDER",
+    "subType": "LENDER"
+  },
+  {
+    "id": 52,
+    "name": "PRM LBS LIMITED (ARKIS)",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 53,
+    "name": "META PROTOCOL INTERNATIONAL, INC (ZETA)",
+    "type": "LENDER",
+    "subType": "LENDER"
   },
   {
     "id": 54,
@@ -846,88 +324,10 @@
     "subType": "LENDER"
   },
   {
-    "id": 82,
-    "name": "SQUID",
-    "type": "TRADING VENUE",
+    "id": 56,
+    "name": "0XRICK LIMITED",
+    "type": "LENDER",
     "subType": "LENDER"
-  },
-  {
-    "id": 114,
-    "name": "STARGATE",
-    "type": "TRADING VENUE",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 172,
-    "name": "STELLAR",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 77,
-    "name": "STON.FI",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 91,
-    "name": "SUI",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 153,
-    "name": "SUPERSTATE INC",
-    "type": "ISSUER",
-    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
-  },
-  {
-    "id": 113,
-    "name": "SYNCSWAP",
-    "type": "TRADING VENUE",
-    "subType": "SMART CONTRACTS"
-  },
-  {
-    "id": 102,
-    "name": "SYNFUTURES DEX",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 65,
-    "name": "T1 LABS INC. (T1 PROTOCOL)",
-    "type": "INVESTMENT",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 174,
-    "name": "TEMPO",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 48,
-    "name": "TESTING ACCOUNTS",
-    "type": "NOT APPLICABLE",
-    "subType": "INDIVIDUAL"
-  },
-  {
-    "id": 88,
-    "name": "THRUSTER",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 165,
-    "name": "TOKKA LABS PTE LTD",
-    "type": "NOT APPLICABLE",
-    "subType": "NOT APPLICABLE"
-  },
-  {
-    "id": 79,
-    "name": "TOKKA TREASURY",
-    "type": "INTERNAL COUNTERPARTY",
-    "subType": "CORPORATION"
   },
   {
     "id": 57,
@@ -936,28 +336,10 @@
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 142,
-    "name": "TPLUS LABS INC",
-    "type": "INVESTMENT",
-    "subType": "CORPORATION"
-  },
-  {
-    "id": 95,
-    "name": "TRON",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 97,
-    "name": "TURBOS",
-    "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
-  },
-  {
-    "id": 109,
-    "name": "UNICHAIN",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
+    "id": 58,
+    "name": "AGORA FINANCE",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
   },
   {
     "id": 59,
@@ -966,16 +348,46 @@
     "subType": "SMART CONTRACTS"
   },
   {
-    "id": 120,
-    "name": "UNISWAPX",
-    "type": "TRADING VENUE",
+    "id": 60,
+    "name": "AIRSWAP",
+    "type": "PROTOCOL",
     "subType": "SMART CONTRACTS"
   },
   {
-    "id": 20,
-    "name": "VERTEX PROTOCOL",
+    "id": 61,
+    "name": "PARASWAP",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 62,
+    "name": "MODE",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 63,
+    "name": "BLOCKPI NETWORK",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 64,
+    "name": "LBANK EXCHANGE",
     "type": "TRADING VENUE",
-    "subType": "EXCHANGE (DEX)"
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 65,
+    "name": "T1 LABS INC. (T1 PROTOCOL)",
+    "type": "INVESTMENT",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 66,
+    "name": "MANTLE",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
   },
   {
     "id": 67,
@@ -1002,10 +414,70 @@
     "subType": "EXCHANGE (DEX)"
   },
   {
-    "id": 164,
-    "name": "WISDOMTREE",
+    "id": 72,
+    "name": "CONNEXT FOUNDATION - EVERCLEAR",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 73,
+    "name": "PAXOS GLOBAL PTE LTD (PAXOS)",
+    "type": "TRADING VENUE",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 74,
+    "name": "ETHENA LABS GMBH",
     "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 75,
+    "name": "JUPITER",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 76,
+    "name": "RAYDIUM",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 77,
+    "name": "STON.FI",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 78,
+    "name": "DEDUST",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 79,
+    "name": "TOKKA TREASURY",
+    "type": "INTERNAL COUNTERPARTY",
     "subType": "CORPORATION"
+  },
+  {
+    "id": 80,
+    "name": "BITGO TRUST COMPANY INC",
+    "type": "TRADING VENUE",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 81,
+    "name": "ACROSS",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 82,
+    "name": "SQUID",
+    "type": "TRADING VENUE",
+    "subType": "LENDER"
   },
   {
     "id": 83,
@@ -1014,16 +486,10 @@
     "subType": "EXCHANGE (DEX)"
   },
   {
-    "id": 135,
-    "name": "XRPLEVM",
-    "type": "BLOCKCHAIN",
-    "subType": "BLOCKCHAIN"
-  },
-  {
-    "id": 8,
-    "name": "ZEROEX INC (0X LABS)",
-    "type": "PROTOCOL",
-    "subType": "SMART CONTRACTS"
+    "id": 84,
+    "name": "MAYAN FOUNDATION",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
   },
   {
     "id": 85,
@@ -1032,15 +498,645 @@
     "subType": "SMART CONTRACTS"
   },
   {
-    "id": 31,
-    "name": "ZETA",
+    "id": 86,
+    "name": "MERCHANT MOE",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 87,
+    "name": "COINBASE",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 88,
+    "name": "THRUSTER",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 89,
+    "name": "PANCAKESWAP-X",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 90,
+    "name": "CETUS PROTOCOL",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 91,
+    "name": "SUI",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
   },
   {
-    "id": 44,
-    "name": "ZKSYNC",
+    "id": 92,
+    "name": "REYA",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 93,
+    "name": "SHINAMI",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 94,
+    "name": "DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)",
+    "type": "INVESTMENT",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 95,
+    "name": "TRON",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 96,
+    "name": "DOGE",
+    "type": "BLOCKCHAIN",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 97,
+    "name": "TURBOS",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 98,
+    "name": "PROPELLERHEADS AG",
+    "type": "INVESTMENT",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 99,
+    "name": "JITO NETWORK",
+    "type": "PROTOCOL",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 100,
+    "name": "IZUMI",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 101,
+    "name": "OKX DEX AGGREGATOR",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 102,
+    "name": "SYNFUTURES DEX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 103,
+    "name": "BEBOP LTD",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 104,
+    "name": "ALTERNITY FUND LTD",
+    "type": "LENDER",
+    "subType": "LENDER"
+  },
+  {
+    "id": 105,
+    "name": "SOSOVALUE",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 106,
+    "name": "JUPITER Z",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 107,
+    "name": "CELO",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 108,
+    "name": "BERACHAIN",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 109,
+    "name": "UNICHAIN",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 110,
+    "name": "DRIFT",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 111,
+    "name": "SONIC",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 112,
+    "name": "SEARCHER.WTF",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 113,
+    "name": "SYNCSWAP",
+    "type": "TRADING VENUE",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 114,
+    "name": "STARGATE",
+    "type": "TRADING VENUE",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 115,
+    "name": "IZISWAP",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 116,
+    "name": "AMBIENT FINANCE",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 117,
+    "name": "KODIAK",
+    "type": "TRADING VENUE",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 118,
+    "name": "BERASWAP",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 119,
+    "name": "1INCH FUSION+",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 120,
+    "name": "UNISWAPX",
+    "type": "TRADING VENUE",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 121,
+    "name": "AERODROME",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 123,
+    "name": "OPTIMEX",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 124,
+    "name": "ALGEBRA FINANCE",
+    "type": "TRADING VENUE",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 125,
+    "name": "KYBERSWAP",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 126,
+    "name": "ROUTER PROTOCOL",
+    "type": "PROTOCOL",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 127,
+    "name": "LIGHTER",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 128,
+    "name": "TOKKA LABS - MM LP - SOSOVALUE",
+    "type": "TRADING VENUE",
+    "subType": "INDIVIDUAL"
+  },
+  {
+    "id": 129,
+    "name": "BINANCE_ALPHA",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 130,
+    "name": "KANA LABS LIMITED",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 132,
+    "name": "HYPEREVM",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 133,
+    "name": "PEAQ",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 134,
+    "name": "SONEIUM",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 135,
+    "name": "XRPLEVM",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 136,
+    "name": "GNOSIS",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 137,
+    "name": "APTOS",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 139,
+    "name": "OKX (SG)",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 140,
+    "name": "SHADOW",
+    "type": "TRADING VENUE",
+    "subType": "SMART CONTRACTS"
+  },
+  {
+    "id": 141,
+    "name": "ETHGAS",
+    "type": "TRADING VENUE",
+    "subType": "VENDOR"
+  },
+  {
+    "id": 142,
+    "name": "TPLUS LABS INC",
+    "type": "INVESTMENT",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 143,
+    "name": "HYPERCORE",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 144,
+    "name": "OKX DEX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 145,
+    "name": "INTERACTIVE BROKERS",
+    "type": "TRADING VENUE",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 146,
+    "name": "GMR LIMITED",
+    "type": "LENDER",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 147,
+    "name": "BACKED.FI",
+    "type": "ISSUER",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 148,
+    "name": "SODEX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 149,
+    "name": "ONDO USDY LLC",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 150,
+    "name": "ONDO GLOBAL MARKETS (BVI) LIMITED",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 151,
+    "name": "MIDAS SOFTWARDS GMBH",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 152,
+    "name": "CENTRIFUGE",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 153,
+    "name": "SUPERSTATE INC",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 154,
+    "name": "BITGLOBAL",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "VENDOR"
+  },
+  {
+    "id": 155,
+    "name": "DOURO LABS",
+    "type": "PROTOCOL",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 156,
+    "name": "BITMEX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 157,
+    "name": "CHEN GUO",
+    "type": "NOT APPLICABLE",
+    "subType": "INDIVIDUAL"
+  },
+  {
+    "id": 158,
+    "name": "MANTRA",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 159,
+    "name": "SAGAEVM",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 160,
+    "name": "PLASMA",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 161,
+    "name": "BACKPACK",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 162,
+    "name": "FRAX",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 163,
+    "name": "NATIVE MARKETS",
+    "type": "ISSUER",
+    "subType": "BROKER/OVER-THE-COUNTER (OTC)"
+  },
+  {
+    "id": 164,
+    "name": "WISDOMTREE",
+    "type": "ISSUER",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 165,
+    "name": "TOKKA LABS PTE LTD",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 166,
+    "name": "KRAKEN",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 167,
+    "name": "COINROUTES INC",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "SERVICE PROVIDER"
+  },
+  {
+    "id": 168,
+    "name": "LI.FI",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 169,
+    "name": "CITREA",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 170,
+    "name": "HEDERA",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 171,
+    "name": "ADEVAR LABS INC",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "VENDOR"
+  },
+  {
+    "id": 172,
+    "name": "STELLAR",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 173,
+    "name": "BITGET",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (CEX)"
+  },
+  {
+    "id": 174,
+    "name": "TEMPO",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 175,
+    "name": "HELIUS BLOCKCHAIN TECHNOLOGIES, INC.",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 176,
+    "name": "ECHOCREEK LTD",
+    "type": "LENDER",
+    "subType": "LENDER"
+  },
+  {
+    "id": 177,
+    "name": "BINANCE INVESTMENTS CO. LTD",
+    "type": "LENDER",
+    "subType": "LENDER"
+  },
+  {
+    "id": 178,
+    "name": "CHEN GUO (GORDON)",
+    "type": "LENDER",
+    "subType": "LENDER"
+  },
+  {
+    "id": 179,
+    "name": "AXELAR",
+    "type": "PROTOCOL",
+    "subType": "LENDER"
+  },
+  {
+    "id": 180,
+    "name": "PAYWARD, INC.",
+    "type": "LENDER",
+    "subType": "LENDER"
+  },
+  {
+    "id": 181,
+    "name": "CANTON",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 182,
+    "name": "FOMO PAY PTE LTD",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 183,
+    "name": "COST CENTRE - CONTRA ACCOUNT",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 184,
+    "name": "ONDO FOUNDATION",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 185,
+    "name": "BLOCK RAZOR",
+    "type": "SERVICE PROVIDER/VENDOR",
+    "subType": "SERVICE PROVIDER"
+  },
+  {
+    "id": 186,
+    "name": "DBS BANK LIMITED",
+    "type": "BANK",
+    "subType": "BANK"
+  },
+  {
+    "id": 187,
+    "name": "HERRING GLOBAL",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 188,
+    "name": "T3RN ISSUER LIMITED",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 189,
+    "name": "YUNNAN GARDEN LIMITED",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 190,
+    "name": "AAVE LENDING MARKETS",
+    "type": "PROTOCOL",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 191,
+    "name": "SKATE NETWORK LIMITED",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 192,
+    "name": "NATIVE INVESTMENTS",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 194,
+    "name": "STABLE LABS LIMITED",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 195,
+    "name": "OKX - AUX CAYES FINTECH CO. LTD",
+    "type": "NOT APPLICABLE",
+    "subType": "NOT APPLICABLE"
+  },
+  {
+    "id": 196,
+    "name": "SHAREHOLDER",
+    "type": "INTERNAL COUNTERPARTY",
+    "subType": "NOT APPLICABLE"
   }
 ]
