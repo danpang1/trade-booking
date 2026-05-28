@@ -70,11 +70,12 @@ const SESSION_MAX_AGE_SEC = 8 * 60 * 60;
 // /api/refdata/refresh. To add a new dropdown source, drop a new
 // sync_*.py under scripts/ and add a row here.
 const REFDATA_SOURCES = [
-  { key: "tokens",        script: "snapshot_tokens.py",     label: "tokens" },
-  { key: "counterparties", script: "sync_counterparties.py", label: "counterparties" },
-  { key: "portfolios",    script: "sync_portfolios.py",     label: "portfolios" },
-  { key: "users",         script: "sync_users.py",          label: "users" },
-  { key: "accounts",      script: "sync_accounts.py",       label: "accounts" },
+  { key: "tokens",         script: "snapshot_tokens.py",       label: "tokens" },
+  { key: "counterparties", script: "sync_counterparties.py",   label: "counterparties" },
+  { key: "portfolios",     script: "sync_portfolios.py",       label: "portfolios" },
+  { key: "users",          script: "sync_users.py",            label: "users" },
+  { key: "accounts",       script: "sync_accounts.py",         label: "accounts" },
+  { key: "perps",          script: "sync_perps_instruments.py", label: "perps" },
 ];
 const REFDATA_BY_KEY = new Map(REFDATA_SOURCES.map((s) => [s.key, s]));
 const PUBLIC_DIR     = resolve(__dirname, "public");
