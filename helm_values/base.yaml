@@ -58,6 +58,21 @@ env_secrets:
   T2X_RO_MYSQL_PASSWORD:
     name: trade-booking-mo-db
     key: t2x_ro_mysql_password
+  # MySQL Token Price DB — used by scripts/rates_latest.py to serve
+  # /api/rates/latest. Reuses the shared `trade-booking-mo-db` Secret
+  # with the `mysql_token_price_db_*` keys namespace.
+  # NOTE: until the platform team adds these three keys to the Secret
+  # the rates endpoint returns HTTP 500 in deployed envs — the front
+  # end footnote will read "Rates: unavailable — HTTP 500".
+  MYSQL_TOKEN_PRICE_DB_HOST:
+    name: trade-booking-mo-db
+    key: mysql_token_price_db_host
+  MYSQL_TOKEN_PRICE_DB_USERNAME:
+    name: trade-booking-mo-db
+    key: mysql_token_price_db_username
+  MYSQL_TOKEN_PRICE_DB_PASSWORD:
+    name: trade-booking-mo-db
+    key: mysql_token_price_db_password
 
 resources:
   requests:
