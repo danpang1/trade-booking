@@ -27,3 +27,9 @@ cookies.txt
 login.json
 resp.txt
 r.txt
+
+# Design proposal screenshots — drop them anywhere in the repo for
+# Claude to "see"; they never need to ship.
+Screenshot *.png
+*.screenshot.png
+screenshots/
