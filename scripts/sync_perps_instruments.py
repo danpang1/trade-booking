@@ -134,16 +134,16 @@ def main() -> int:
         contract_size = r.get("contractSize")
         leverage = r.get("contractLeverage")
         out.append({
-            "id":            r.get("id"),
-            "venue":         (r.get("venueName") or "").strip(),
-            "type":          "PERP",
-            "symbol":        _derive_symbol(r),
-            "base":          (r.get("baseAsset") or "").strip().upper(),
-            "quote":         (r.get("quoteAsset") or "").strip().upper() or None,
-            "settlement":    (r.get("settlementAsset") or "").strip().upper() or None,
+            "id": r.get("id"),
+            "venue": (r.get("venueName") or "").strip(),
+            "type": "PERP",
+            "symbol": _derive_symbol(r),
+            "base": (r.get("baseAsset") or "").strip().upper(),
+            "quote": (r.get("quoteAsset") or "").strip().upper() or None,
+            "settlement": (r.get("settlementAsset") or "").strip().upper() or None,
             "contract_size": float(contract_size) if contract_size is not None else 1.0,
-            "max_leverage":  float(leverage) if leverage is not None else None,
-            "ccxt_id":       (r.get("ccxtId") or None),
+            "max_leverage": float(leverage) if leverage is not None else None,
+            "ccxt_id": (r.get("ccxtId") or None),
         })
 
     # Stable ordering: venue → symbol → id so JSON diffs stay readable.
