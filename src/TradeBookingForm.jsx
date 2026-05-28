@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useContext, createContext } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useContext, createContext, Fragment } from "react";
 import { createPortal } from "react-dom";
 import {
   Copy,
@@ -281,13 +281,297 @@ const VENUES = {
 const ASSETS = ASSET_SYMBOLS;
 // Loan types — mirrors the CHECK constraint on trades_loan.loan_type.
 // Keep this list and the DDL (`apply_schema_loan.py`) in sync.
-// First value is the default on a fresh booking.
 const LOAN_TYPES = [
-  "VIP LOAN",
   "INTERNAL",
+  "VIP LOAN",
   "EXTERNAL",
   "DEFI LENDING",
 ];
+
+// Human-readable labels used in the Loan Enquiry KPI tiles and the
+// per-type exposure panel header. Falls back to the raw DB value if
+// a future LOAN_TYPES entry is missing here.
+const LOAN_TYPE_LABEL = {
+  "INTERNAL":     "Active internal loan",
+  "EXTERNAL":     "Active external loan",
+  "VIP LOAN":     "Active VIP loan",
+  "DEFI LENDING": "Active DeFi lending",
+};
+
+// One accent per loan_type. Two parallel hues per type:
+//   • `accent` (and `bg`/`fg`) — the muted institutional shade used by
+//     KPI tiles and filter chips so they read as part of the app chrome.
+//   • `chart` — a brighter, more saturated sibling used inside data
+//     visualisations (the dashboard composition donut). Pulling them
+//     apart lets the chart feel lively without the rest of the app
+//     looking candy-coloured.
+//   INTERNAL     → blue   (in-house, calm)
+//   EXTERNAL     → orange (third-party heads-up)
+//   VIP LOAN     → emerald (specialty product)
+//   DEFI LENDING → violet (newer / on-chain bucket)
+const LOAN_TYPE_PALETTE = {
+  "INTERNAL":     { accent: "var(--signal-link)",      bg: "#e6ecf7", fg: "var(--signal-link)",
+                    chart: "#3b82f6" },
+  "EXTERNAL":     { accent: "var(--signal-warn)",      bg: "var(--signal-warn-bg)",      fg: "var(--signal-warn)",
+                    chart: "#f97316" },
+  "VIP LOAN":     { accent: "var(--status-processed)", bg: "var(--status-processed-bg)", fg: "var(--status-processed)",
+                    chart: "#10b981" },
+  "DEFI LENDING": { accent: "var(--status-cancelled)", bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)",
+                    chart: "#a855f7" },
+};
+
+// USD formatters shared by the per-type KPI tile sub-line, the exposure
+// panel cells, and the panel's header total.
+function fmtUsdShort(n) {
+  if (n == null || !isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return "$" + (n / 1e9).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "B";
+  if (abs >= 1e6) return "$" + (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
+  if (abs >= 1e3) return "$" + (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
+  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+function fmtUsdCell(n) {
+  return n == null
+    ? "—"
+    : "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+}
+
+// Sum the live USD exposure for one loan_type. `exposureRows` comes from
+// kpis.exposureByType[t] — each row carries notional in its native asset.
+// Skips rows whose asset has no rate in the current snapshot.
+function sumExposureUsd(exposureRows, rates) {
+  if (!exposureRows) return 0;
+  let s = 0;
+  for (const e of exposureRows) {
+    const r = rates[String(e.asset || "").toUpperCase()];
+    if (r) s += e.notional * r;
+  }
+  return s;
+}
+
+// Nested-donut composition chart. Inner ring = loan_type sized by its
+// USD share of total live exposure (palette colour from LOAN_TYPE_PALETTE).
+// Outer ring = per-asset slice within each type, coloured as a lighter
+// tint of the parent type's hue. If `setExpandedType` is provided, inner
+// slices are clickable and the other types dim when one is active —
+// used inside Loan Enquiry where the click toggles the breakdown panel
+// below. When omitted (Dashboard usage), the chart renders as a static
+// visualisation with no click affordance. Renders nothing until rates load.
+function LoanCompositionChart({ exposureByType, rates, expandedType, setExpandedType }) {
+  const interactive = typeof setExpandedType === "function";
+  const composition = useMemo(() => {
+    const out = [];
+    for (const t of LOAN_TYPES) {
+      const exposureRows = exposureByType[t] || [];
+      const byAsset = {};
+      for (const e of exposureRows) {
+        const rate = rates[String(e.asset || "").toUpperCase()];
+        if (!rate) continue;
+        byAsset[e.asset] = (byAsset[e.asset] || 0) + e.notional * rate;
+      }
+      const assets = Object.entries(byAsset)
+        .map(([asset, usd]) => ({ asset, usd }))
+        .sort((a, b) => b.usd - a.usd);
+      const total = assets.reduce((s, x) => s + x.usd, 0);
+      if (total > 0) out.push({ type: t, total, assets });
+    }
+    return out;
+  }, [exposureByType, rates]);
+
+  const grandTotal = composition.reduce((s, x) => s + x.total, 0);
+  if (grandTotal === 0) return null;
+
+  // SVG geometry — two concentric donuts on a 280×280 canvas. Gap of
+  // ~6px between rings keeps slice boundaries readable.
+  const size = 280;
+  const cx = size / 2;
+  const cy = size / 2;
+  const RI_INNER = 52;
+  const RI_OUTER = 88;
+  const RO_INNER = 96;
+  const RO_OUTER = 132;
+
+  // Donut arc path: outer arc clockwise, line in, inner arc counterclockwise.
+  // Angles in radians; -π/2 = 12 o'clock.
+  const arcPath = (r1, r2, theta0, theta1) => {
+    const large = theta1 - theta0 > Math.PI ? 1 : 0;
+    const cos = Math.cos, sin = Math.sin;
+    const x1 = cx + r2 * cos(theta0), y1 = cy + r2 * sin(theta0);
+    const x2 = cx + r2 * cos(theta1), y2 = cy + r2 * sin(theta1);
+    const x3 = cx + r1 * cos(theta1), y3 = cy + r1 * sin(theta1);
+    const x4 = cx + r1 * cos(theta0), y4 = cy + r1 * sin(theta0);
+    return `M${x1},${y1} A${r2},${r2} 0 ${large} 1 ${x2},${y2} L${x3},${y3} A${r1},${r1} 0 ${large} 0 ${x4},${y4} Z`;
+  };
+
+  const arcs = [];
+  let a0 = -Math.PI / 2;
+  for (const c of composition) {
+    const sweep = (c.total / grandTotal) * 2 * Math.PI;
+    const a1 = a0 + sweep;
+    const pal = LOAN_TYPE_PALETTE[c.type] || {};
+    // Chart palette uses the vivid `chart` hue; falls back to the
+    // institutional `accent` if a new type ever ships without one.
+    const accent = pal.chart || pal.accent || "var(--ink-3)";
+    arcs.push({
+      kind: "type",
+      type: c.type,
+      d: arcPath(RI_INNER, RI_OUTER, a0, a1),
+      color: accent,
+      title: `${LOAN_TYPE_LABEL[c.type] || c.type} · ${fmtUsdShort(c.total)} · ${Math.round(c.total / grandTotal * 100)}% of book`,
+    });
+    let aa0 = a0;
+    c.assets.forEach((asset, i) => {
+      // Tint stepping: largest asset = pure accent, smaller ones get
+      // progressively lighter so the same family still reads visually.
+      const tintLevel = Math.min(55, i * 18);
+      const color = `color-mix(in srgb, ${accent}, white ${tintLevel}%)`;
+      const aa1 = aa0 + (asset.usd / grandTotal) * 2 * Math.PI;
+      arcs.push({
+        kind: "asset",
+        type: c.type,
+        asset: asset.asset,
+        d: arcPath(RO_INNER, RO_OUTER, aa0, aa1),
+        color,
+        title: `${LOAN_TYPE_LABEL[c.type] || c.type} · ${asset.asset} · ${fmtUsdShort(asset.usd)} (${Math.round(asset.usd / c.total * 100)}% of type, ${Math.round(asset.usd / grandTotal * 100)}% of book)`,
+      });
+      aa0 = aa1;
+    });
+    a0 = a1;
+  }
+
+  return (
+    <div className="mb-3" style={{
+      background: "var(--paper)",
+      border: "1px solid var(--rule)",
+      borderRadius: 3,
+      fontFamily: "var(--font-mono)",
+      maxWidth: 1100,
+      padding: "16px 20px",
+      display: "flex", gap: 28, alignItems: "center",
+    }}>
+      <div style={{ flexShrink: 0 }}>
+        <svg width={size} height={size} style={{ display: "block" }}>
+          {arcs.map((a, i) => {
+            const dim = interactive && expandedType && a.type !== expandedType;
+            const clickable = interactive && a.kind === "type";
+            return (
+              <path
+                key={i}
+                d={a.d}
+                fill={a.color}
+                stroke="var(--paper)"
+                strokeWidth={1.5}
+                style={{
+                  cursor: clickable ? "pointer" : "default",
+                  opacity: dim ? 0.25 : 1,
+                  transition: "opacity 140ms ease",
+                }}
+                onClick={
+                  clickable
+                    ? () => setExpandedType((cur) => (cur === a.type ? null : a.type))
+                    : undefined
+                }
+              >
+                <title>{a.title}</title>
+              </path>
+            );
+          })}
+          {/* Center label — total live USD across all types. */}
+          <text x={cx} y={cy - 4} textAnchor="middle" style={{
+            fontSize: 10, fill: "var(--ink-3)",
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            fontWeight: 500,
+          }}>Total exposure</text>
+          <text x={cx} y={cy + 16} textAnchor="middle" style={{
+            fontSize: 18, fontWeight: 600, fill: "var(--ink)",
+            fontVariantNumeric: "tabular-nums",
+          }}>{fmtUsdShort(grandTotal)}</text>
+        </svg>
+      </div>
+
+      {/* Legend — types as colored swatches with USD totals; assets nested
+          underneath at smaller scale. Clicking a type row mirrors clicking
+          its inner slice. */}
+      <div style={{ flex: 1, fontSize: 11, minWidth: 0 }}>
+        <div style={{
+          fontSize: 10, color: "var(--ink-3)",
+          letterSpacing: "0.06em", textTransform: "uppercase",
+          fontWeight: 500, marginBottom: 10,
+        }}>
+          Composition · type × asset
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {composition.map((c) => {
+            const pal = LOAN_TYPE_PALETTE[c.type] || {};
+            const accent = pal.chart || pal.accent || "var(--ink-3)";
+            const pct = Math.round(c.total / grandTotal * 100);
+            const dim = interactive && expandedType && expandedType !== c.type;
+            return (
+              <div
+                key={c.type}
+                onClick={interactive ? () => setExpandedType((cur) => (cur === c.type ? null : c.type)) : undefined}
+                style={{
+                  cursor: interactive ? "pointer" : "default",
+                  opacity: dim ? 0.45 : 1,
+                  transition: "opacity 140ms ease",
+                }}
+              >
+                <div style={{
+                  display: "flex", alignItems: "baseline", justifyContent: "space-between",
+                  gap: 8, marginBottom: 4,
+                }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span style={{
+                      width: 10, height: 10, background: accent, flexShrink: 0,
+                      border: `1px solid ${accent}`,
+                    }} />
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, color: "var(--ink)",
+                    }}>
+                      {LOAN_TYPE_LABEL[c.type] || c.type}
+                    </span>
+                  </span>
+                  <span style={{
+                    fontVariantNumeric: "tabular-nums", color: "var(--ink)",
+                    fontWeight: 600,
+                  }}>
+                    {fmtUsdShort(c.total)} · {pct}%
+                  </span>
+                </div>
+                <div style={{ paddingLeft: 16, color: "var(--ink-3)" }}>
+                  {c.assets.map((asset, i) => {
+                    const apct = Math.round(asset.usd / c.total * 100);
+                    const tintLevel = Math.min(55, i * 18);
+                    const tint = `color-mix(in srgb, ${accent}, white ${tintLevel}%)`;
+                    return (
+                      <div key={asset.asset} style={{
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8, fontSize: 10, padding: "1px 0",
+                      }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span style={{
+                            width: 8, height: 8, background: tint,
+                            border: `1px solid ${accent}`,
+                            flexShrink: 0,
+                          }} />
+                          {asset.asset}
+                        </span>
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                          {fmtUsdShort(asset.usd)} · {apct}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Internal-trade-id prefix per category. The 8-digit suffix is a placeholder
 // queue number — backend will allocate the real sequence on submit.
@@ -1310,7 +1594,7 @@ const FKey = ({ index, label, active, onClick }) => (
 // Replaces a native <select> for fields where the option list is
 // long and scrolling is slow.
 // ─────────────────────────────────────────────────────────────
-const PortfolioPicker = ({ value, onChange, options, fallbackLabel }) => {
+const PortfolioPicker = ({ value, onChange, options, fallbackLabel, prompt = "— select portfolio —" }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const wrapRef = useRef(null);
@@ -1389,7 +1673,7 @@ const PortfolioPicker = ({ value, onChange, options, fallbackLabel }) => {
               ) : null}
             </>
           ) : (
-            <span style={{ color: "#9a9488" }}>— select portfolio —</span>
+            <span style={{ color: "#9a9488" }}>{prompt}</span>
           )}
         </span>
         <span className="text-[10px]" style={{ color: "#9a9488" }}>
@@ -4408,10 +4692,10 @@ function summarizeDeal(r) {
   }
   if (r.txn_type === "SPOT") {
     const baseAmt = Math.abs(parseFloat(r.base_amount) || 0);
-    const fmtBase = baseAmt.toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const fmtBase = baseAmt.toLocaleString("en-US", { maximumFractionDigits: 5 });
     const baseAsset = (r.base_asset || "").toUpperCase();
     const priceNum = Math.abs(parseFloat(r.price) || 0);
-    const fmtPrice = priceNum.toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const fmtPrice = priceNum.toLocaleString("en-US", { maximumFractionDigits: 5 });
     const quoteAsset = (r.quote_asset || "").toUpperCase();
     const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
     const head = join([
@@ -4422,7 +4706,7 @@ function summarizeDeal(r) {
     const feeAmt = parseFloat(r.fee_amount) || 0;
     const feeAsset = (r.fee_asset || "").toUpperCase();
     if (feeAmt === 0 || !feeAsset) return head;
-    const fmtFee = Math.abs(feeAmt).toLocaleString("en-US", { maximumFractionDigits: 18 });
+    const fmtFee = Math.abs(feeAmt).toLocaleString("en-US", { maximumFractionDigits: 5 });
     return `${head}, fee ${fmtFee} ${feeAsset}`;
   }
   if (r.txn_type !== "CASHFLOW") return r?.deal_ref || "";
@@ -4430,9 +4714,9 @@ function summarizeDeal(r) {
   const lookupPtfName = (num) =>
     PORTFOLIOS.find((p) => String(p.number) === String(num))?.name || "";
   const amount = Math.abs(parseFloat(r.amount) || 0);
-  // Up to 18 decimals (table is NUMERIC(36,18)); trailing zeros collapsed by
-  // maximumFractionDigits. Locale "en-US" pins the thousands separator to ",".
-  const fmtAmt = amount.toLocaleString("en-US", { maximumFractionDigits: 18 });
+  // 5-dp display cap (UI-wide rule). Locale "en-US" pins thousands sep to ",".
+  // Underlying table is NUMERIC(36,18) — raw precision survives in CSV exports.
+  const fmtAmt = amount.toLocaleString("en-US", { maximumFractionDigits: 5 });
   const asset = (r.asset || "").toUpperCase();
   const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
 
@@ -4555,7 +4839,7 @@ const DEAL_CSV_COLUMNS = [
   { header: "Linked Deal Refs",   get: (r) => (r.mappings || []).map((m) => m.counterpart_deal_ref).filter(Boolean).join("; ") },
 ];
 const LOAN_CSV_COLUMNS = [
-  { header: "Input Date",         get: (r) => r.first_effective_start || r.effective_start || "" },
+  { header: "Updated Date",       key: "effective_start" },
   { header: "Deal Reference",     key: "deal_ref" },
   { header: "Direction",          key: "direction" },
   { header: "Loan Type",          key: "loan_type" },
@@ -4669,11 +4953,10 @@ const DEAL_ENQUIRY_INITIAL_FILTERS = {
   value_date_from: "",
   value_date_to: "",
   portfolios: [],
-  base_asset: "",
-  quote_asset: "",
-  deal_ref: "",
   // Default = all-except-CANCELLED (lifecycle-active rows).
   statuses: TRADE_STATUSES.filter((s) => s !== "CANCELLED"),
+  // Dynamic text filters keyed by DEAL_DYNAMIC_FIELDS[].key.
+  dynamic: {},
 };
 
 // Deep-equal compare for INITIAL_FILTERS vs current filters — drives
@@ -4686,12 +4969,229 @@ function filtersDifferFromDefault(filters, initial) {
       if (a.length !== b.length) return true;
       const sa = [...a].sort(), sb = [...b].sort();
       for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return true;
+    } else if (a && b && typeof a === "object" && typeof b === "object") {
+      // Plain-object compare for the dynamic-filter bag.
+      const ak = Object.keys(a), bk = Object.keys(b);
+      if (ak.length !== bk.length) return true;
+      for (const kk of ak) if (a[kk] !== b[kk]) return true;
     } else if (a !== b) {
       return true;
     }
   }
   return false;
 }
+
+// ─── Dynamic filter registry — one entry per pickable column.
+// `get(row)` extracts the candidate string from a row (Deal Enquiry
+// merges cashflow + spot shapes, so a few entries fall back across
+// fields). All matching is case-insensitive substring; commas behave
+// OR. Numeric columns are deliberately excluded for v1 — they need a
+// range syntax, not substring.
+const DEAL_DYNAMIC_FIELDS = [
+  { key: "deal_ref",        label: "Deal Reference",   get: (r) => r.deal_ref || "" },
+  { key: "base_asset",      label: "Base Asset",       get: (r) => r.asset || r.base_asset || "" },
+  { key: "quote_asset",     label: "Quote Asset",      get: (r) => r.quote_asset || r.fee_asset || "" },
+  { key: "comment",         label: "Comment",          get: (r) => r.comment || "" },
+  { key: "counterparty",    label: "Counterparty",     get: (r) => r.counterparty || "" },
+  { key: "counterparty_id", label: "Counterparty ID",  get: (r) => r.counterparty_id || "" },
+  { key: "entity",          label: "Entity",           get: (r) => r.entity || "" },
+  { key: "direction",       label: "Direction",        get: (r) => r.direction || "" },
+  { key: "txn_type",        label: "Type",             get: (r) => r.txn_type || "" },
+  { key: "cashflow_type",   label: "Cashflow Type",    get: (r) => r.cashflow_type || "" },
+  { key: "order_id",        label: "Order ID",         get: (r) => r.order_id || "" },
+  { key: "account_name",    label: "Account",          get: (r) => r.account_name || "" },
+  { key: "fee_asset",       label: "Fee Asset",        get: (r) => r.fee_asset || "" },
+];
+
+const LOAN_DYNAMIC_FIELDS = [
+  { key: "deal_ref",           label: "Deal Reference",      get: (r) => r.deal_ref || "" },
+  { key: "principal_asset",    label: "Principal Asset",     get: (r) => r.principal_asset || "" },
+  { key: "comment",            label: "Comment",             get: (r) => r.comment || "" },
+  { key: "counterparty",       label: "Counterparty",        get: (r) => r.counterparty || "" },
+  { key: "entity",             label: "Entity",              get: (r) => r.entity || "" },
+  { key: "direction",          label: "Direction",           get: (r) => r.direction || "" },
+  { key: "interest_type",      label: "Interest Type",       get: (r) => r.interest_type || "" },
+  { key: "floating_benchmark", label: "Floating Benchmark",  get: (r) => r.floating_benchmark || "" },
+  { key: "day_count_basis",    label: "Day Count Basis",     get: (r) => r.day_count_basis || "" },
+  { key: "hedged_asset",       label: "Hedged Asset",        get: (r) => r.hedged_asset || "" },
+  { key: "collateral_asset",   label: "Collateral Asset",    get: (r) => r.collateral_asset || "" },
+];
+
+// Apply the dynamic-filter bag to a row. Returns true if the row passes
+// every active filter (AND across columns, OR across comma-separated
+// tokens within a column). Falsy/missing entries are no-ops.
+function dynamicFilterMatch(row, dynamic, fields) {
+  for (const f of fields) {
+    const raw = dynamic[f.key];
+    if (!raw) continue;
+    const tokens = String(raw)
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    if (tokens.length === 0) continue;
+    const cand = String(f.get(row) || "").toLowerCase();
+    if (!tokens.some((t) => cand.includes(t))) return false;
+  }
+  return true;
+}
+
+// ─── Shared UI: a labeled-row list of active dynamic filters with an
+// "+ Add filter" menu of remaining columns. The parent owns the values
+// object — this component is purely controlled.
+const DynamicFilterRows = ({ fields, values, onChange }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState("");
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+  useEffect(() => {
+    if (menuOpen) inputRef.current?.focus();
+  }, [menuOpen]);
+
+  const activeKeys = Object.keys(values).filter((k) => values[k] !== undefined);
+  const available = fields.filter((f) => !(f.key in values));
+  const q = menuSearch.trim().toLowerCase();
+  const menuList = q
+    ? available.filter((f) => f.label.toLowerCase().includes(q))
+    : available;
+
+  const addFilter = (key) => {
+    onChange({ ...values, [key]: "" });
+    setMenuOpen(false);
+    setMenuSearch("");
+  };
+  const removeFilter = (key) => {
+    const next = { ...values };
+    delete next[key];
+    onChange(next);
+  };
+  const setOne = (key, v) => {
+    onChange({ ...values, [key]: v });
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {activeKeys.map((k) => {
+        const f = fields.find((x) => x.key === k);
+        const label = f ? f.label : k;
+        return (
+          <div
+            key={k}
+            className="flex items-center gap-2"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            <span
+              className="text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: "#6a665c", minWidth: 130, flexShrink: 0 }}
+            >{label}</span>
+            <div style={{ flex: 1 }}>
+              <Input
+                type="text"
+                value={values[k] ?? ""}
+                onChange={(e) => setOne(k, e.target.value)}
+                placeholder="free text · comma-separated"
+                autoFocus={values[k] === ""}
+              />
+            </div>
+            <button
+              type="button"
+              aria-label={`Remove ${label} filter`}
+              onClick={() => removeFilter(k)}
+              title={`Remove ${label} filter`}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "#a39e90",
+                fontSize: 14,
+                lineHeight: 1,
+                padding: "0 4px",
+                flexShrink: 0,
+              }}
+            >×</button>
+          </div>
+        );
+      })}
+
+      {available.length > 0 && (
+        <div ref={wrapRef} className="relative">
+          <button
+            type="button"
+            onClick={() => { setMenuOpen((o) => !o); setMenuSearch(""); }}
+            className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+            style={{
+              background: "transparent",
+              color: "#1f1f1f",
+              border: "1px dashed #d4cfc2",
+              padding: "6px 12px",
+              cursor: "pointer",
+              alignSelf: "flex-start",
+            }}
+          >
+            + Add filter ▾
+          </button>
+          {menuOpen && (
+            <div
+              className="absolute z-50 mt-1 left-0"
+              style={{
+                background: "#ffffff",
+                border: "1px solid #1f63ea",
+                boxShadow: "0 12px 32px rgba(13,13,13,0.12)",
+                width: 280,
+              }}
+            >
+              <div className="p-1.5" style={{ borderBottom: "1px solid #d9d4c7" }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="Filter columns…"
+                  value={menuSearch}
+                  onChange={(e) => setMenuSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { e.preventDefault(); setMenuOpen(false); }
+                    if (e.key === "Enter" && menuList.length === 1) {
+                      e.preventDefault();
+                      addFilter(menuList[0].key);
+                    }
+                  }}
+                  className="w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] placeholder:text-[#9a9488] rounded-none caret-[#1f63ea]"
+                />
+              </div>
+              <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
+                {menuList.length === 0 && (
+                  <div className="text-[11px] text-center py-3 font-mono" style={{ color: "#9a9488" }}>
+                    {available.length === 0 ? "All filters added" : "No matching columns"}
+                  </div>
+                )}
+                {menuList.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => addFilter(f.key)}
+                    className="w-full text-left px-3 py-1.5 text-[12px] font-mono transition-colors"
+                    style={{ background: "transparent" }}
+                    onMouseEnter={(ev) => { ev.currentTarget.style.background = "#ece7dd"; }}
+                    onMouseLeave={(ev) => { ev.currentTarget.style.background = "transparent"; }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
@@ -4713,33 +5213,14 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
   // expose `base_asset` / `quote_asset`. Filter on whichever the row has.
   // Text filters accept comma-separated tokens — any token match passes (OR).
   const filteredRows = useMemo(() => {
-    const tokens = (s) =>
-      String(s || "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-    const baseTokens = tokens(filters.base_asset).map((t) => t.toUpperCase());
-    const quoteTokens = tokens(filters.quote_asset).map((t) => t.toUpperCase());
-    const refTokens = tokens(filters.deal_ref).map((t) => t.toLowerCase());
     const filtered = rows.filter((r) => {
-      if (refTokens.length > 0) {
-        const cand = String(r.deal_ref || "").toLowerCase();
-        if (!refTokens.some((t) => cand.includes(t))) return false;
-      }
       if (filters.portfolios.length > 0 && !filters.portfolios.includes(String(r.portfolio_id || ""))) {
         return false;
       }
       if (filters.statuses.length > 0 && !filters.statuses.includes(String(r.status || ""))) {
         return false;
       }
-      if (baseTokens.length > 0) {
-        const cand = String(r.asset || r.base_asset || "").toUpperCase();
-        if (!baseTokens.includes(cand)) return false;
-      }
-      if (quoteTokens.length > 0) {
-        const cand = String(r.quote_asset || r.fee_asset || "").toUpperCase();
-        if (!quoteTokens.includes(cand)) return false;
-      }
+      if (!dynamicFilterMatch(r, filters.dynamic, DEAL_DYNAMIC_FIELDS)) return false;
       // Compare on full timestamp ("YYYY-MM-DDTHH:MM:SS") since the
       // Deal Enquiry filter is datetime. Row's stored trade_date is an
       // ISO string with TZ suffix — slice to 19 chars to strip the TZ
@@ -4756,15 +5237,22 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       if (filters.value_date_to && vd && vd > filters.value_date_to) return false;
       return true;
     });
-    // Sort by Updated Date (effective_start) latest → earliest. The DB
-    // already orders by trade_date DESC, but the table now leads with
-    // Updated Date so we re-sort here to match what the user sees.
+    // Sort: Updated Date (effective_start) desc, tie-break on Trade
+    // Date desc. effective_start is sliced to second-level precision
+    // (YYYY-MM-DDTHH:MM:SS) so sub-second backfill artifacts collapse
+    // into the same bucket — otherwise a 1-microsecond difference in
+    // backfilled rows would override the real trade_date ordering.
+    // Real human amendments are well over a second apart, so this
+    // truncation only hides synthetic ordering noise.
     return [...filtered].sort((a, b) => {
-      const ax = String(a.effective_start || "");
-      const bx = String(b.effective_start || "");
-      // String compare works on ISO 8601 timestamps; descending.
-      if (ax < bx) return 1;
-      if (ax > bx) return -1;
+      const aUpd = String(a.effective_start || "").slice(0, 19);
+      const bUpd = String(b.effective_start || "").slice(0, 19);
+      if (aUpd < bUpd) return 1;
+      if (aUpd > bUpd) return -1;
+      const aTd = String(a.trade_date || "");
+      const bTd = String(b.trade_date || "");
+      if (aTd < bTd) return 1;
+      if (aTd > bTd) return -1;
       return 0;
     });
   }, [rows, filters]);
@@ -4931,27 +5419,27 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               marginBottom: 10,
             }}
           >
-            {/* Portfolio — picker + refined white chip stack */}
+            {/* Portfolio — searchable picker + refined white chip stack.
+                Uses PortfolioPicker (same component the booking form uses)
+                so the user gets type-to-filter over the full refdata list.
+                value="" keeps the picker in "add another" mode after each
+                pick; chips below are the actual selection. */}
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
               <span>Portfolio</span>
-              <Select
+              <PortfolioPicker
                 value=""
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   if (!v) return;
-                  if (filters.portfolios.includes(v)) return;
-                  setFilter("portfolios", [...filters.portfolios, v]);
+                  if (filters.portfolios.includes(String(v))) return;
+                  setFilter("portfolios", [...filters.portfolios, String(v)]);
                 }}
-              >
-                <option value="">
-                  {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
-                </option>
-                {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
-                  <option key={p.number} value={String(p.number)}>
-                    {p.number} — {p.name}
-                  </option>
-                ))}
-              </Select>
+                options={PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number)))}
+                prompt={
+                  filters.portfolios.length === 0
+                    ? "— Add portfolio —"
+                    : `+ Add another (${filters.portfolios.length} selected)`
+                }
+              />
               {filters.portfolios.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {filters.portfolios.map((num) => {
@@ -5028,34 +5516,14 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
             </div>
           </div>
 
-          {/* Search row */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              columnGap: 16,
-            }}
-          >
-            {[
-              { key: "base_asset", label: "Base Asset" },
-              { key: "quote_asset", label: "Quote Asset" },
-              { key: "deal_ref", label: "Deal Reference" },
-            ].map((f) => (
-              <label
-                key={f.key}
-                className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
-                style={{ color: "#6a665c" }}
-              >
-                <span>{f.label}</span>
-                <Input
-                  type="text"
-                  placeholder="—"
-                  value={filters[f.key]}
-                  onChange={(e) => setFilter(f.key, e.target.value)}
-                />
-              </label>
-            ))}
-          </div>
+          {/* Dynamic filters — labeled rows the user adds via "+ Add
+              filter". Replaces the old fixed Base/Quote/Deal Ref/Comment
+              row; those columns are now opt-in entries in the menu. */}
+          <DynamicFilterRows
+            fields={DEAL_DYNAMIC_FIELDS}
+            values={filters.dynamic}
+            onChange={(v) => setFilter("dynamic", v)}
+          />
         </div>
 
         {/* Collapsible date range */}
@@ -5304,7 +5772,10 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       fee column (interest accrues via separate cashflow rows). */}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {r.fee_amount && parseFloat(r.fee_amount) !== 0
-                      ? <>{r.fee_amount} <span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span></>
+                      ? <>
+                          {Math.abs(parseFloat(r.fee_amount)).toLocaleString("en-US", { maximumFractionDigits: 5 })}
+                          {" "}<span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span>
+                        </>
                       : "—"}
                   </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
@@ -5736,18 +6207,277 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
   );
 }
 
+// ─── Dashboard — landing surface, currently hosts the loan composition
+// donut. Marked WIP in the header so users know more widgets are coming.
+// Fetches its own loan + rates data so the view is independent of any
+// other tab being open; the exposureByType build mirrors LoanEnquiry's
+// kpis so the chart sees the same shape.
+function Dashboard() {
+  const [rows, setRows]           = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState(null);
+  const [rates, setRates]         = useState({});
+  const [ratesMeta, setRatesMeta] = useState(null);
+  const [ratesError, setRatesError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await api("/api/loan/recent?limit=200");
+        const j = await r.json();
+        if (!j || !j.ok) throw new Error((j && j.error) || "loan fetch failed");
+        setRows(j.rows || []);
+      } catch (e) {
+        setError(String(e && e.message ? e.message : e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api("/api/rates/latest");
+        if (!r.ok) { setRatesError(`HTTP ${r.status}`); return; }
+        const j = await r.json();
+        if (!j || j.ok !== true) {
+          setRatesError((j && j.error) ? String(j.error) : "rates payload not ok");
+          return;
+        }
+        setRates(j.rates || {});
+        setRatesMeta({ asOf: j.asOf, cob: j.cob, source: j.source });
+      } catch (e) {
+        setRatesError(String(e && e.message ? e.message : e));
+      }
+    })();
+  }, []);
+
+  // exposureByType — mirror the LoanEnquiry kpis aggregator, but only
+  // for the live rows and only what the chart needs (per-cpty×asset
+  // notional). Sort isn't strictly required for the donut but keeps the
+  // legend deterministic if the chart later renders ordered slices.
+  const exposureByType = useMemo(() => {
+    const live = rows.filter((r) => r.status === "LIVE");
+    const out = {};
+    for (const t of LOAN_TYPES) {
+      const cellMap = new Map();
+      const cptyTotal = new Map();
+      for (const r of live) {
+        if (r.loan_type !== t) continue;
+        const cpty = r.counterparty || "—";
+        const asset = r.principal_asset || "—";
+        const amt = parseFloat(r.principal_amount) || 0;
+        const key = `${cpty}||${asset}`;
+        const prev = cellMap.get(key) || { cpty, asset, notional: 0, loans: 0 };
+        prev.notional += amt;
+        prev.loans += 1;
+        cellMap.set(key, prev);
+        cptyTotal.set(cpty, (cptyTotal.get(cpty) || 0) + amt);
+      }
+      out[t] = [...cellMap.values()].sort((a, b) => {
+        const at = cptyTotal.get(a.cpty) || 0;
+        const bt = cptyTotal.get(b.cpty) || 0;
+        if (at !== bt) return bt - at;
+        if (a.cpty !== b.cpty) return a.cpty.localeCompare(b.cpty);
+        return b.notional - a.notional;
+      });
+    }
+    return out;
+  }, [rows]);
+
+  return (
+    <div className="px-5 pt-4 pb-8">
+      {/* Header — serif title + WIP pill so users know the page is still
+          being assembled. Pill uses --signal-warn so it reads as a
+          heads-up, not an error. */}
+      <div className="mb-1" style={{
+        display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap",
+      }}>
+        <div className="text-[26px] font-semibold" style={{
+          fontFamily: "var(--font-serif)", letterSpacing: "-0.01em",
+          color: "var(--ink)",
+        }}>
+          Dashboard
+        </div>
+        <span style={{
+          display: "inline-flex", alignItems: "center",
+          padding: "3px 8px", borderRadius: 2,
+          background: "color-mix(in srgb, var(--signal-link) 12%, var(--paper))",
+          color: "var(--signal-link)",
+          border: "1px solid var(--signal-link)",
+          fontSize: 10, fontWeight: 600,
+          letterSpacing: "0.08em", textTransform: "uppercase",
+          fontFamily: "var(--font-mono)",
+        }}>
+          Work in progress
+        </span>
+      </div>
+      <div style={{
+        fontSize: 11, color: "var(--ink-3)",
+        letterSpacing: "0.06em", textTransform: "uppercase",
+        marginBottom: 16, fontFamily: "var(--font-mono)",
+      }}>
+        Loan composition · live exposure by type and asset
+      </div>
+
+      {error && (
+        <div className="px-3 py-2 mb-3 text-[12px]" style={{
+          background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00",
+        }}>Error: {error}</div>
+      )}
+
+      {(loading && rows.length === 0) ? (
+        <div style={{
+          color: "var(--ink-3)", fontFamily: "var(--font-mono)", fontSize: 11,
+        }}>Loading live loans…</div>
+      ) : (
+        <LoanCompositionChart
+          exposureByType={exposureByType}
+          rates={rates}
+        />
+      )}
+
+      <div style={{
+        fontSize: 10, color: "var(--ink-4)", fontStyle: "italic",
+        fontFamily: "var(--font-mono)",
+        marginTop: 8, maxWidth: 1100,
+      }}>
+        {ratesMeta
+          ? `Rates: ${ratesMeta.source} · COB ${ratesMeta.cob}`
+          : ratesError
+            ? `Rates: unavailable — ${ratesError}`
+            : "Rates: loading…"}
+      </div>
+
+      {/* ─── Volume metrics — placeholder cards for Spot + Perps.
+          Data source is the trades booked in Deal Enquiry (trades_spot
+          / trades_future), NOT an external API. Layout previews the
+          shape (24h / 7d / MTD) so users see what's coming. ─── */}
+      <div style={{
+        fontSize: 11, color: "var(--ink-3)",
+        letterSpacing: "0.06em", textTransform: "uppercase",
+        marginTop: 32, marginBottom: 12,
+        fontFamily: "var(--font-mono)",
+      }}>
+        Trade volume · spot & perps
+      </div>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 16,
+        maxWidth: 1100,
+      }}>
+        {[
+          {
+            title: "Spot Volume",
+            sub: "Aggregated from SPOT trades booked in Deal Enquiry",
+            rows: [
+              { label: "24h",  value: "—" },
+              { label: "7d",   value: "—" },
+              { label: "MTD",  value: "—" },
+            ],
+            footer: "By venue · by asset breakdown coming soon",
+          },
+          {
+            title: "Perps Volume",
+            sub: "Aggregated from FUTURE / PERP trades booked in Deal Enquiry",
+            rows: [
+              { label: "24h Notional",  value: "—" },
+              { label: "7d Notional",   value: "—" },
+              { label: "Open Interest", value: "—" },
+              { label: "Funding (24h)", value: "—" },
+            ],
+            footer: "By venue · by contract breakdown coming soon",
+          },
+        ].map((card) => (
+          <div key={card.title} style={{
+            background: "var(--paper)",
+            border: "1px solid var(--rule)",
+            borderLeft: "3px solid var(--ink-4)",
+            borderRadius: 3,
+            fontFamily: "var(--font-mono)",
+            padding: "16px 20px",
+          }}>
+            <div style={{
+              display: "flex", alignItems: "baseline",
+              justifyContent: "space-between", gap: 12,
+              marginBottom: 4,
+            }}>
+              <span style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: 18, fontWeight: 600, color: "var(--ink)",
+                letterSpacing: "-0.01em",
+              }}>
+                {card.title}
+              </span>
+              <span style={{
+                display: "inline-flex", alignItems: "center",
+                padding: "2px 7px", borderRadius: 2,
+                background: "color-mix(in srgb, var(--signal-link) 12%, var(--paper))",
+                color: "var(--signal-link)",
+                border: "1px solid var(--signal-link)",
+                fontSize: 9, fontWeight: 600,
+                letterSpacing: "0.08em", textTransform: "uppercase",
+              }}>
+                Coming soon
+              </span>
+            </div>
+            <div style={{
+              fontSize: 10, color: "var(--ink-3)",
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              marginBottom: 14,
+            }}>
+              {card.sub}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {card.rows.map((row) => (
+                <div key={row.label} style={{
+                  display: "flex", justifyContent: "space-between",
+                  alignItems: "baseline",
+                  borderBottom: "1px dotted var(--rule)",
+                  padding: "4px 0",
+                }}>
+                  <span style={{
+                    fontSize: 10, color: "var(--ink-3)",
+                    letterSpacing: "0.08em", textTransform: "uppercase",
+                  }}>
+                    {row.label}
+                  </span>
+                  <span style={{
+                    fontSize: 16, color: "var(--ink-4)",
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                  }}>
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{
+              fontSize: 10, color: "var(--ink-4)", fontStyle: "italic",
+              marginTop: 12,
+            }}>
+              {card.footer}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── LoanEnquiry — separate view for trades_loan rows ────────────────
 // Parallel to DealEnquiry but with loan-specific columns. Click the
 // deal_ref to amend; click 📜 to see SCD2 history.
 const LOAN_ENQUIRY_INITIAL_FILTERS = {
-  trade_date_from: "",
-  trade_date_to: "",
-  maturity_date_from: "",
-  maturity_date_to: "",
   portfolios: [],
   principal_asset: "",
-  statuses: LOAN_STATUSES.filter((s) => s !== "CANCELLED"),
-  deal_ref: "",
+  statuses: ["LIVE"],
+  loan_types: ["INTERNAL"],
+  // Dynamic text filters keyed by LOAN_DYNAMIC_FIELDS[].key.
+  dynamic: {},
 };
 
 function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
@@ -5758,48 +6488,56 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   // Exposure-by-cpty-by-asset panel is hidden by default; clicking the
   // Active loans KPI tile toggles it open. Same pattern for the
   // upcoming-expiry list which expands from the Upcoming expiry tile.
-  const [showExposure, setShowExposure] = useState(false);
+  // Holds the loan_type whose per-type exposure panel is open (null = closed).
+  // One panel at a time — clicking a different type tile swaps the view.
+  const [expandedType, setExpandedType] = useState(null);
   const [showExpiring, setShowExpiring] = useState(false);
+  // Latest USD rates from reference_data.price_token_new — used to
+  // USD-value the per-type exposure breakdown. `rates` is a map
+  // { SYMBOL_UPPER: usd_price }; `ratesMeta` captures the snapshot
+  // moment + source string for the footnote. `ratesError` carries
+  // the explicit reason when the fetch fails, so the footnote can
+  // say something more diagnostic than the generic "unavailable".
+  const [rates, setRates] = useState({});
+  const [ratesMeta, setRatesMeta] = useState(null);
+  const [ratesError, setRatesError] = useState(null);
   const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
   const filtersActive = filtersDifferFromDefault(filters, LOAN_ENQUIRY_INITIAL_FILTERS);
-  const hasDateFilter = !!(filters.trade_date_from || filters.trade_date_to || filters.maturity_date_from || filters.maturity_date_to);
-  const [showDates, setShowDates] = useState(false);
   // Pagination — page is 1-indexed; resets to 1 whenever filters change.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   useEffect(() => { setPage(1); }, [filters, pageSize]);
 
   const filteredRows = useMemo(() => {
-    const tokens = (s) =>
-      String(s || "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-    const assetTokens = tokens(filters.principal_asset).map((t) => t.toUpperCase());
-    const refTokens = tokens(filters.deal_ref).map((t) => t.toLowerCase());
-    return rows.filter((r) => {
-      if (refTokens.length > 0) {
-        const cand = String(r.deal_ref || "").toLowerCase();
-        if (!refTokens.some((t) => cand.includes(t))) return false;
-      }
+    const filtered = rows.filter((r) => {
       if (filters.portfolios.length > 0 && !filters.portfolios.includes(String(r.portfolio_id || ""))) {
-        return false;
-      }
-      if (assetTokens.length > 0 && !assetTokens.includes(String(r.principal_asset || "").toUpperCase())) {
         return false;
       }
       if (filters.statuses.length > 0 && !filters.statuses.includes(String(r.status || ""))) {
         return false;
       }
-      const td = String(r.trade_date || "").slice(0, 10);
-      if (filters.trade_date_from && td && td < filters.trade_date_from) return false;
-      if (filters.trade_date_to && td && td > filters.trade_date_to) return false;
-      const md = String(r.maturity_date || "").slice(0, 10);
-      if (filters.maturity_date_from && md && md < filters.maturity_date_from) return false;
-      if (filters.maturity_date_to && md && md > filters.maturity_date_to) return false;
+      if (filters.loan_types.length > 0 && !filters.loan_types.includes(String(r.loan_type || ""))) {
+        return false;
+      }
+      if (!dynamicFilterMatch(r, filters.dynamic, LOAN_DYNAMIC_FIELDS)) return false;
       return true;
+    });
+    // Sort: Updated Date (effective_start) desc, tie-break on Start
+    // Date (trade_date for loans) desc. effective_start truncated to
+    // second-level precision so sub-second backfill artifacts don't
+    // override the real start-date ordering. Mirrors Deal Enquiry.
+    return [...filtered].sort((a, b) => {
+      const aUpd = String(a.effective_start || "").slice(0, 19);
+      const bUpd = String(b.effective_start || "").slice(0, 19);
+      if (aUpd < bUpd) return 1;
+      if (aUpd > bUpd) return -1;
+      const aTd = String(a.trade_date || "");
+      const bTd = String(b.trade_date || "");
+      if (aTd < bTd) return 1;
+      if (aTd > bTd) return -1;
+      return 0;
     });
   }, [rows, filters]);
 
@@ -5838,6 +6576,35 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
   useEffect(() => { fetchRecent(); }, [fetchRecent, refreshSignal]);
 
+  // Latest USD rates — one-shot fetch on mount; cheap (single MySQL hit).
+  // We deliberately DON'T early-return on the strict-mode cleanup flag for
+  // the success path: setRates is idempotent and React drops state writes
+  // on unmounted components anyway, so a second successful resolve simply
+  // overwrites the first. The error path is surfaced through ratesError
+  // so the panel footnote can say WHY rates are missing instead of the
+  // generic "unavailable".
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api("/api/rates/latest");
+        if (!r.ok) {
+          setRatesError(`HTTP ${r.status}`);
+          return;
+        }
+        const j = await r.json();
+        if (!j || j.ok !== true) {
+          setRatesError(j && j.error ? String(j.error) : "rates payload not ok");
+          return;
+        }
+        setRates(j.rates || {});
+        setRatesMeta({ asOf: j.asOf, cob: j.cob, source: j.source });
+        setRatesError(null);
+      } catch (e) {
+        setRatesError(String(e && e.message ? e.message : e));
+      }
+    })();
+  }, []);
+
   // KPI strip + exposure breakdown — always reads the unfiltered `rows`
   // so totals reflect book state, not whatever filter is applied below.
   const kpis = useMemo(() => {
@@ -5861,6 +6628,14 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
     const openTerm = live.filter((r) => !r.maturity_date).length;
 
+    // Live count split by loan_type — surfaced in the "Active loans"
+    // KPI sub-line. Preserves LOAN_TYPES order; unknown types are
+    // dropped (the DB CHECK constraint should make that unreachable).
+    const byType = Object.fromEntries(LOAN_TYPES.map((t) => [t, 0]));
+    for (const r of live) {
+      if (r.loan_type in byType) byType[r.loan_type] += 1;
+    }
+
     // is_hedged is a tinyint in MySQL → could come back as 0/1, "0"/"1",
     // true/false, or null. Coerce defensively.
     const hedgedCount = live.filter((r) => {
@@ -5869,30 +6644,37 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     }).length;
     const hedgePct = live.length > 0 ? Math.round((hedgedCount / live.length) * 100) : 0;
 
-    // Live exposure matrix — aggregate by (counterparty, asset). Each
-    // entry holds { cpty, asset, notional, loans }. Sorted: counterparty
-    // by total exposure desc; within a counterparty, asset by notional
-    // desc. Same row appears once per (cpty, asset) pair.
-    const cellMap = new Map();   // key: "cpty||asset"
-    const cptyTotal = new Map(); // key: cpty -> rough notional rank (sum of amounts ignoring asset)
-    for (const r of live) {
-      const cpty = r.counterparty || "—";
-      const asset = r.principal_asset || "—";
-      const amt = parseFloat(r.principal_amount) || 0;
-      const key = `${cpty}||${asset}`;
-      const prev = cellMap.get(key) || { cpty, asset, notional: 0, loans: 0 };
-      prev.notional += amt;
-      prev.loans += 1;
-      cellMap.set(key, prev);
-      cptyTotal.set(cpty, (cptyTotal.get(cpty) || 0) + amt);
+    // Live exposure matrix per loan_type — aggregate by (counterparty,
+    // asset) within each type. Each entry holds { cpty, asset, notional,
+    // loans }. Sorted: counterparty by total exposure desc; within a
+    // counterparty, asset by notional desc. One matrix per LOAN_TYPES
+    // entry so the type tiles can each expand their own breakdown.
+    const exposureByType = {};
+    const cptyCountByType = {};
+    for (const t of LOAN_TYPES) {
+      const cellMap = new Map();   // key: "cpty||asset"
+      const cptyTotal = new Map(); // key: cpty -> notional sum (ignores asset)
+      for (const r of live) {
+        if (r.loan_type !== t) continue;
+        const cpty = r.counterparty || "—";
+        const asset = r.principal_asset || "—";
+        const amt = parseFloat(r.principal_amount) || 0;
+        const key = `${cpty}||${asset}`;
+        const prev = cellMap.get(key) || { cpty, asset, notional: 0, loans: 0 };
+        prev.notional += amt;
+        prev.loans += 1;
+        cellMap.set(key, prev);
+        cptyTotal.set(cpty, (cptyTotal.get(cpty) || 0) + amt);
+      }
+      exposureByType[t] = [...cellMap.values()].sort((a, b) => {
+        const at = cptyTotal.get(a.cpty) || 0;
+        const bt = cptyTotal.get(b.cpty) || 0;
+        if (at !== bt) return bt - at;             // counterparty rank
+        if (a.cpty !== b.cpty) return a.cpty.localeCompare(b.cpty);
+        return b.notional - a.notional;            // within cpty, asset rank
+      });
+      cptyCountByType[t] = cptyTotal.size;
     }
-    const exposure = [...cellMap.values()].sort((a, b) => {
-      const at = cptyTotal.get(a.cpty) || 0;
-      const bt = cptyTotal.get(b.cpty) || 0;
-      if (at !== bt) return bt - at;             // counterparty rank
-      if (a.cpty !== b.cpty) return a.cpty.localeCompare(b.cpty);
-      return b.notional - a.notional;            // within cpty, asset rank
-    });
 
     return {
       liveCount: live.length,
@@ -5901,8 +6683,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       openTerm,
       hedgedCount,
       hedgePct,
-      exposure,
-      cptyCount: cptyTotal.size,
+      exposureByType,
+      cptyCountByType,
+      byType,
     };
   }, [rows]);
 
@@ -5915,19 +6698,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Loan Enquiry</div>
       </div>
 
-      {/* ─── KPI strip per STYLE_GUIDE §6.7. Five tiles in a row; the
-          full live-exposure breakdown lives in its own panel below. ─── */}
-      <div
-        className="mb-3"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-          gap: 8,
-          alignItems: "stretch",
-        }}
-      >
-        {(() => {
-          const tile = (accent, label, value, sub, opts = {}) => {
+      {/* ─── KPI tiles per STYLE_GUIDE §6.7. Row 1 = headline metrics
+          (live count + coverage). Row 2 = active-loans breakdown by
+          loan_type. The full live-exposure matrix lives in its own
+          panel below the strip. ─── */}
+      {(() => {
+        const tile = (accent, label, value, sub, opts = {}) => {
             const interactive = !!opts.onClick;
             const Comp = interactive ? "button" : "div";
             return (
@@ -5992,52 +6768,103 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             : kpis.hedgePct >= 50 ? "var(--signal-buy)" : "var(--signal-warn)";
 
           const expiringCount = kpis.upcomingExpiry.length;
-          return [
-            tile(
-              "var(--status-settled)",
-              "Active loans",
-              kpis.liveCount,
-              showExposure ? "hide exposure" : "click to see exposure",
-              {
-                onClick: () => setShowExposure((s) => !s),
-                active: showExposure,
-                title: showExposure
-                  ? "Hide exposure breakdown"
-                  : "Show live exposure by counterparty × asset",
-              },
-            ),
-            tile(
-              expiringCount > 0 ? "var(--status-pending)" : "var(--ink-3)",
-              "Upcoming expiry",
-              expiringCount,
-              showExpiring
-                ? "hide upcoming"
-                : expiringCount > 0
-                  ? "click to see loans"
-                  : "no upcoming expiries",
-              {
-                onClick: expiringCount > 0 ? () => setShowExpiring((s) => !s) : undefined,
-                active: showExpiring,
-                title: expiringCount > 0
-                  ? (showExpiring
-                      ? "Hide upcoming-expiry list"
-                      : "Show LIVE loans with maturity in the next 30 days")
-                  : "No LIVE loans maturing in the next 30 days",
-              },
-            ),
-            tile("var(--status-confirmed)", "Open-term",       kpis.openTerm,     "no maturity date"),
-            tile(hedgeAccent,               "Hedged coverage", `${kpis.hedgePct}%`,
-                                            `${kpis.hedgedCount} / ${kpis.liveCount} live`),
-            // Placeholder tile — will swap the "—" / "API pending" pair
-            // for the live Binance VIP loan LTV once the integration is
-            // wired in. Muted border keeps it visually subordinate so
-            // it doesn't read as a real metric while it's a stub.
-            tile("var(--ink-4)",            "Binance VIP · LTV",
-                                            <span style={{ color: "var(--ink-4)" }}>—</span>,
-                                            "API pending"),
-          ];
+
+          // Row 1 tiles — one per loan_type in LOAN_TYPES order. Each
+          // tile is clickable: opens an exposure (counterparty × asset)
+          // breakdown panel scoped to that type. One panel at a time —
+          // clicking a different tile swaps the view; clicking the
+          // already-open tile closes it. Tiles with 0 loans aren't
+          // clickable since there's nothing to break down.
+          const typeTiles = LOAN_TYPES.map((t) => {
+            const count = kpis.byType[t] || 0;
+            const pct = kpis.liveCount > 0
+              ? Math.round((count / kpis.liveCount) * 100)
+              : 0;
+            const open = expandedType === t;
+            // USD scale for the type — only computed once rates land.
+            // Drops the "of active" suffix when USD is shown so the
+            // sub line fits inside the tile at 4-col grid width.
+            const typeUsd = sumExposureUsd(kpis.exposureByType[t], rates);
+            const haveUsd = typeUsd > 0;
+            const pctPart = haveUsd ? `${pct}%` : `${pct}% of active`;
+            const usdPart = haveUsd ? `${fmtUsdShort(typeUsd)} · ` : "";
+            const sub = count === 0
+              ? (kpis.liveCount === 0 ? "no active loans" : `${pct}% of active`)
+              : open
+                ? `${usdPart}${pctPart} · hide breakdown`
+                : `${usdPart}${pctPart} · click to expand`;
+            const label = LOAN_TYPE_LABEL[t] || t;
+            const accent = (LOAN_TYPE_PALETTE[t] || {}).accent || "var(--signal-link)";
+            return tile(accent, label, count, sub, {
+              onClick: count > 0
+                ? () => setExpandedType((cur) => (cur === t ? null : t))
+                : undefined,
+              active: open,
+              title: count === 0
+                ? `No active ${label} loans to break down`
+                : open
+                  ? `Hide ${label} exposure breakdown`
+                  : `Show ${label} exposure by counterparty × asset`,
+            });
+          });
+
+          return (
+            <>
+              <div
+                className="mb-2"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gap: 8,
+                  alignItems: "stretch",
+                }}
+              >
+                {typeTiles}
+              </div>
+              <div
+                className="mb-3"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gap: 8,
+                  alignItems: "stretch",
+                }}
+              >
+                {[
+                  tile(
+                    expiringCount > 0 ? "var(--status-pending)" : "var(--ink-3)",
+                    "Upcoming expiry",
+                    expiringCount,
+                    showExpiring
+                      ? "hide upcoming"
+                      : expiringCount > 0
+                        ? "click to see loans"
+                        : "no upcoming expiries",
+                    {
+                      onClick: expiringCount > 0 ? () => setShowExpiring((s) => !s) : undefined,
+                      active: showExpiring,
+                      title: expiringCount > 0
+                        ? (showExpiring
+                            ? "Hide upcoming-expiry list"
+                            : "Show LIVE loans with maturity in the next 30 days")
+                        : "No LIVE loans maturing in the next 30 days",
+                    },
+                  ),
+                  tile("var(--status-confirmed)", "Open-term", kpis.openTerm, "no maturity date"),
+                  tile(hedgeAccent, "Hedged coverage", `${kpis.hedgePct}%`,
+                       `${kpis.hedgedCount} / ${kpis.liveCount} live`),
+                  // Placeholder tile — will swap the "—" / "API pending" pair
+                  // for the live Binance VIP loan LTV once the integration is
+                  // wired in. Muted border keeps it visually subordinate so
+                  // it doesn't read as a real metric while it's a stub.
+                  tile("var(--ink-4)", "Binance VIP · LTV",
+                       <span style={{ color: "var(--ink-4)" }}>—</span>,
+                       "API pending"),
+                ]}
+              </div>
+            </>
+          );
         })()}
-      </div>
 
       {/* ─── Upcoming expiry — LIVE loans whose maturity_date is in
           the next 30 days, soonest first. Hidden by default; opens
@@ -6157,27 +6984,56 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         );
       })()}
 
-      {/* ─── Live exposure by counterparty × asset. Aggregates every
-          LIVE loan into (counterparty, principal_asset) rows showing
-          notional + loan count. Sorted by counterparty exposure desc;
-          assets within each counterparty by notional desc. Doesn't
-          fake FX — each asset is its own line. Hidden by default;
-          opens when the Active loans tile is clicked. ─── */}
-      {showExposure && kpis.exposure.length > 0 && (() => {
-        // Full notional — comma-separated, up to 6 fractional digits so
-        // small-decimal assets (BTC, ETH) still read precisely.
+      {/* ─── Live exposure by counterparty × asset, scoped to the
+          loan_type whose tile is currently expanded. Aggregates LIVE
+          loans of that type into (counterparty, principal_asset) rows
+          showing notional + loan count. Sorted by counterparty
+          exposure desc; assets within each counterparty by notional
+          desc. Doesn't fake FX — each asset is its own line. ─── */}
+      {expandedType && (kpis.exposureByType[expandedType] || []).length > 0 && (() => {
+        const expExposure = kpis.exposureByType[expandedType];
+        const expCptyCount = kpis.cptyCountByType[expandedType] || 0;
+        const expLoanCount = kpis.byType[expandedType] || 0;
+        const expLabel = LOAN_TYPE_LABEL[expandedType] || expandedType;
+        const expPalette = LOAN_TYPE_PALETTE[expandedType] || {};
+        // Full notional — comma-separated, capped at 5 fractional digits
+        // (UI-wide display precision rule).
         const fmtNum = (n) =>
-          n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+          n.toLocaleString("en-US", { maximumFractionDigits: 5 });
+        // USD valuation per (cpty, asset) row using the latest rates.
+        // If a rate is missing the row's USD just renders "—" but other
+        // rows still total normally. Total is shown in the header and
+        // gives a quick at-a-glance scale for the type's exposure.
+        const usdForRow = (e) => {
+          const rate = rates[String(e.asset || "").toUpperCase()];
+          return rate ? e.notional * rate : null;
+        };
+        const totalUsd = expExposure.reduce(
+          (s, e) => s + (usdForRow(e) || 0), 0,
+        );
+        const anyMissingRate = expExposure.some((e) => usdForRow(e) === null);
+        const grandLoans = expExposure.reduce((s, e) => s + e.loans, 0);
+        // Footnote: "<source> · COB <cob> · snapshot <iso>" rendered
+        // small + dim under the table. Falls back to a quiet "rates
+        // unavailable" hint if the fetch failed.
+        const fmtAsOf = (iso) => {
+          if (!iso) return "";
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return String(iso);
+          const pad = (n) => String(n).padStart(2, "0");
+          return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+        };
         return (
           <div
             className="mb-3"
             style={{
               background: "var(--paper)",
               border: "1px solid var(--rule)",
+              borderLeft: `3px solid ${expPalette.accent || "var(--rule)"}`,
               borderRadius: 3,
               fontFamily: "var(--font-mono)",
               overflow: "hidden",
-              maxWidth: 720,
+              maxWidth: 1100,
             }}
           >
             <div style={{
@@ -6187,11 +7043,17 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               display: "flex", alignItems: "baseline", justifyContent: "space-between",
             }}>
               <span style={{
-                fontSize: 10, color: "var(--ink-3)",
+                fontSize: 10, color: expPalette.fg || "var(--ink-3)",
                 textTransform: "uppercase", letterSpacing: "0.06em",
-                fontWeight: 500,
+                fontWeight: 600,
               }}>
-                Live exposure · {kpis.cptyCount} counterpart{kpis.cptyCount === 1 ? "y" : "ies"} · {kpis.liveCount} loan{kpis.liveCount === 1 ? "" : "s"}
+                {expLabel} · {expCptyCount} counterpart{expCptyCount === 1 ? "y" : "ies"} · {expLoanCount} loan{expLoanCount === 1 ? "" : "s"}
+                {totalUsd > 0 && (
+                  <>
+                    {" · "}
+                    <span style={{ color: "var(--ink)" }}>{fmtUsdShort(totalUsd)} total</span>
+                  </>
+                )}
               </span>
               <span style={{
                 fontSize: 10, color: "var(--ink-4)",
@@ -6201,9 +7063,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </span>
             </div>
 
-            {/* Fixed column widths so the cells don't reflow per row.
-                Counterparty gets the lion's share; numeric columns are
-                tight and right-aligned. */}
+            {/* Per-cpty subtotal row terminates each group. Notional
+                collapses to the single asset's amount when a cpty holds
+                only one symbol — otherwise "—" since BTC + ETH won't
+                meaningfully sum. USD Notional and Loans always sum. */}
             <table
               style={{
                 width: "100%", borderCollapse: "collapse", fontSize: 12,
@@ -6211,10 +7074,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               }}
             >
               <colgroup>
-                <col style={{ width: "50%" }} />
-                <col style={{ width: "15%" }} />
-                <col style={{ width: "25%" }} />
-                <col style={{ width: "10%" }} />
+                <col />
+                <col />
+                <col />
+                <col />
+                <col />
+                <col />
               </colgroup>
               <thead>
                 <tr style={{
@@ -6227,54 +7092,198 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   <th style={{ textAlign: "left",  padding: "6px 12px" }}>Counterparty</th>
                   <th style={{ textAlign: "left",  padding: "6px 12px" }}>Asset</th>
                   <th style={{ textAlign: "right", padding: "6px 12px" }}>Notional</th>
+                  <th style={{ textAlign: "right", padding: "6px 12px" }}>Rates</th>
+                  <th style={{ textAlign: "right", padding: "6px 12px" }}>USD Notional</th>
                   <th style={{ textAlign: "right", padding: "6px 12px" }}>Loans</th>
                 </tr>
               </thead>
               <tbody>
-                {kpis.exposure.map((e, i) => {
-                  const prev = kpis.exposure[i - 1];
-                  const next = kpis.exposure[i + 1];
-                  const sameCpty = prev && prev.cpty === e.cpty;
-                  // Add a subtle group-separator above the first row of
-                  // each new counterparty (except the very first row).
-                  const groupTop = !sameCpty && i > 0;
-                  // Slightly muted row continuation: same paper bg, but
-                  // ink-4 cpty cell so the eye latches onto the head row.
-                  return (
-                    <tr key={`${e.cpty}-${e.asset}`} style={{
-                      borderTop: groupTop ? "1px solid var(--rule-2)" : "1px solid var(--rule)",
-                    }}>
-                      <td style={{
-                        padding: "6px 12px",
-                        color: sameCpty ? "var(--ink-4)" : "var(--ink)",
-                        fontWeight: sameCpty ? 400 : 600,
-                        overflow: "hidden", textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }} title={e.cpty}>
-                        {sameCpty ? "" : e.cpty}
-                      </td>
-                      <td style={{
-                        padding: "6px 12px", color: "var(--ink)", fontWeight: 500,
-                      }}>
-                        {e.asset}
-                      </td>
-                      <td style={{
-                        padding: "6px 12px", textAlign: "right",
-                        fontVariantNumeric: "tabular-nums", color: "var(--ink)",
-                      }}>
-                        {fmtNum(e.notional)}
-                      </td>
-                      <td style={{
-                        padding: "6px 12px", textAlign: "right",
-                        fontVariantNumeric: "tabular-nums", color: "var(--ink-3)",
-                      }}>
-                        {e.loans}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  // Build cpty → { usd, loans, notionalByAsset } so the
+                  // total row knows what to sum and whether Notional is
+                  // collapsible (single-asset cpty) or "—" (multi-asset).
+                  const totals = {};
+                  for (const e of expExposure) {
+                    const t = totals[e.cpty] || { usd: 0, loans: 0, notionalByAsset: {} };
+                    const u = usdForRow(e);
+                    if (u != null) t.usd += u;
+                    t.loans += e.loans;
+                    t.notionalByAsset[e.asset] = (t.notionalByAsset[e.asset] || 0) + e.notional;
+                    totals[e.cpty] = t;
+                  }
+                  return expExposure.map((e, i) => {
+                    const prev = expExposure[i - 1];
+                    const next = expExposure[i + 1];
+                    const sameCpty = prev && prev.cpty === e.cpty;
+                    // Add a subtle group-separator above the first row of
+                    // each new counterparty (except the very first row).
+                    const groupTop = !sameCpty && i > 0;
+                    const usd = usdForRow(e);
+                    const rate = rates[String(e.asset || "").toUpperCase()];
+                    const isLastOfCpty = !next || next.cpty !== e.cpty;
+                    const cpyTot = totals[e.cpty] || { usd: 0, loans: 0, notionalByAsset: {} };
+                    const totAssets = Object.keys(cpyTot.notionalByAsset);
+                    const totNotional = totAssets.length === 1
+                      ? cpyTot.notionalByAsset[totAssets[0]]
+                      : null;
+                    return (
+                      <Fragment key={`${e.cpty}-${e.asset}`}>
+                        <tr style={{
+                          borderTop: groupTop ? "1px solid var(--rule-2)" : "1px solid var(--rule)",
+                        }}>
+                          <td style={{
+                            padding: "6px 12px",
+                            color: sameCpty ? "var(--ink-4)" : "var(--ink)",
+                            fontWeight: sameCpty ? 400 : 600,
+                            overflow: "hidden", textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }} title={e.cpty}>
+                            {sameCpty ? "" : e.cpty}
+                          </td>
+                          <td style={{
+                            padding: "6px 12px", color: "var(--ink)", fontWeight: 500,
+                          }}>
+                            {e.asset}
+                          </td>
+                          <td style={{
+                            padding: "6px 12px", textAlign: "right",
+                            fontVariantNumeric: "tabular-nums", color: "var(--ink)",
+                          }}>
+                            {fmtNum(e.notional)}
+                          </td>
+                          <td style={{
+                            padding: "6px 12px", textAlign: "right",
+                            fontVariantNumeric: "tabular-nums",
+                            color: rate == null ? "var(--ink-4)" : "var(--ink-3)",
+                          }}
+                          title={rate == null ? `No USD rate found for ${e.asset}` : undefined}>
+                            {rate == null ? "—" : "$" + rate.toLocaleString("en-US", { maximumFractionDigits: 5 })}
+                          </td>
+                          <td style={{
+                            padding: "6px 12px", textAlign: "right",
+                            fontVariantNumeric: "tabular-nums",
+                            color: usd == null ? "var(--ink-4)" : "var(--ink)",
+                          }}
+                          title={usd == null ? `No USD rate found for ${e.asset}` : undefined}>
+                            {fmtUsdCell(usd)}
+                          </td>
+                          <td style={{
+                            padding: "6px 12px", textAlign: "right",
+                            fontVariantNumeric: "tabular-nums", color: "var(--ink-3)",
+                          }}>
+                            {e.loans}
+                          </td>
+                        </tr>
+                        {isLastOfCpty && (
+                          <tr style={{
+                            background: "rgba(0,0,0,0.025)",
+                            borderTop: "1px solid var(--rule)",
+                          }}>
+                            <td style={{
+                              padding: "6px 12px",
+                              color: "var(--ink-3)",
+                              fontWeight: 600,
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                              textAlign: "right",
+                            }} colSpan={2}>
+                              Total
+                            </td>
+                            <td style={{
+                              padding: "6px 12px", textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
+                              color: totNotional == null ? "var(--ink-4)" : "var(--ink)",
+                              fontWeight: 600,
+                            }}
+                            title={totNotional == null ? "Multiple assets — Notional cannot be summed across symbols" : undefined}>
+                              {totNotional == null ? "—" : fmtNum(totNotional)}
+                            </td>
+                            <td />
+                            <td style={{
+                              padding: "6px 12px", textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
+                              color: "var(--ink)", fontWeight: 600,
+                            }}>
+                              {cpyTot.usd > 0 ? fmtUsdCell(cpyTot.usd) : "—"}
+                            </td>
+                            <td style={{
+                              padding: "6px 12px", textAlign: "right",
+                              fontVariantNumeric: "tabular-nums",
+                              color: "var(--ink)", fontWeight: 600,
+                            }}>
+                              {cpyTot.loans}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  });
+                })()}
+                {/* Grand total — sums across every counterparty in this
+                    type. Notional is "—" since assets aren't comparable
+                    across cpties (BTC + ETH + USDT is not a meaningful
+                    sum); USD Notional and Loans always aggregate. */}
+                <tr style={{
+                  background: "rgba(0,0,0,0.06)",
+                  borderTop: "2px solid var(--rule-2)",
+                }}>
+                  <td colSpan={2} style={{
+                    padding: "8px 12px",
+                    color: "var(--ink)",
+                    fontWeight: 700,
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    textAlign: "right",
+                  }}>
+                    Grand Total
+                  </td>
+                  <td style={{
+                    padding: "8px 12px", textAlign: "right",
+                    color: "var(--ink-4)",
+                  }} title="Multi-asset across counterparties — Notional cannot be summed">—</td>
+                  <td />
+                  <td style={{
+                    padding: "8px 12px", textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                    color: "var(--ink)", fontWeight: 700,
+                  }}>
+                    {totalUsd > 0 ? fmtUsdCell(totalUsd) : "—"}
+                  </td>
+                  <td style={{
+                    padding: "8px 12px", textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                    color: "var(--ink)", fontWeight: 700,
+                  }}>
+                    {grandLoans}
+                  </td>
+                </tr>
               </tbody>
             </table>
+            {/* Footnote — source and time of the rate snapshot used. */}
+            <div style={{
+              padding: "6px 12px",
+              background: "var(--paper-2)",
+              borderTop: "1px solid var(--rule)",
+              fontSize: 10, color: "var(--ink-4)",
+              fontStyle: "italic",
+              display: "flex", justifyContent: "space-between", gap: 12,
+              flexWrap: "wrap",
+            }}>
+              <span>
+                {ratesMeta
+                  ? `Rates: ${ratesMeta.source} · COB ${ratesMeta.cob} · snapshot ${fmtAsOf(ratesMeta.asOf)}`
+                  : ratesError
+                    ? `Rates: unavailable — ${ratesError}`
+                    : "Rates: loading…"}
+              </span>
+              {anyMissingRate && (
+                <span style={{ color: "var(--signal-warn)" }}>
+                  Some assets had no USD rate at snapshot — shown as “—”.
+                </span>
+              )}
+            </div>
           </div>
         );
       })()}
@@ -6286,9 +7295,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         >Error: {error}</div>
       )}
 
-      {/* ─── Filters — compact white card, parallel to Deal Enquiry. Date
-          pickers tuck behind a "Date filters" toggle to keep the card small
-          when dates aren't being filtered. ─── */}
+      {/* ─── Filters — compact white card. Loan Enquiry doesn't expose
+          date-range pickers (lifecycle is already constrained by Status
+          + Loan Type filters); users who need date filtering can pull
+          start/maturity via "+ Add filter" when that's added. ─── */}
       <div
         className="mb-3"
         style={{
@@ -6297,7 +7307,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           fontFamily: "var(--font-mono)",
         }}
       >
-        {/* Header strip — label, date toggle, clear all */}
+        {/* Header strip — label, clear all, CSV/schedule actions */}
         <div
           className="flex items-center justify-between"
           style={{ padding: "8px 16px", borderBottom: "1px solid #f3f1ec" }}
@@ -6315,23 +7325,6 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             )}
           </div>
           <div className="flex items-center gap-5">
-            <button
-              type="button"
-              onClick={() => setShowDates((s) => !s)}
-              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
-              style={{
-                background: "transparent",
-                color: "#1f1f1f",
-                border: "none",
-                padding: "4px 0",
-                cursor: "pointer",
-              }}
-            >
-              {showDates ? "− Hide dates" : "+ Date filters"}
-              {!showDates && hasDateFilter && (
-                <span style={{ color: "#b45309", marginLeft: 4 }}>· Active</span>
-              )}
-            </button>
             <button
               type="button"
               onClick={clearFilters}
@@ -6387,27 +7380,27 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               marginBottom: 10,
             }}
           >
-            {/* Portfolio — picker + refined white chip stack */}
+            {/* Portfolio — searchable picker + refined white chip stack.
+                Parallel to Deal Enquiry: uses PortfolioPicker so users
+                can type to filter the full refdata list. value="" keeps
+                the picker in "add another" mode; chips below carry the
+                actual selection. */}
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
               <span>Portfolio</span>
-              <Select
+              <PortfolioPicker
                 value=""
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   if (!v) return;
-                  if (filters.portfolios.includes(v)) return;
-                  setFilter("portfolios", [...filters.portfolios, v]);
+                  if (filters.portfolios.includes(String(v))) return;
+                  setFilter("portfolios", [...filters.portfolios, String(v)]);
                 }}
-              >
-                <option value="">
-                  {filters.portfolios.length === 0 ? "— Add portfolio —" : `+ Add another (${filters.portfolios.length} selected)`}
-                </option>
-                {PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number))).map((p) => (
-                  <option key={p.number} value={String(p.number)}>
-                    {p.number} — {p.name}
-                  </option>
-                ))}
-              </Select>
+                options={PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number)))}
+                prompt={
+                  filters.portfolios.length === 0
+                    ? "— Add portfolio —"
+                    : `+ Add another (${filters.portfolios.length} selected)`
+                }
+              />
               {filters.portfolios.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {filters.portfolios.map((num) => {
@@ -6482,68 +7475,54 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 })}
               </div>
             </div>
-          </div>
 
-          {/* Search row */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              columnGap: 16,
-            }}
-          >
-            <label className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
-              <span>Principal Asset</span>
-              <Input
-                type="text"
-                value={filters.principal_asset}
-                onChange={(e) => setFilter("principal_asset", e.target.value)}
-                placeholder="e.g. ETH, USDT"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
-              <span>Deal Reference</span>
-              <Input
-                type="text"
-                value={filters.deal_ref}
-                onChange={(e) => setFilter("deal_ref", e.target.value)}
-                placeholder="MLA00000001, MLA00000005…"
-              />
-            </label>
-          </div>
-        </div>
-
-        {/* Collapsible date range */}
-        {showDates && (
-          <div style={{ padding: "10px 16px 12px", borderTop: "1px solid #f3f1ec" }}>
+            {/* Loan Type — chip toggles, full-width row. Empty = show all. */}
             <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                columnGap: 24,
-                rowGap: 10,
-              }}
+              className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: "#6a665c", gridColumn: "1 / -1" }}
             >
-              {[
-                { label: "Trade Date · From → To", fromKey: "trade_date_from", toKey: "trade_date_to" },
-                { label: "Maturity Date · From → To", fromKey: "maturity_date_from", toKey: "maturity_date_to" },
-              ].map((f) => (
-                <div
-                  key={f.fromKey}
-                  className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
-                  style={{ color: "#6a665c" }}
-                >
-                  <span>{f.label}</span>
-                  <div className="flex items-center gap-2">
-                    <DatePicker value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
-                    <span style={{ color: "#a39e90" }}>→</span>
-                    <DatePicker value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
-                  </div>
-                </div>
-              ))}
+              <span>Loan Type</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {LOAN_TYPES.map((t) => {
+                  const on = filters.loan_types.includes(t);
+                  const pal = LOAN_TYPE_PALETTE[t] || {};
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          "loan_types",
+                          on
+                            ? filters.loan_types.filter((x) => x !== t)
+                            : [...filters.loan_types, t]
+                        )
+                      }
+                      className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                      style={{
+                        background: on ? (pal.bg || "#eef0f6") : "#ffffff",
+                        border: `1px solid ${on ? (pal.accent || "#1f63ea") : "#e0dbd0"}`,
+                        color: on ? (pal.fg || "#1f63ea") : "#a39e90",
+                        cursor: "pointer",
+                        transition: "all 120ms ease",
+                      }}
+                      title={on ? `Hide ${t}` : `Show only ${t}`}
+                    >{t}</button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        )}
+
+          {/* Dynamic filters — labeled rows the user adds via "+ Add
+              filter". Replaces the old fixed Principal/Deal Ref/Comment
+              row; those columns are now opt-in entries in the menu. */}
+          <DynamicFilterRows
+            fields={LOAN_DYNAMIC_FIELDS}
+            values={filters.dynamic}
+            onChange={(v) => setFilter("dynamic", v)}
+          />
+        </div>
       </div>
 
       {/* ─── Table ─── */}
@@ -6594,7 +7573,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   >↻</span>
                 </button>
               </th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Input Date</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Updated Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Direction</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Type</th>
@@ -6657,8 +7636,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     ><History size={12} strokeWidth={1.75} /></button>
                   </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
-                    <HoverTip text={r.first_effective_start || r.effective_start}>
-                      {fmtTs(r.first_effective_start || r.effective_start)}
+                    <HoverTip text={r.effective_start}>
+                      {fmtTs(r.effective_start)}
                     </HoverTip>
                   </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
@@ -6802,7 +7781,7 @@ function useClock() {
 
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
-  const [appView, setAppView] = useState("booking"); // "booking" | "users" | "tokens" | "pending"
+  const [appView, setAppView] = useState("booking"); // "booking" | "dashboard" | "users" | "tokens" | "pending"
   // Pending-drafts count for the sidebar badge. Polled every 60s while
   // the tab is focused; paused when the tab is hidden so background
   // tabs don't burn Python subprocess spawns. Failures are silent.
@@ -8760,6 +9739,18 @@ export default function TradeBookingForm() {
               onClick={() => setAppView("pending")}
             />
 
+            {/* Separator — Dashboard sits in its own band between the
+                booking flows above and admin tools below. */}
+            <div
+              className="mx-5 my-2"
+              style={{ borderTop: `1px dashed #d9d4c7` }}
+            />
+            <NavTabRow
+              label="Dashboard"
+              active={appView === "dashboard"}
+              onClick={() => setAppView("dashboard")}
+            />
+
             {user?.role === "admin" && (
               <>
                 {/* Separator before the admin-only section */}
@@ -8860,6 +9851,9 @@ export default function TradeBookingForm() {
 
         {/* ─── MAIN PANEL ─── */}
         <main className="flex-1 min-w-0 overflow-y-auto">
+          {appView === "dashboard" && (
+            <Dashboard />
+          )}
           {appView === "booking" && view === "DEAL_ENQUIRY" && (
             <DealEnquiry
               BB={BB}
@@ -9532,7 +10526,7 @@ export default function TradeBookingForm() {
                           parseFloat(form.fut_quantity) *
                           parseFloat(form.fut_price) *
                           (parseFloat(form.fut_contract_size) || 1)
-                        ).toLocaleString(undefined, { maximumFractionDigits: 8 })
+                        ).toLocaleString(undefined, { maximumFractionDigits: 5 })
                       : ""
                   }
                   style={{ color: BB.cyan, background: "#ece7dd" }}
