@@ -51,6 +51,14 @@ let ACCOUNTS_EXCHANGE = [];
 let ACCOUNTS_WALLET = [];
 let ACCOUNTS_BROKER = [];
 let ACCOUNTS_BANK = [];
+// Perps instrument list — populated by fetchRefdataOnce from
+// public/refdata/perps_instruments.json. Multi-venue, but v1 of the
+// FUTURE booking form filters down to HYPERLIQUID at the picker level.
+let PERPS_INSTRUMENTS = [];
+// v1 of the FUTURE flow restricts the user to a single venue. The
+// other venues ship in refdata so they can be toggled on later
+// without an additional sync.
+const PERPS_VENUES_ENABLED = ["HYPERLIQUID"];
 
 // Static UI labels for the Account Type select. The data behind each
 // key (EXCHANGE/WALLET/BROKER/BANK) is fetched at runtime — see fetchRefdataOnce.
@@ -71,11 +79,12 @@ async function fetchRefdataOnce() {
     } catch { return null; }
   };
 
-  const [counterparties, portfolios, users, accounts] = await Promise.all([
+  const [counterparties, portfolios, users, accounts, perps] = await Promise.all([
     fetchJson("/refdata/counterparties.json"),
     fetchJson("/refdata/portfolios.json"),
     fetchJson("/refdata/users.json"),
     fetchJson("/refdata/accounts.json"),
+    fetchJson("/refdata/perps_instruments.json"),
   ]);
 
   if (Array.isArray(counterparties)) {
@@ -100,6 +109,7 @@ async function fetchRefdataOnce() {
     if (Array.isArray(accounts.broker))   ACCOUNTS_BROKER   = accounts.broker;
     if (Array.isArray(accounts.bank))     ACCOUNTS_BANK     = accounts.bank;
   }
+  if (Array.isArray(perps)) PERPS_INSTRUMENTS = perps;
   return {
     counterparties: counterparties?.length ?? 0,
     portfolios: portfolios?.length ?? 0,
@@ -267,7 +277,9 @@ const LOAN_STATUSES = ["LIVE", "MATURED", "CANCELLED"];
 const statusOptionsFor = (category) =>
   category === "LOAN" ? LOAN_STATUSES : TRADE_STATUSES;
 const defaultStatusFor = (category) =>
-  category === "LOAN" ? "LIVE" : "CONFIRMED";
+  category === "LOAN"   ? "LIVE"
+  : category === "FUTURE" ? "SETTLED"
+  : "CONFIRMED";
 const VENUES = {
   CEX: ["Binance", "Binance Sub", "Kraken", "Bitget", "OKX", "Coinbase"],
   DEX: ["Hyperliquid", "dYdX", "GMX", "Jupiter", "Uniswap"],
@@ -1761,6 +1773,153 @@ const PortfolioPicker = ({ value, onChange, options, fallbackLabel, prompt = "�
 
 // Searchable counterparty combobox — value is the counterparty NAME (string).
 // Filter is by name or subType (so typing "DEX" or "LENDER" narrows the list).
+// Searchable instrument combobox — value is the instrument id (number).
+// `options` is the venue-filtered list of perp instruments. Selecting an
+// entry returns the full object so the form can auto-populate
+// base/quote/contract_size in one step. UX mirrors PortfolioPicker.
+const InstrumentPicker = ({ value, onChange, options, prompt = "— select instrument —" }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  const selected = options.find((o) => String(o.id) === String(value));
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? options.filter(
+        (o) =>
+          (o.symbol || "").toLowerCase().includes(q) ||
+          (o.base || "").toLowerCase().includes(q) ||
+          (o.ccxt_id || "").toLowerCase().includes(q)
+      )
+    : options;
+
+  return (
+    <div ref={wrapRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => { setOpen((o) => !o); setSearch(""); }}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono text-left transition-colors"
+        style={{
+          background: "#f8f6f1",
+          border: `1px solid ${open ? "#1f63ea" : "#d9d4c7"}`,
+        }}
+        onMouseEnter={(ev) => {
+          if (open) return;
+          ev.currentTarget.style.background = "#ffffff";
+          ev.currentTarget.style.borderColor = "#6a665c";
+        }}
+        onMouseLeave={(ev) => {
+          if (open) return;
+          ev.currentTarget.style.background = "#f8f6f1";
+          ev.currentTarget.style.borderColor = "#d9d4c7";
+        }}
+      >
+        <span className="flex-1 truncate">
+          {selected ? (
+            <>
+              <span style={{ color: "#1f63ea", fontWeight: 600 }}>{selected.symbol}</span>
+              <span style={{ color: "#9a9488" }}> · </span>
+              <span>{selected.venue}</span>
+              <span style={{ color: "#9a9488" }}> · contract {selected.contract_size}</span>
+            </>
+          ) : (
+            <span style={{ color: "#9a9488" }}>{prompt}</span>
+          )}
+        </span>
+        <span className="text-[10px]" style={{ color: "#9a9488" }}>▾</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 mt-1 left-0"
+          style={{
+            background: "#ffffff",
+            border: "1px solid #1f63ea",
+            boxShadow: "0 12px 32px rgba(13,13,13,0.12)",
+            minWidth: "100%",
+            width: 420,
+          }}
+        >
+          <div className="p-1.5" style={{ borderBottom: "1px solid #d9d4c7" }}>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Type to filter — symbol or base asset…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
+                if (e.key === "Enter" && filtered.length === 1) {
+                  e.preventDefault();
+                  onChange(filtered[0]);
+                  setOpen(false);
+                  setSearch("");
+                }
+              }}
+              className="w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] placeholder:text-[#9a9488] rounded-none caret-[#1f63ea]"
+            />
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
+            {filtered.length === 0 && (
+              <div className="text-[11px] text-center py-3 font-mono" style={{ color: "#9a9488" }}>
+                {options.length === 0 ? "Refdata loading…" : "No matching instruments"}
+              </div>
+            )}
+            {filtered.slice(0, 200).map((o) => {
+              const isSel = String(value) === String(o.id);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(o);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] font-mono transition-colors"
+                  style={{
+                    background: isSel ? "#ece7dd" : "transparent",
+                    borderLeft: `2px solid ${isSel ? "#1f63ea" : "transparent"}`,
+                  }}
+                  onMouseEnter={(ev) => { if (!isSel) ev.currentTarget.style.background = "#ece7dd"; }}
+                  onMouseLeave={(ev) => { if (!isSel) ev.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ color: "#1f63ea", fontWeight: 600 }}>{o.symbol}</span>
+                  <span style={{ color: "#9a9488" }}> · </span>
+                  <span style={{ color: "#0d0d0d" }}>{o.base}/{o.quote || "—"}</span>
+                  <div className="text-[9px] mt-0.5 tracking-[0.12em] uppercase" style={{ color: "#6a665c" }}>
+                    {o.venue}
+                    {o.contract_size != null && <> · contract {o.contract_size}</>}
+                    {o.max_leverage ? <> · max {o.max_leverage}× lev</> : null}
+                  </div>
+                </button>
+              );
+            })}
+            {filtered.length > 200 && (
+              <div className="text-[10px] text-center py-2 italic font-mono" style={{ color: "#9a9488" }}>
+                +{filtered.length - 200} more — type to narrow
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CounterpartyPicker = ({ value, onChange, options, fallbackLabel }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -2378,7 +2537,7 @@ const AccountPicker = ({ value, onChange, options, placeholder = "— select acc
 // ─────────────────────────────────────────────────────────────
 const SIDEBAR_CATEGORIES = [
   { key: "SPOT", label: "Spot" },
-  { key: "FUTURE", label: "Futures", comingSoon: true },
+  { key: "FUTURE", label: "Futures" },
   { key: "CASHFLOW", label: "Cashflow" },
   { key: "LOAN", label: "Loan" },
 ];
@@ -8094,18 +8253,26 @@ export default function TradeBookingForm() {
     account_name: "",
     counterparty: "",
     // FUTURE
-    fut_side: "BUY",
+    fut_direction: "LONG",
     fut_contract_type: "PERP",
+    // Inverse (coin-margined) vs Linear (USDT-margined). Inverse perps
+    // denominate PnL in the BASE asset (e.g. BTC) instead of the quote.
+    // Hyperliquid is linear-only today; the flag stays in form state so
+    // the booking record reflects the user's intent regardless.
+    fut_is_inverse: false,
+    // v1 of the FUTURE flow: instrument-driven. The user picks a single
+    // perp instrument from the refdata-sourced list; fut_symbol /
+    // fut_base_asset / fut_quote_asset / fut_contract_size all flow
+    // from that selection (see InstrumentPicker onChange in render).
+    fut_venue: "HYPERLIQUID",
+    fut_instrument_id: null,
     fut_symbol: "",
-    fut_base_asset: "BTC",
-    fut_quote_asset: "USDT",
+    fut_base_asset: "",
+    fut_quote_asset: "",
     fut_contract_size: "1",
     fut_quantity: "",
     fut_price: "",
-    fut_leverage: "",
-    fut_margin_mode: "CROSS",
     fut_expiry: "",
-    fut_funding_rate: "",
     fut_fee: "",
     fut_fee_asset: "USDT",
     fut_pnl_realized: "",
@@ -8343,7 +8510,13 @@ export default function TradeBookingForm() {
     value_date: nowUtc(),
     portfolio: "",
     status: defaultStatusFor(cat),
-    counterparty: "",
+    // FUTURE defaults: counterparty seeds to HYPERLIQUID (the v1
+    // venue) so the user can land on Futures and pick an instrument
+    // without hunting for the counterparty first. Uppercase matches
+    // the canonical spelling in reference_data.counterparty, so the
+    // CounterpartyPicker shows it as the selected dropdown entry
+    // rather than a free-text fallback. Other categories stay blank.
+    counterparty: cat === "FUTURE" ? "HYPERLIQUID" : "",
     // Carry the current superadmin default so switching categories
     // doesn't drop the form's "Created by" back to blank.
     created_by: SUPERADMIN_USERS[0] || "",
@@ -8356,8 +8529,11 @@ export default function TradeBookingForm() {
     tx_hash: "",
     gas_fee: "",
     gas_asset: "ETH",
-    venue_type: "CEX",
-    venue: "Binance",
+    // For FUTURE the venue follows the counterparty (a DEX perp), so
+    // we drop the user straight onto Hyperliquid/DEX. Other categories
+    // keep the CEX/Binance default for now.
+    venue_type: cat === "FUTURE" ? "DEX" : "CEX",
+    venue:      cat === "FUTURE" ? "Hyperliquid" : "Binance",
     tx_id: "",
     notes: "",
   });
@@ -8820,6 +8996,7 @@ export default function TradeBookingForm() {
           }
         : null,
       entity: portfolioEntry ? portfolioEntry.entity : null,
+      counterparty: form.counterparty || null,
       category: form.category,
       status: form.status,
       notes: form.notes || null,
@@ -8832,7 +9009,7 @@ export default function TradeBookingForm() {
       const px = parseFloat(form.fut_price) || 0;
       const size = parseFloat(form.fut_contract_size) || 1;
       payload = {
-        side: form.fut_side,
+        direction: form.fut_direction,
         contract_type: form.fut_contract_type,
         symbol: form.fut_symbol || null,
         base_asset: form.fut_base_asset,
@@ -8841,19 +9018,23 @@ export default function TradeBookingForm() {
         quantity: qty,
         price: px,
         notional: +(qty * px * size).toFixed(8),
-        leverage: parseFloat(form.fut_leverage) || null,
-        margin_mode: form.fut_margin_mode,
         expiry: form.fut_contract_type === "DATED" ? form.fut_expiry || null : null,
-        funding_rate_pct:
-          form.fut_contract_type === "PERP"
-            ? parseFloat(form.fut_funding_rate) || null
-            : null,
         fee: parseFloat(form.fut_fee) || 0,
         fee_asset: form.fut_fee_asset,
-        is_closing: form.fut_is_closing,
-        realized_pnl: form.fut_is_closing
+        // closed_pnl — populated for closing trades, null for opening.
+        // Replaces the legacy is_closing / realized_pnl checkbox flow:
+        // if the user entered a value the trade closes a position.
+        closed_pnl: form.fut_pnl_realized !== "" && form.fut_pnl_realized != null
           ? parseFloat(form.fut_pnl_realized) || 0
           : null,
+        // closed_pnl_asset reflects the contract's margin style:
+        //   linear  → quote asset (e.g. USDT)
+        //   inverse → base asset  (e.g. BTC)
+        closed_pnl_asset: form.fut_is_inverse
+          ? (form.fut_base_asset  || null)
+          : (form.fut_quote_asset || null),
+        is_inverse: form.fut_is_inverse,
+        is_closing: form.fut_pnl_realized !== "" && form.fut_pnl_realized != null,
         // tradeVenueFields — only FUTURE renders these in the UI.
         venue_type: form.venue_type,
         venue: form.venue,
@@ -8883,7 +9064,7 @@ export default function TradeBookingForm() {
       if (!form.account_name) e.push("Account name is required");
     }
     if (form.category === "FUTURE") {
-      if (!form.fut_symbol) e.push("Futures symbol required");
+      if (!form.fut_instrument_id) e.push("Instrument is required (pick from the venue list)");
       if (!form.fut_quantity || parseFloat(form.fut_quantity) <= 0)
         e.push("Quantity must be > 0");
       if (!form.fut_price || parseFloat(form.fut_price) <= 0) e.push("Price must be > 0");
@@ -9370,18 +9551,18 @@ export default function TradeBookingForm() {
       venue: "Binance",
     },
     FUTURE: {
-      fut_side: "BUY",
+      fut_direction: "LONG",
+      fut_is_inverse: false,
       fut_contract_type: "PERP",
+      fut_venue: "HYPERLIQUID",
+      fut_instrument_id: null,
       fut_symbol: "",
-      fut_base_asset: "BTC",
-      fut_quote_asset: "USDT",
+      fut_base_asset: "",
+      fut_quote_asset: "",
       fut_contract_size: "1",
       fut_quantity: "",
       fut_price: "",
-      fut_leverage: "",
-      fut_margin_mode: "CROSS",
       fut_expiry: "",
-      fut_funding_rate: "",
       fut_fee: "",
       fut_fee_asset: "USDT",
       fut_pnl_realized: "",
@@ -9470,13 +9651,6 @@ export default function TradeBookingForm() {
           ))}
         </Select>
       </Field>
-      <Field label="Venue" span={3}>
-        <Select value={form.venue} onChange={(e) => set("venue", e.target.value)}>
-          {venueList.map((x) => (
-            <option key={x}>{x}</option>
-          ))}
-        </Select>
-      </Field>
       <Field label="Account ID" span={3}>
         <Input
           placeholder="sub-account / wallet"
@@ -9484,49 +9658,6 @@ export default function TradeBookingForm() {
           onChange={(e) => set("account_id", e.target.value)}
         />
       </Field>
-      <Field label="Tx ID / Order ID" span={3}>
-        <Input
-          placeholder="0x… / exchange order id"
-          value={form.tx_id}
-          onChange={(e) => set("tx_id", e.target.value)}
-        />
-      </Field>
-      <Field label="Tx Hash (if on-chain)" span={12}>
-        <Input
-          placeholder="0x… (optional)"
-          value={form.tx_hash}
-          onChange={(e) => set("tx_hash", e.target.value)}
-        />
-      </Field>
-      {(form.category === "CASHFLOW" ||
-        form.venue_type === "OnChain" ||
-        form.venue_type === "DEX") && (
-        <>
-          <div
-            className="col-span-12 mt-1.5 text-[10px] uppercase tracking-[0.24em] font-mono pb-0.5"
-            style={{ color: BB.dim, borderBottom: `1px dashed ${BB.border}` }}
-          >
-            ◇ On-chain (optional)
-          </div>
-          <Field label="Network" span={4}>
-            <Select value={form.network} onChange={(e) => set("network", e.target.value)}>
-              <option value="">— off-chain / book entry —</option>
-              {NETWORKS.map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Gas Fee" span={4}>
-            <NumberInput
-              value={form.gas_fee}
-              onChange={(v) => set("gas_fee", v)}
-            />
-          </Field>
-          <Field label="Gas Asset" span={4}>
-            <AssetPicker value={form.gas_asset} onChange={(v) => set("gas_asset", v)} />
-          </Field>
-        </>
-      )}
       {/* Divider between venue/tx fields and the category-specific economics */}
       <div
         className="col-span-12 mt-2 mb-1 text-[10px] uppercase tracking-[0.24em] font-mono pb-0.5"
@@ -9538,7 +9669,145 @@ export default function TradeBookingForm() {
   );
 
   // Syntax-highlighted JSON renderer (Bloomberg-style colored tokens)
+  // Draft Summary — the editorial "what am I about to book" digest of
+  // outputRecord. Inspired by the Claude design proposal: light paper
+  // card with a Tokka-blue left stripe; uppercase mono "DRAFT SUMMARY"
+  // label; serif headline that reads like a financial pull-quote
+  // ("Long · BTC 12.5 × USDT 744,250"); muted mono detail rows beneath.
+  // Returns { headline, detail[] } or null when nothing's bookable yet.
+  const draftSummary = useMemo(() => {
+    const rec = Array.isArray(outputRecord) ? outputRecord[0] : outputRecord;
+    if (!rec) return null;
+    const fmt = (n, dp = 5) =>
+      n == null || n === "" || Number.isNaN(Number(n))
+        ? "—"
+        : Number(n).toLocaleString("en-US", { maximumFractionDigits: dp });
+    const fmtDate = (s) => (s ? String(s).slice(0, 16).replace("T", " ") : "—");
+    const ptf      = rec.portfolio_id || rec.portfolio?.number;
+    const ptfName  = rec.portfolio_name || rec.portfolio?.name || "";
+    const ptfShown = ptf
+      ? (ptfName ? `${ptf} · ${ptfName.split(" - ").pop().trim()}` : String(ptf))
+      : "—";
+
+    if (rec.txn_type === "SPOT") {
+      const dir = (rec.direction || "").toUpperCase();
+      const dirLabel = dir === "BUY" ? "Long" : dir === "SELL" ? "Short" : (dir || "—");
+      const baseAmt  = Math.abs(parseFloat(rec.base_amount)  || 0);
+      const quoteAmt = Math.abs(parseFloat(rec.quote_amount) || 0);
+      const price    = parseFloat(rec.price) || 0;
+      const feeAmt   = Math.abs(parseFloat(rec.fee_amount) || 0);
+      const feeBps   = (feeAmt && quoteAmt) ? Math.round((feeAmt / quoteAmt) * 10000) : null;
+      const priceFeeBits = [];
+      if (price > 0) priceFeeBits.push(`@ ${fmt(price, 5)} ${rec.quote_asset || ""}/${rec.base_asset || ""}`);
+      if (feeAmt > 0) priceFeeBits.push(`fee ${fmt(feeAmt, 5)} ${rec.fee_asset || ""}${feeBps != null ? ` (${feeBps} bps)` : ""}`);
+      return {
+        headline: `${dirLabel} · ${rec.base_asset || ""} ${fmt(baseAmt)} × ${rec.quote_asset || ""} ${fmt(quoteAmt, 2)}`,
+        detail: [
+          priceFeeBits.length > 0 ? priceFeeBits.join(" · ") : null,
+          `portfolio ${ptfShown}`,
+          rec.counterparty ? `cpty ${rec.counterparty}` : null,
+          rec.trade_date ? `trade ${fmtDate(rec.trade_date)}` : null,
+          rec.value_date ? `value ${rec.value_date}` : null,
+        ].filter(Boolean),
+      };
+    }
+
+    if (rec.txn_type === "CASHFLOW") {
+      const dir = (rec.direction || "").toUpperCase();
+      const verb = dir === "INCOMING" ? "Receive" : dir === "OUTGOING" ? "Pay" : (dir || "—");
+      const prep = dir === "INCOMING" ? "from" : "to";
+      const amt  = Math.abs(parseFloat(rec.amount) || 0);
+      const feeAmt = Math.abs(parseFloat(rec.fee_amount) || 0);
+      const headline = `${verb} · ${fmt(amt)} ${rec.asset || ""}${rec.counterparty ? ` ${prep} ${rec.counterparty}` : ""}`;
+      const isMirror = Array.isArray(outputRecord) && outputRecord.length > 1;
+      return {
+        headline,
+        detail: [
+          rec.cashflow_type ? rec.cashflow_type : null,
+          feeAmt > 0 ? `fee ${fmt(feeAmt, 5)} ${rec.fee_asset || ""}` : null,
+          rec.account ? `account ${rec.account_type ? `${rec.account_type} · ` : ""}${rec.account}` : null,
+          `portfolio ${ptfShown}`,
+          rec.value_date ? `value ${rec.value_date}` : null,
+          rec.trade_date ? `trade ${fmtDate(rec.trade_date)}` : null,
+          isMirror ? `mirror trade · ${outputRecord.length} legs` : null,
+        ].filter(Boolean),
+      };
+    }
+
+    if (rec.txn_type === "LOAN") {
+      const dir = (rec.direction || "").toUpperCase();
+      const verb = dir === "LEND" ? "Lend" : dir === "BORROW" ? "Borrow" : (dir || "—");
+      const prep = dir === "LEND" ? "to" : "from";
+      const principal = parseFloat(rec.principal_amount) || 0;
+      const rate = rec.interest_rate_pa_pct;
+      const headlineTail = rec.counterparty ? ` ${prep} ${rec.counterparty}` : "";
+      const ratePart = (rate != null && rate !== "") ? ` @ ${rate}% p.a.` : "";
+      return {
+        headline: `${verb} · ${fmt(principal)} ${rec.principal_asset || ""}${headlineTail}${ratePart}`,
+        detail: [
+          rec.loan_type ? rec.loan_type : null,
+          rec.interest_type ? `interest ${rec.interest_type}` : null,
+          `portfolio ${ptfShown}`,
+          rec.trade_date ? `start ${fmtDate(rec.trade_date)}` : null,
+          `matures ${rec.maturity_date || "open-term"}`,
+        ].filter(Boolean),
+      };
+    }
+
+    if (rec.category === "FUTURE" || (rec.base && rec.payload)) {
+      const b = rec.base || rec;
+      const p = rec.payload || {};
+      // payload.direction supersedes the legacy `side` field; fall back so
+      // amend-loaded records booked under the old shape still summarise.
+      const dir = String(p.direction || p.side || "").toUpperCase();
+      const sideLabel = dir === "LONG" || dir === "BUY" ? "Long"
+                       : dir === "SHORT" || dir === "SELL" ? "Short"
+                       : (dir || "—");
+      // Headline product label: prefer the full symbol ("BTC-PERP"); fall
+      // back to just the contract type ("PERP") so the line still reads
+      // before an instrument is picked.
+      const product = p.symbol
+        || (p.base_asset && p.quote_asset ? `${p.base_asset}/${p.quote_asset}` : "")
+        || p.contract_type
+        || "—";
+      const qty = parseFloat(p.quantity) || 0;
+      const price = parseFloat(p.price) || 0;
+      const notional = parseFloat(p.notional) || 0;
+      const fnum = b.portfolio?.number;
+      const fname = b.portfolio?.name || "";
+      const fShown = fnum
+        ? (fname ? `${fnum} · ${fname.split(" - ").pop().trim()}` : String(fnum))
+        : "—";
+      const cpty = b.counterparty || "—";
+      return {
+        // Shape: "Long · BTC-PERP 5 @ 74,000 on HYPERLIQUID"
+        // (Or "Long · PERP 0 on HYPERLIQUID" before an instrument is picked.)
+        headline: `${sideLabel} · ${product} ${fmt(qty)}${price > 0 ? ` @ ${fmt(price, 5)}` : ""} on ${cpty}`,
+        detail: [
+          notional > 0 ? `notional ${fmt(notional)} ${p.quote_asset || ""}` : null,
+          p.contract_size && p.contract_size !== 1 ? `contract size ${p.contract_size} ${p.base_asset || ""}` : null,
+          `portfolio ${fShown}`,
+          b.trade_date ? `trade ${fmtDate(b.trade_date)}` : null,
+          p.expiry ? `expires ${p.expiry}` : null,
+        ].filter(Boolean),
+      };
+    }
+
+    return null;
+  }, [outputRecord]);
+
   const renderJsonHighlighted = (obj) => {
+    // Terminal-style syntax palette: paired with the dark pre background
+    // below so the LIVE JSON preview reads like a developer terminal
+    // instead of a paper card. Hard-coded hexes (not BB.*) since the
+    // BB tokens are tuned for the light institutional surface.
+    const term = {
+      key:    "#fbbf24",  // amber gold
+      string: "#a3e635",  // lime
+      number: "#fb7185",  // rose
+      bool:   "#38bdf8",  // sky blue
+      nul:    "#94a3b8",  // muted slate
+    };
     const json = JSON.stringify(obj, null, 2);
     const escaped = json
       .replace(/&/g, "&amp;")
@@ -9547,10 +9816,10 @@ export default function TradeBookingForm() {
     const html = escaped.replace(
       /("(\\u[\dA-Fa-f]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
       (m) => {
-        let color = BB.yellow; // numbers
-        if (/^"/.test(m)) color = /:$/.test(m) ? BB.orange : BB.green;
-        else if (/true|false/.test(m)) color = BB.cyan;
-        else if (/null/.test(m)) color = BB.faint;
+        let color = term.number;
+        if (/^"/.test(m)) color = /:$/.test(m) ? term.key : term.string;
+        else if (/true|false/.test(m)) color = term.bool;
+        else if (/null/.test(m)) color = term.nul;
         return `<span style="color:${color}">${m}</span>`;
       }
     );
@@ -9898,7 +10167,6 @@ export default function TradeBookingForm() {
           {appView === "tokens" && (
             <ApiTokens onClose={() => setAppView("booking")} />
           )}
-          {form.category !== "FUTURE" && (
       <ModalShell
         open={createDealOpen || Boolean(amendingDealRef) || Boolean(draftId)}
         onClose={() => {
@@ -10445,79 +10713,148 @@ export default function TradeBookingForm() {
           )}
 
           {form.category === "FUTURE" && (
-            <Section title="Future Details" kicker="Futures · Perpetual or Dated" accent={BB.cyan}>
+            <Section title="Future Details" kicker="Futures · Perpetual (v1 · Hyperliquid)" accent={BB.cyan}>
               {tradeVenueFields}
-              <Field label="Side" required span={3}>
-                <Select
-                  value={form.fut_side}
-                  onChange={(e) => set("fut_side", e.target.value)}
-                  style={{ color: form.fut_side === "BUY" ? BB.green : BB.red }}
-                >
-                  <option>BUY</option>
-                  <option>SELL</option>
-                </Select>
+              {/* Direction — same LONG/SHORT button toggle as SPOT for
+                  consistency across the trade-entry forms. */}
+              <Field label="Direction" required span={12}>
+                <div className="flex gap-2">
+                  {["LONG", "SHORT"].map((d) => {
+                    const active = form.fut_direction === d;
+                    const tone = d === "LONG" ? BB.green : BB.red;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => set("fut_direction", d)}
+                        className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
+                        style={{
+                          background: BB.surface2,
+                          color: active ? tone : BB.dim,
+                          border: `1px solid ${active ? tone : BB.border}`,
+                          boxShadow: active ? `inset 0 0 0 1px ${tone}` : "none",
+                          fontWeight: active ? 600 : 500,
+                        }}
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
               </Field>
-              <Field label="Contract Type" required span={3}>
-                <Select
-                  value={form.fut_contract_type}
-                  onChange={(e) => set("fut_contract_type", e.target.value)}
-                >
-                  {FUTURE_CONTRACT_TYPES.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Symbol / Contract" required span={6}>
-                <Input
-                  placeholder={
-                    form.fut_contract_type === "PERP" ? "e.g. BTC-PERP" : "e.g. BTC-USD-260626"
+              {/* Instrument — sourced from the venue (= counterparty).
+                  Filter falls back to HYPERLIQUID when counterparty is
+                  blank so the picker still shows something on first
+                  paint. Selecting an instrument auto-populates symbol,
+                  base, quote, and contract size in one go. */}
+              <Field label="Instrument" required span={9}>
+                <InstrumentPicker
+                  value={form.fut_instrument_id}
+                  options={PERPS_INSTRUMENTS.filter(
+                    (p) => p.venue === (form.counterparty || "Hyperliquid").toUpperCase()
+                  )}
+                  onChange={(inst) => {
+                    setMany({
+                      fut_instrument_id: inst.id,
+                      fut_symbol:        inst.symbol || "",
+                      fut_base_asset:    inst.base   || "",
+                      fut_quote_asset:   inst.quote  || inst.settlement || "",
+                      fut_contract_size: inst.contract_size != null ? String(inst.contract_size) : "1",
+                      fut_contract_type: "PERP",
+                    });
+                  }}
+                  prompt={
+                    PERPS_INSTRUMENTS.length === 0
+                      ? "Refdata loading…"
+                      : "— select instrument —"
                   }
-                  value={form.fut_symbol}
-                  onChange={(e) => set("fut_symbol", e.target.value)}
                 />
               </Field>
-              <Field label="Base Asset" required span={3}>
-                <AssetPicker
-                  value={form.fut_base_asset}
-                  onChange={(v) => set("fut_base_asset", v)}
+              {/* ── Derived from refdata ────────────────────────────
+                  Base Asset, Quote Asset, and Contract Size all flow
+                  from the picked instrument so the user can't get the
+                  multiplier wrong. Contract Size is the units-of-base
+                  per 1 contract — for Hyperliquid perps it's almost
+                  always 1, but the field generalises to any venue. */}
+              <Field label="Base Asset" span={3}>
+                <Input
+                  readOnly
+                  value={form.fut_base_asset || "—"}
+                  style={{ color: BB.dim, background: "#ece7dd", cursor: "not-allowed" }}
                 />
               </Field>
-              <Field label="Quote / Settle" required span={3}>
-                <AssetPicker
-                  value={form.fut_quote_asset}
-                  onChange={(v) => set("fut_quote_asset", v)}
+              <Field label="Quote Asset" span={3}>
+                <Input
+                  readOnly
+                  value={form.fut_quote_asset || "—"}
+                  style={{ color: BB.dim, background: "#ece7dd", cursor: "not-allowed" }}
                 />
               </Field>
               <Field label="Contract Size" span={3}>
-                <NumberInput
-                  placeholder="multiplier (e.g. 1)"
-                  value={form.fut_contract_size}
-                  onChange={(v) => set("fut_contract_size", v)}
+                <Input
+                  readOnly
+                  value={
+                    form.fut_instrument_id
+                      ? `${form.fut_contract_size || "1"} ${form.fut_base_asset || ""}`
+                      : "—"
+                  }
+                  style={{ color: BB.dim, background: "#ece7dd", cursor: "not-allowed" }}
+                  title="Units of base asset per 1 contract"
                 />
               </Field>
-              <Field label="Margin Mode" span={3}>
+              {/* Margin Style — Linear (USDT-margined, PnL in quote) is
+                  the default and covers every Hyperliquid perp. Switching
+                  to Inverse (coin-margined) flips the Closed PnL label
+                  below to the base asset. */}
+              <Field label="Margin Style" span={3}>
                 <Select
-                  value={form.fut_margin_mode}
-                  onChange={(e) => set("fut_margin_mode", e.target.value)}
+                  value={form.fut_is_inverse ? "INVERSE" : "LINEAR"}
+                  onChange={(e) => set("fut_is_inverse", e.target.value === "INVERSE")}
+                  title={
+                    form.fut_is_inverse
+                      ? `Inverse · PnL settles in ${form.fut_base_asset || "base"}`
+                      : `Linear · PnL settles in ${form.fut_quote_asset || "quote"}`
+                  }
                 >
-                  {FUTURE_MARGIN_MODES.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
+                  <option value="LINEAR">Linear (quote margined)</option>
+                  <option value="INVERSE">Inverse (coin margined)</option>
                 </Select>
               </Field>
-              <Field label="Quantity (contracts)" required span={4}>
+
+              {/* ── Live economics ────────────────────────────────────
+                  Math chain: Contracts × Contract Size = Position Size
+                  (in base asset). Position Size × Price = Notional (in
+                  quote asset). Both derived fields recalc as the user
+                  types Contracts or Price. */}
+              <Field label="Contracts" required span={3}>
                 <NumberInput
                   value={form.fut_quantity}
                   onChange={(v) => set("fut_quantity", v)}
+                  placeholder="how many contracts"
                 />
               </Field>
-              <Field label="Price" required span={4}>
+              <Field label={`Position Size (auto · ${form.fut_base_asset || "base"})`} span={3}>
+                <Input
+                  readOnly
+                  value={
+                    form.fut_quantity
+                      ? (
+                          parseFloat(form.fut_quantity) *
+                          (parseFloat(form.fut_contract_size) || 1)
+                        ).toLocaleString(undefined, { maximumFractionDigits: 5 })
+                      : ""
+                  }
+                  style={{ color: BB.dim, background: "#ece7dd" }}
+                  title="Contracts × Contract Size"
+                />
+              </Field>
+              <Field label="Price" required span={3}>
                 <NumberInput
                   value={form.fut_price}
                   onChange={(v) => set("fut_price", v)}
                 />
               </Field>
-              <Field label="Notional (auto)" span={4}>
+              <Field label={`Notional (auto · ${form.fut_quote_asset || "quote"})`} span={3}>
                 <Input
                   readOnly
                   value={
@@ -10530,28 +10867,14 @@ export default function TradeBookingForm() {
                       : ""
                   }
                   style={{ color: BB.cyan, background: "#ece7dd" }}
+                  title="Position Size × Price"
                 />
               </Field>
-              <Field label="Leverage (x)" span={3}>
-                <NumberInput
-                  placeholder="e.g. 5"
-                  value={form.fut_leverage}
-                  onChange={(v) => set("fut_leverage", v)}
-                />
-              </Field>
-              {form.fut_contract_type === "DATED" ? (
+              {form.fut_contract_type === "DATED" && (
                 <Field label="Expiry" required span={3}>
                   <DatePicker
                     value={form.fut_expiry}
                     onChange={(v) => set("fut_expiry", v)}
-                  />
-                </Field>
-              ) : (
-                <Field label="Funding Rate %" span={3}>
-                  <NumberInput
-                    placeholder="snapshot, e.g. 0.01"
-                    value={form.fut_funding_rate}
-                    onChange={(v) => set("fut_funding_rate", v)}
                   />
                 </Field>
               )}
@@ -10567,31 +10890,20 @@ export default function TradeBookingForm() {
                   onChange={(v) => set("fut_fee_asset", v)}
                 />
               </Field>
-              <div className="col-span-12 flex items-center gap-2 mt-1">
-                <input
-                  type="checkbox"
-                  id="fut_is_closing"
-                  checked={form.fut_is_closing}
-                  onChange={(e) => set("fut_is_closing", e.target.checked)}
-                  style={{ accentColor: BB.orange }}
+              <Field
+                label={`Closed PnL (${
+                  form.fut_is_inverse
+                    ? (form.fut_base_asset  || "base")
+                    : (form.fut_quote_asset || "quote")
+                })`}
+                span={6}
+              >
+                <NumberInput
+                  placeholder="positive = profit, negative = loss · leave blank for opening trades"
+                  value={form.fut_pnl_realized}
+                  onChange={(v) => set("fut_pnl_realized", v)}
                 />
-                <label
-                  htmlFor="fut_is_closing"
-                  className="text-[11px] cursor-pointer font-mono"
-                  style={{ color: BB.text }}
-                >
-                  This is a closing entry (record realized PnL)
-                </label>
-              </div>
-              {form.fut_is_closing && (
-                <Field label="Realized PnL" span={6}>
-                  <NumberInput
-                    placeholder="positive = profit, negative = loss"
-                    value={form.fut_pnl_realized}
-                    onChange={(v) => set("fut_pnl_realized", v)}
-                  />
-                </Field>
-              )}
+              </Field>
             </Section>
           )}
 
@@ -11282,16 +11594,65 @@ export default function TradeBookingForm() {
         {/* ═══════════ RIGHT — terminal record preview ═══════════ */}
         <div className="lg:col-span-1">
           <div className="sticky top-4">
+            {/* ─── Draft Summary — editorial pull-quote of the record
+                being built. Light paper bg + Tokka-blue left stripe;
+                uppercase "DRAFT SUMMARY" label; serif headline reads
+                like a trade ticket ("Long · BTC 12.5 × USDT 744,250");
+                muted mono detail lines beneath. ─── */}
+            {draftSummary && (
+              <div style={{
+                background: "var(--paper-2)",
+                borderLeft: "4px solid var(--signal-link)",
+                borderTop: "1px solid var(--rule)",
+                borderRight: "1px solid var(--rule)",
+                borderBottom: "1px solid var(--rule)",
+                padding: "18px 22px",
+                marginBottom: 12,
+              }}>
+                <div style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  color: "var(--ink-3)",
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  marginBottom: 10,
+                }}>
+                  Draft Summary
+                </div>
+                <div style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: 19,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  letterSpacing: "-0.01em",
+                  lineHeight: 1.25,
+                  marginBottom: 10,
+                }}>
+                  {draftSummary.headline}
+                </div>
+                <div style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 12,
+                  color: "var(--ink-3)",
+                  lineHeight: 1.7,
+                }}>
+                  {draftSummary.detail.map((line, i) => (
+                    <div key={i}>{line}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div
               className="flex items-center justify-between px-2.5 py-1.5 text-[10px] tracking-[0.22em] uppercase font-mono"
               style={{
-                background: "#0d0d0d",
-                border: `1px solid ${BB.border}`,
+                backgroundColor: "#000",
+                border: "1px solid #1f1f1f",
                 borderBottom: "none",
-                color: BB.orange,
+                color: "#fbbf24",
               }}
             >
-              <span>◆ RECORD &nbsp;»&nbsp; LIVE JSON</span>
+              <span>[ ◆ Record » Live JSON ]</span>
               <button
                 onClick={copyJson}
                 className="flex items-center gap-1 transition-colors"
@@ -11317,9 +11678,9 @@ export default function TradeBookingForm() {
             <pre
               className="p-3 text-[11px] overflow-auto max-h-[60vh] leading-relaxed font-mono"
               style={{
-                background: BB.surface,
-                border: `1px solid ${BB.border}`,
-                color: BB.text,
+                backgroundColor: "#000",
+                border: "1px solid #1f1f1f",
+                color: "#e5e5e5",
               }}
               dangerouslySetInnerHTML={renderJsonHighlighted(outputRecord)}
             />
@@ -11418,7 +11779,6 @@ export default function TradeBookingForm() {
         </div>
       </div>
       </ModalShell>
-          )}
 
           {/* Inline footer — sits at the bottom of the scrollable main, so
               it appears only when the user scrolls past the table rather
