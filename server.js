@@ -27,6 +27,7 @@ const LOAN_RECENT_SCRIPT  = resolve(__dirname, "scripts", "loan_recent.py");
 const LOAN_GET_SCRIPT     = resolve(__dirname, "scripts", "loan_get.py");
 const LOAN_HISTORY_SCRIPT = resolve(__dirname, "scripts", "loan_history.py");
 const LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT = resolve(__dirname, "scripts", "loan_schedule_comment_upsert.py");
+const RATES_LATEST_SCRIPT = resolve(__dirname, "scripts", "rates_latest.py");
 const SPOT_INSERT_SCRIPT  = resolve(__dirname, "scripts", "spot_insert.py");
 const SPOT_AMEND_SCRIPT   = resolve(__dirname, "scripts", "spot_amend.py");
 const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
@@ -920,6 +921,18 @@ const server = createServer(async (req, res) => {
     const limit = parseInt(url.searchParams.get("limit") || "20", 10);
     const stdin = JSON.stringify({ limit: Number.isNaN(limit) ? 20 : limit });
     const { code, json } = await spawnPython(LOAN_RECENT_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/rates/latest
+  // Returns the latest available USD rates from reference_data.price_token_new,
+  // walking back up to 7 days from today. Consumed by Loan Enquiry to
+  // USD-value the exposure breakdown panel.
+  if (req.method === "GET" && req.url.startsWith("/api/rates/latest")) {
+    const { code, json } = await spawnPython(RATES_LATEST_SCRIPT, "{}");
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(json));
