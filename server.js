@@ -75,7 +75,11 @@ const REFDATA_SOURCES = [
   { key: "portfolios",     script: "sync_portfolios.py",       label: "portfolios" },
   { key: "users",          script: "sync_users.py",            label: "users" },
   { key: "accounts",       script: "sync_accounts.py",         label: "accounts" },
-  { key: "perps",          script: "sync_perps_instruments.py", label: "perps" },
+  // Key MUST equal the JSON filename stem — server.js routes
+  // /refdata/<key>.json via REFDATA_BY_KEY.has(key). Mismatch
+  // would silently fall through to the SPA fallback and serve
+  // index.html instead of the JSON.
+  { key: "perps_instruments", script: "sync_perps_instruments.py", label: "perps" },
 ];
 const REFDATA_BY_KEY = new Map(REFDATA_SOURCES.map((s) => [s.key, s]));
 const PUBLIC_DIR     = resolve(__dirname, "public");
