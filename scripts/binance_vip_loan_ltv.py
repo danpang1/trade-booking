@@ -17,7 +17,7 @@ single account, but taking the max is safe if that ever stops holding.
 When there are no ongoing orders, `ltv` is null and `status` is "none".
 
 Credential precedence (first hit wins):
-  1. /vault/secret/gw_secret.json   (Vault agent-inject sidecar, UAT/prod)
+  1. /vault/secrets/gw_secret.json  (Vault agent-inject sidecar, prod)
   2. BINANCE_API_KEY / BINANCE_API_SECRET env vars (k8s Secret)
   3. .env `# BINANCE VIP` marker block (local dev)
 
@@ -46,7 +46,17 @@ except ImportError:
 
 REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
-VAULT_SECRET = Path("/vault/secret/gw_secret.json")
+# Vault agent-inject writes to /vault/secrets/ (PLURAL) by default, and the
+# chart sets no secret-volume-path override. The singular /vault/secret/ path
+# is kept as a fallback. Override the full path with VAULT_SECRET_PATH.
+_VAULT_SECRET_ENV = os.environ.get("VAULT_SECRET_PATH")
+if _VAULT_SECRET_ENV:
+    VAULT_SECRET_CANDIDATES = [Path(_VAULT_SECRET_ENV)]
+else:
+    VAULT_SECRET_CANDIDATES = [
+        Path("/vault/secrets/gw_secret.json"),
+        Path("/vault/secret/gw_secret.json"),
+    ]
 
 # gw_secret.json holds many CEX accounts keyed by an internal id; "135" is
 # the Binance VIP (tk818) read-only sub-account. Override via env if the id
@@ -119,15 +129,20 @@ def _from_vault() -> tuple[str, str] | None:
 
     The prod gw_secret.json carries every CEX account keyed by internal id;
     VAULT_ACCOUNT_ID selects the Binance one. See _creds_from_doc for the
-    accepted shapes. Returns None if the file is absent or unusable.
+    accepted shapes. Tries each candidate path (Vault's default mount is
+    /vault/secrets/, plural). Returns None if no path yields usable creds.
     """
-    if not VAULT_SECRET.exists():
-        return None
-    try:
-        doc = json.loads(VAULT_SECRET.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return None
-    return _creds_from_doc(doc, VAULT_ACCOUNT_ID)
+    for path in VAULT_SECRET_CANDIDATES:
+        if not path.exists():
+            continue
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        creds = _creds_from_doc(doc, VAULT_ACCOUNT_ID)
+        if creds:
+            return creds
+    return None
 
 
 def _from_env() -> tuple[str, str] | None:
@@ -181,7 +196,7 @@ def load_creds() -> tuple[str, str]:
         if hit:
             return hit
     raise RuntimeError(
-        "Binance creds not found in /vault/secret/gw_secret.json, "
+        "Binance creds not found in /vault/secrets/gw_secret.json, "
         "BINANCE_API_* env vars, or .env '# BINANCE VIP' block"
     )
 
