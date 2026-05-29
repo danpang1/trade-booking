@@ -48,6 +48,11 @@ REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 VAULT_SECRET = Path("/vault/secret/gw_secret.json")
 
+# gw_secret.json holds many CEX accounts keyed by an internal id; "135" is
+# the Binance VIP (tk818) read-only sub-account. Override via env if the id
+# ever changes, so the account selection stays out of code/secrets.
+VAULT_ACCOUNT_ID = os.environ.get("BINANCE_VAULT_ACCOUNT_ID", "135")
+
 BASE_URL = "https://api.binance.com"
 ONGOING_ORDERS_PATH = "/sapi/v1/loan/vip/ongoing/orders"
 ACCOUNT_PATH = "/api/v3/account"
@@ -69,22 +74,31 @@ STABLE_ASSETS = frozenset({"USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI"})
 # Credential loading
 # ---------------------------------------------------------------------------
 
-def _from_vault() -> tuple[str, str] | None:
-    """Read creds from the Vault agent-inject file, if present.
+def _creds_from_doc(doc: object, account_id: str) -> tuple[str, str] | None:
+    """Extract (api_key, api_secret) from a parsed gw_secret.json document.
 
-    Tolerant of the JSON shape the platform team lands in gw_secret.json:
-    accepts flat keys (binance_api_key / BINANCE_API_KEY) or a nested
-    `binance` object ({api_key, api_secret}). Returns None if the file is
-    absent or doesn't carry a usable key+secret pair.
+    Tolerant of three shapes, tried in priority order:
+      1. Multi-account map keyed by internal id (the prod gw_secret.json
+         shape): {"135": {"ak": ..., "sk": ...}, "136": {...}}. KV v2 wraps
+         the map under a "data" key alongside "metadata", unwrapped here.
+      2. Nested {"binance": {"api_key": ..., "api_secret": ...}}.
+      3. Flat {"binance_api_key": ..., "binance_api_secret": ...}.
+    Returns None if no usable key+secret pair is found.
     """
-    if not VAULT_SECRET.exists():
-        return None
-    try:
-        doc = json.loads(VAULT_SECRET.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return None
     if not isinstance(doc, dict):
         return None
+
+    # KV v2 renders {"data": {...}, "metadata": {...}} — unwrap to the data.
+    if isinstance(doc.get("data"), dict) and "metadata" in doc:
+        doc = doc["data"]
+
+    acct = doc.get(account_id)
+    if isinstance(acct, dict):
+        key = acct.get("ak") or acct.get("api_key") or acct.get("API_KEY")
+        secret = acct.get("sk") or acct.get("api_secret") \
+            or acct.get("API_SECRET")
+        if key and secret:
+            return str(key), str(secret)
 
     nested = doc.get("binance")
     if isinstance(nested, dict):
@@ -98,6 +112,22 @@ def _from_vault() -> tuple[str, str] | None:
     if key and secret:
         return str(key), str(secret)
     return None
+
+
+def _from_vault() -> tuple[str, str] | None:
+    """Read creds from the Vault agent-inject file, if present.
+
+    The prod gw_secret.json carries every CEX account keyed by internal id;
+    VAULT_ACCOUNT_ID selects the Binance one. See _creds_from_doc for the
+    accepted shapes. Returns None if the file is absent or unusable.
+    """
+    if not VAULT_SECRET.exists():
+        return None
+    try:
+        doc = json.loads(VAULT_SECRET.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    return _creds_from_doc(doc, VAULT_ACCOUNT_ID)
 
 
 def _from_env() -> tuple[str, str] | None:
