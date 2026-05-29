@@ -8202,7 +8202,7 @@ export default function TradeBookingForm() {
   // initialSharedForCategory below cover the category-switch case.
   useEffect(() => {
     if (SUPERADMIN_USERS.length === 0) return;
-    setForm((f) => (f.created_by ? f : { ...f, created_by: SUPERADMIN_USERS[0] }));
+    setForm((f) => (f.created_by ? f : { ...f, created_by: user?.username || SUPERADMIN_USERS[0] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refdataTick]);
 
@@ -8221,7 +8221,7 @@ export default function TradeBookingForm() {
     external_trade_id: "",
     created_at: isoNow(),
     last_modified_at: isoNow(),
-    created_by: SUPERADMIN_USERS[0] || "",
+    created_by: user?.username || SUPERADMIN_USERS[0] || "",
     trade_date: nowUtc(),
     value_date: nowUtc(),
     // Portfolio is the source of truth — entity is derived from it
@@ -8519,7 +8519,7 @@ export default function TradeBookingForm() {
     counterparty: cat === "FUTURE" ? "HYPERLIQUID" : "",
     // Carry the current superadmin default so switching categories
     // doesn't drop the form's "Created by" back to blank.
-    created_by: SUPERADMIN_USERS[0] || "",
+    created_by: user?.username || SUPERADMIN_USERS[0] || "",
     account_venue_type: "EXCHANGE",
     account_name: "",
     account_id: "",
