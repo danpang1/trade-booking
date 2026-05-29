@@ -26,8 +26,9 @@ ingress:
   authentication:
     enabled: true
 
-vault:
-  enabled: true
+# Vault is prod-only — see helm_values/trade-booking/server-prod.yaml.
+# Non-prod envs (e.g. UAT) have no Vault role/auth-path, so enabling it
+# here globally would leave the agent-inject init container hanging.
 
 observability:
   liveness:
