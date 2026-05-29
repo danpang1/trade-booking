@@ -206,7 +206,10 @@ def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...]
         if col == "deal_ref":
             vals.append(deal_ref)
         elif col == "txn_type":
-            vals.append("SPOT")
+            # Form bookings omit txn_type -> default 'SPOT'. Historical
+            # imports (e.g. import_2025_trades.py) set it to distinguish
+            # ON/OFF RAMP, WRAP/UNWRAP, MINT/BURN, INTERNAL SPOT events.
+            vals.append(payload.get("txn_type") or "SPOT")
         elif col == "portfolio_id":
             # Stored as TEXT so DB clients render it without thousands
             # separators. Coerced from whatever the frontend sends.

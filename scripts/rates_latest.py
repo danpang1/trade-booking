@@ -12,6 +12,10 @@ Writes JSON: {"ok": true, "asOf": ISO, "cob": "YYYY-MM-DD",
               "source": "reference_data.price_token_new",
               "rates": { "BTC": 65000.0, ... }}.
 Reads no stdin params (empty JSON object accepted).
+
+Uses the t2x read-only MySQL credentials (T2X_RO_MYSQL_* / `# MYSQL RO`
+.env block) — `price_token_new` is in the same `reference_data` schema as
+the refdata tables, so no separate token-price DB credentials are needed.
 """
 from __future__ import annotations
 import json
@@ -29,40 +33,59 @@ NATIVE_TOKEN_ADDR = "0x0000000000000000000000000000000000000000"
 WALKBACK_DAYS = 7
 
 
+# Section markers that anchor the t2x read-only MySQL block in .env.
+# Different scripts/.env templates in this repo have used different
+# headers over time; price_token_new lives in the same `reference_data`
+# schema as those creds, so any of these blocks works.
+_RO_MARKERS = (
+    "t2x-ro-mysql",
+    "sg-ro-mysql",
+    "mysql ro",
+    "mysql read-only",
+    "mysql token price",
+)
+_CRED_KEYS = ("host", "username", "password")
+
+
 def _load_credentials() -> dict[str, str]:
-    """Parse the `# MYSQL TOKEN PRICE DB` block in .env (YAML-style
-    `key:value` lines). Mirrors the parser in nxgen-mo-tools's
-    mysql_rates.py — kept inline so this script has no cross-repo deps.
-    Env vars MYSQL_TOKEN_PRICE_DB_{HOST,USERNAME,PASSWORD} take
-    precedence for prod deploys."""
+    """Read the t2x read-only MySQL creds — the SAME credentials the
+    refdata sync scripts use, since `price_token_new` lives in the same
+    `reference_data` schema as the instrument/counterparty/portfolio
+    tables. Env vars T2X_RO_MYSQL_{HOST,USERNAME,PASSWORD} take precedence
+    for prod deploys; otherwise the .env block is parsed. The .env scan
+    accepts every marker this repo has used (see _RO_MARKERS) and grabs
+    the host/username/password trio from a window around the marker, so it
+    works whether the keys sit above the marker (lookback convention used
+    by sync_counterparties.py) or below it."""
     env_creds = {
-        k: os.environ[f"MYSQL_TOKEN_PRICE_DB_{k.upper()}"]
-        for k in ("host", "username", "password")
-        if f"MYSQL_TOKEN_PRICE_DB_{k.upper()}" in os.environ
+        k: os.environ[f"T2X_RO_MYSQL_{k.upper()}"]
+        for k in _CRED_KEYS
+        if f"T2X_RO_MYSQL_{k.upper()}" in os.environ
     }
-    if all(k in env_creds for k in ("host", "username", "password")):
+    if all(k in env_creds for k in _CRED_KEYS):
         return env_creds
     if not ENV_PATH.exists():
         raise FileNotFoundError(f".env not found at {ENV_PATH}")
+    lines = ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
     creds: dict[str, str] = {}
-    in_block = False
-    for line in ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
-        s = line.strip()
-        if "MYSQL TOKEN PRICE DB" in s.upper():
-            in_block = True
+    for i, line in enumerate(lines):
+        if not any(m in line.lower() for m in _RO_MARKERS):
             continue
-        if not in_block:
-            continue
-        if not s or s.startswith("#"):
-            if s.startswith("#") and "MYSQL" not in s.upper():
-                break
-            continue
-        if ":" in s:
+        # Grab the trio from a window spanning the keys-above (lookback)
+        # and keys-below conventions; first value found per key wins.
+        for j in range(max(0, i - 5), min(len(lines), i + 5)):
+            s = lines[j].strip()
+            if not s or s.startswith("#") or ":" not in s:
+                continue
             k, _, v = s.partition(":")
-            creds[k.strip().lower()] = v.strip()
-    missing = [k for k in ("username", "password", "host") if k not in creds]
+            key = k.strip().lower()
+            if key in _CRED_KEYS:
+                creds.setdefault(key, v.strip())
+        if all(k in creds for k in _CRED_KEYS):
+            break
+    missing = [k for k in _CRED_KEYS if k not in creds]
     if missing:
-        raise RuntimeError(f"MySQL Token Price DB creds missing keys: {missing}")
+        raise RuntimeError(f"MySQL RO credentials missing keys: {missing}")
     return creds
 
 

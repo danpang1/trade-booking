@@ -288,6 +288,9 @@ spec:
                 secretKeyRef:
                   name: {{ $v.name | quote }}
                   key: {{ $v.key | quote }}
+                  {{- if $v.optional }}
+                  optional: true
+                  {{- end }}
             {{- end }}
 
           {{- if gt (len .Values.volumes) 0 }}

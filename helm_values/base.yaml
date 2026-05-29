@@ -45,7 +45,11 @@ env_secrets:
     name: trade-booking-mo-db
     key: password
   # MySQL t2x read-only DB — used by sync_counterparties.py,
-  # sync_portfolios.py, sync_users.py and snapshot_tokens.py.
+  # sync_portfolios.py, sync_users.py, snapshot_tokens.py,
+  # sync_perps_instruments.py and rates_latest.py. The rates endpoint
+  # reads reference_data.price_token_new, which lives in the same schema
+  # as the refdata tables, so it reuses these creds rather than a
+  # separate token-price DB credential set.
   # Keys are namespaced inside the shared `trade-booking-mo-db` Secret to
   # avoid colliding with the Postgres MO_DB_* keys (which use `host`,
   # `port`, etc.).
@@ -58,28 +62,6 @@ env_secrets:
   T2X_RO_MYSQL_PASSWORD:
     name: trade-booking-mo-db
     key: t2x_ro_mysql_password
-  # MySQL Token Price DB credentials for scripts/rates_latest.py
-  # belong here, but the chart's secretKeyRef rendering doesn't
-  # support `optional: true`, so referencing keys that don't yet
-  # exist in the `trade-booking-mo-db` Secret blocks the pod from
-  # becoming Ready (helm upgrade rolls back via --atomic). Re-add
-  # the three entries below ONCE the platform team has populated
-  # mysql_token_price_db_{host,username,password} in the Secret:
-  #
-  # MYSQL_TOKEN_PRICE_DB_HOST:
-  #   name: trade-booking-mo-db
-  #   key: mysql_token_price_db_host
-  # MYSQL_TOKEN_PRICE_DB_USERNAME:
-  #   name: trade-booking-mo-db
-  #   key: mysql_token_price_db_username
-  # MYSQL_TOKEN_PRICE_DB_PASSWORD:
-  #   name: trade-booking-mo-db
-  #   key: mysql_token_price_db_password
-  #
-  # While these are commented out the rates endpoint returns HTTP 500
-  # in deployed envs — the front-end footnote will read
-  # "Rates: unavailable — HTTP 500" and the Dashboard composition
-  # donut renders without USD valuation. Everything else is unaffected.
 
 resources:
   requests:
