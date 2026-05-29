@@ -26,6 +26,9 @@ ingress:
   authentication:
     enabled: true
 
+vault:
+  enabled: true
+
 observability:
   liveness:
     enabled: true
