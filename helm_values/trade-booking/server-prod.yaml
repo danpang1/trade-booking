@@ -11,3 +11,11 @@ ingress:
   # caused nginx auth_request to 500 every UI request.
   authentication:
     enabled: false
+
+vault:
+  authPath: "auth/kubernetes/sg-k8s"
+  role: "vault-main-trading-prod"
+  agentInjectDefaultTemplate: json
+  agentInjectSecrets:
+      paths:
+        gw_secret.json: "kv/read_only/prod/cex"
