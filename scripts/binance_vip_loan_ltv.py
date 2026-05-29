@@ -84,25 +84,30 @@ STABLE_ASSETS = frozenset({"USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI"})
 # Credential loading
 # ---------------------------------------------------------------------------
 
-def _creds_from_doc(doc: object, account_id: str) -> tuple[str, str] | None:
-    """Extract (api_key, api_secret) from a parsed gw_secret.json document.
+def _creds_from_root(root: object, account_id: str) -> tuple[str, str] | None:
+    """Extract (api_key, api_secret) from one candidate root dict.
 
-    Tolerant of three shapes, tried in priority order:
-      1. Multi-account map keyed by internal id (the prod gw_secret.json
-         shape): {"135": {"ak": ..., "sk": ...}, "136": {...}}. KV v2 wraps
-         the map under a "data" key alongside "metadata", unwrapped here.
-      2. Nested {"binance": {"api_key": ..., "api_secret": ...}}.
-      3. Flat {"binance_api_key": ..., "binance_api_secret": ...}.
+    Tolerant of these shapes, tried in priority order:
+      1. The prod gw_secret.json shape — accounts keyed by internal id under
+         exchange-credentials → binance:
+         {"exchange-credentials": {"binance": {"118": {"ak": ..., "sk": ...}}}}
+      2. A flat multi-account map keyed by internal id:
+         {"135": {"ak": ..., "sk": ...}, "136": {...}}.
+      3. Nested {"binance": {"api_key": ..., "api_secret": ...}}.
+      4. Flat {"binance_api_key": ..., "binance_api_secret": ...}.
     Returns None if no usable key+secret pair is found.
     """
-    if not isinstance(doc, dict):
+    if not isinstance(root, dict):
         return None
 
-    # KV v2 renders {"data": {...}, "metadata": {...}} — unwrap to the data.
-    if isinstance(doc.get("data"), dict) and "metadata" in doc:
-        doc = doc["data"]
+    # Prod shape descends through exchange-credentials → binance to the
+    # id-keyed account map; older shapes key the account map at the root.
+    account_map = root
+    ec = root.get("exchange-credentials")
+    if isinstance(ec, dict) and isinstance(ec.get("binance"), dict):
+        account_map = ec["binance"]
 
-    acct = doc.get(account_id)
+    acct = account_map.get(account_id)
     if isinstance(acct, dict):
         key = acct.get("ak") or acct.get("api_key") or acct.get("API_KEY")
         secret = acct.get("sk") or acct.get("api_secret") \
@@ -110,17 +115,41 @@ def _creds_from_doc(doc: object, account_id: str) -> tuple[str, str] | None:
         if key and secret:
             return str(key), str(secret)
 
-    nested = doc.get("binance")
+    nested = root.get("binance")
     if isinstance(nested, dict):
         key = nested.get("api_key") or nested.get("API_KEY")
         secret = nested.get("api_secret") or nested.get("API_SECRET")
         if key and secret:
             return str(key), str(secret)
 
-    key = doc.get("binance_api_key") or doc.get("BINANCE_API_KEY")
-    secret = doc.get("binance_api_secret") or doc.get("BINANCE_API_SECRET")
+    key = root.get("binance_api_key") or root.get("BINANCE_API_KEY")
+    secret = root.get("binance_api_secret") or root.get("BINANCE_API_SECRET")
     if key and secret:
         return str(key), str(secret)
+    return None
+
+
+def _creds_from_doc(doc: object, account_id: str) -> tuple[str, str] | None:
+    """Extract (api_key, api_secret) from a parsed gw_secret.json document.
+
+    KV v2 wraps the payload under a "data" key (alongside "metadata"), so we
+    try both the document itself and its unwrapped "data" child as candidate
+    roots. See _creds_from_root for the accepted per-root shapes.
+    Returns None if no usable key+secret pair is found.
+    """
+    if not isinstance(doc, dict):
+        return None
+
+    roots = [doc]
+    # Unwrap the KV v2 envelope. Done unconditionally when "data" is a dict —
+    # the rendered file may or may not carry the "metadata" sibling.
+    if isinstance(doc.get("data"), dict):
+        roots.append(doc["data"])
+
+    for root in roots:
+        hit = _creds_from_root(root, account_id)
+        if hit:
+            return hit
     return None
 
 

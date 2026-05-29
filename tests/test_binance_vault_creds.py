@@ -51,6 +51,52 @@ def test_account_missing_secret_returns_none():
     assert mod._creds_from_doc(doc, "135") is None
 
 
+# ── real prod shape: data → exchange-credentials → binance → id ─────
+
+def test_exchange_credentials_nested_shape_with_metadata():
+    """The actual prod gw_secret.json nests accounts under
+    exchange-credentials → binance → <internal id>, wrapped by KV v2's
+    data/metadata envelope."""
+    doc = {
+        "data": {
+            "exchange-credentials": {
+                "binance": {
+                    "118": {"account-type": "sub", "ak": "KEY_118", "sk": "SEC_118"},
+                    "119": {"account-type": "sub", "ak": "KEY_119", "sk": "SEC_119"},
+                },
+            },
+        },
+        "metadata": {"version": 7},
+    }
+    assert mod._creds_from_doc(doc, "118") == ("KEY_118", "SEC_118")
+
+
+def test_exchange_credentials_nested_shape_without_metadata():
+    """Same nesting, but the rendered file has no metadata sibling — the
+    data wrapper must still be unwrapped."""
+    doc = {
+        "data": {
+            "exchange-credentials": {
+                "binance": {
+                    "118": {"account-type": "sub", "ak": "KEY_118", "sk": "SEC_118"},
+                },
+            },
+        },
+    }
+    assert mod._creds_from_doc(doc, "118") == ("KEY_118", "SEC_118")
+
+
+def test_exchange_credentials_unknown_account_returns_none():
+    doc = {
+        "data": {
+            "exchange-credentials": {
+                "binance": {"118": {"ak": "KEY", "sk": "SEC"}},
+            },
+        },
+    }
+    assert mod._creds_from_doc(doc, "999") is None
+
+
 # ── backward-compatible shapes ──────────────────────────────────────
 
 def test_nested_binance_object():
