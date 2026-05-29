@@ -1,6 +1,14 @@
 # Pinned exact versions for reproducible Docker builds.
-# Regenerate with: pip freeze | grep -E '^(psycopg2|PyMySQL|bcrypt)' > requirements-freeze.txt
+# Regenerate with: pip freeze | grep -E '^(psycopg2|PyMySQL|bcrypt|requests|certifi|charset-normalizer|idna|urllib3)' > requirements-freeze.txt
 # (matches the developer's local Python 3.11 env on 2026-05-18.)
 psycopg2-binary==2.9.11
 PyMySQL==1.2.0
 bcrypt==4.3.0
+# requests + its transitive deps — used by binance_vip_loan_ltv.py. The prod
+# Docker stage installs ONLY this freeze file, so requests must be pinned here
+# (requirements.txt alone is not installed in the runtime image).
+requests==2.31.0
+certifi==2023.7.22
+charset-normalizer==3.3.2
+idna==3.4
+urllib3==1.26.18
