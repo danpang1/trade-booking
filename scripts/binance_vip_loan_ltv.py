@@ -218,6 +218,19 @@ def _from_dotenv() -> tuple[str, str] | None:
     return None
 
 
+def _mask_key(value: object) -> str:
+    """Safe fingerprint of an API key for diagnostics: first4…last4.
+
+    The full value is never returned. Short/empty values (a truncated or
+    misconfigured secret) collapse to a length marker so showing both ends
+    can't leak the whole thing.
+    """
+    s = str(value or "")
+    if len(s) < 12:
+        return f"<{len(s)} chars>"
+    return f"{s[:4]}…{s[-4:]}"
+
+
 def load_creds() -> tuple[str, str]:
     """Resolve (api_key, api_secret) by precedence. Raises on miss."""
     for source in (_from_vault, _from_env, _from_dotenv):
@@ -472,12 +485,33 @@ def main() -> int:
             ONGOING_ORDERS_PATH, api_key, api_secret, {"limit": 50}
         )
     except requests.RequestException as e:
-        print(json.dumps({
+        # Which credential was used — so wrong-account / truncated-key /
+        # IP-whitelist failures can be told apart without leaking the secret.
+        diag = f"account {VAULT_ACCOUNT_ID}, key {_mask_key(api_key)}"
+        resp = getattr(e, "response", None)
+        binance_status = None
+        binance_body = None
+        if resp is not None:
+            # requests' HTTPError str() drops the response body, where Binance
+            # puts the real reason (e.g. -2015 "Invalid API-key, IP, or
+            # permissions for action"). Pull it into the visible message.
+            binance_status = resp.status_code
+            binance_body = (resp.text or "")[:300]
+            diag += f", HTTP {binance_status}: {binance_body}"
+        else:
+            diag += f", {str(e)[:200]}"
+        err = {
             "ok": False,
             "code": "upstream",
-            "error": "Binance API request failed",
+            "error": f"Binance API request failed ({diag})",
             "detail": str(e)[:300],
-        }))
+            "account_id": VAULT_ACCOUNT_ID,
+            "api_key": _mask_key(api_key),
+        }
+        if resp is not None:
+            err["binance_status"] = binance_status
+            err["binance_body"] = binance_body
+        print(json.dumps(err))
         return 5
 
     rows = data.get("rows", []) if isinstance(data, dict) else []

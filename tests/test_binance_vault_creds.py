@@ -136,6 +136,26 @@ def test_empty_dict_returns_none():
     assert mod._creds_from_doc({}, "135") is None
 
 
+# ── credential fingerprint for diagnostics (never leaks full key) ───
+
+def test_mask_key_shows_first_and_last_four():
+    assert mod._mask_key("ABCD0123456789WXYZ") == "ABCD…WXYZ"
+
+
+def test_mask_key_empty_shows_length_marker():
+    assert mod._mask_key("") == "<0 chars>"
+
+
+def test_mask_key_short_value_is_not_revealed():
+    """A short/misconfigured value must not show both ends — that could
+    expose the whole thing. Collapse to a length marker instead."""
+    assert mod._mask_key("short") == "<5 chars>"
+
+
+def test_mask_key_none_is_safe():
+    assert mod._mask_key(None) == "<0 chars>"
+
+
 # ── Vault mount path: must prefer the plural default ────────────────
 
 def test_vault_candidate_paths_prefer_plural():
