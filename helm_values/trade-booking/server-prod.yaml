@@ -17,5 +17,5 @@ vault:
   role: "vault-main-trading-prod"
   agentInjectDefaultTemplate: json
   agentInjectSecrets:
-      paths:
-        gw_secret.json: "kv/trading/prod/gw/9001"
+      paths:
+        gw_secret.json: "kv/read_only/prod/cex"
