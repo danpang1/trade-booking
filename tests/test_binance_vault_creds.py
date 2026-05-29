@@ -88,3 +88,13 @@ def test_non_dict_returns_none():
 
 def test_empty_dict_returns_none():
     assert mod._creds_from_doc({}, "135") is None
+
+
+# ── Vault mount path: must prefer the plural default ────────────────
+
+def test_vault_candidate_paths_prefer_plural():
+    """Vault's default mount is /vault/secrets/ (plural); singular is the
+    fallback. Reading the wrong one was the original prod bug."""
+    paths = [p.as_posix() for p in mod.VAULT_SECRET_CANDIDATES]
+    assert "/vault/secrets/gw_secret.json" in paths
+    assert paths.index("/vault/secrets/gw_secret.json") == 0
