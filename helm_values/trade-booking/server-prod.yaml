@@ -19,4 +19,7 @@ vault:
   agentInjectDefaultTemplate: json
   agentInjectSecrets:
       paths:
-        gw_secret.json: "kv/read_only/prod/cex"
+        # KV v2 engine: the read path needs the "/data/" segment, otherwise
+        # the json template's {{ .Data.data }} resolves to nothing and the
+        # injected gw_secret.json comes through empty (creds not found).
+        gw_secret.json: "kv/data/read_only/prod/cex"
