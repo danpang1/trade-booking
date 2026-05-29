@@ -3,3 +3,4 @@
 psycopg2-binary>=2.9,<3       # Postgres driver. -binary bundles libpq so no apt deps.
 pymysql>=1.1,<2               # MySQL driver. Pure Python, no native build.
 bcrypt>=4.0,<5
+requests>=2.31,<3            # HTTP client for the Binance VIP loan LTV fetch.

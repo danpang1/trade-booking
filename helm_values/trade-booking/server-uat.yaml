@@ -5,3 +5,24 @@ ingress:
   host: test-jp-tms.internal.tokkalabs.com
   authentication:
     enabled: false
+
+# Binance VIP loan READ-ONLY keys for the Loan Enquiry LTV tile.
+# UAT uses a plain k8s Secret (prod will switch to the Vault sidecar
+# reading /vault/secret/gw_secret.json — see binance_vip_loan_ltv.py).
+# Marked optional:true so a missing Secret degrades the LTV tile to
+# "unavailable" instead of blocking the pod from starting. Deep-merges
+# with the DB env_secrets from helm_values/base.yaml.
+#
+# Create the Secret before (or after) deploy:
+#   kubectl -n middle-office create secret generic trade-booking-binance \
+#     --from-literal=api_key=<READONLY_KEY> \
+#     --from-literal=api_secret=<READONLY_SECRET>
+env_secrets:
+  BINANCE_API_KEY:
+    name: trade-booking-binance
+    key: api_key
+    optional: true
+  BINANCE_API_SECRET:
+    name: trade-booking-binance
+    key: api_secret
+    optional: true

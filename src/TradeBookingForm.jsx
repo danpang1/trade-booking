@@ -6660,6 +6660,17 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [rates, setRates] = useState({});
   const [ratesMeta, setRatesMeta] = useState(null);
   const [ratesError, setRatesError] = useState(null);
+  // Binance VIP loan LTV — { ltv_pct, status, ... } | null while loading.
+  // vipLtvError holds the failure reason so the tile sub-line can say why.
+  const [vipLtv, setVipLtv] = useState(null);
+  const [vipLtvError, setVipLtvError] = useState(null);
+  // Expand/collapse + lazily-loaded collateral & trigger detail for the
+  // VIP LTV tile (mirrors the active-loan type tiles' expand behaviour).
+  const [vipExpanded, setVipExpanded] = useState(false);
+  const [vipDetail, setVipDetail] = useState(null);
+  const [vipDetailError, setVipDetailError] = useState(null);
+  const [vipDetailLoading, setVipDetailLoading] = useState(false);
+  const [vipCopied, setVipCopied] = useState(false);
   const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
@@ -6763,6 +6774,55 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       }
     })();
   }, []);
+
+  // Binance VIP loan LTV — one-shot fetch on mount, served from the
+  // server's 60s cache. Failures land in vipLtvError so the tile can show
+  // "unavailable" with a reason rather than a stale or fake number.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api("/api/binance/vip-loan/ltv");
+        const j = await r.json();
+        if (!r.ok || !j || j.ok !== true) {
+          setVipLtvError(j && j.error ? String(j.error) : `HTTP ${r.status}`);
+          return;
+        }
+        setVipLtv(j);
+        setVipLtvError(null);
+      } catch (e) {
+        setVipLtvError(String(e && e.message ? e.message : e));
+      }
+    })();
+  }, []);
+
+  // Toggle the VIP LTV tile's collateral/trigger panel. Detail is fetched
+  // lazily the first time the tile is expanded (the endpoint makes extra,
+  // heavier Binance calls), then reused from state on subsequent toggles.
+  const toggleVipExpand = useCallback(() => {
+    setVipExpanded((open) => {
+      const next = !open;
+      if (next && vipDetail === null && !vipDetailLoading) {
+        setVipDetailLoading(true);
+        (async () => {
+          try {
+            const r = await api("/api/binance/vip-loan/detail");
+            const j = await r.json();
+            if (!r.ok || !j || j.ok !== true) {
+              setVipDetailError(j && j.error ? String(j.error) : `HTTP ${r.status}`);
+            } else {
+              setVipDetail(j);
+              setVipDetailError(j.detail_error || null);
+            }
+          } catch (e) {
+            setVipDetailError(String(e && e.message ? e.message : e));
+          } finally {
+            setVipDetailLoading(false);
+          }
+        })();
+      }
+      return next;
+    });
+  }, [vipDetail, vipDetailLoading]);
 
   // KPI strip + exposure breakdown — always reads the unfiltered `rows`
   // so totals reflect book state, not whatever filter is applied below.
@@ -7012,18 +7072,305 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   tile("var(--status-confirmed)", "Open-term", kpis.openTerm, "no maturity date"),
                   tile(hedgeAccent, "Hedged coverage", `${kpis.hedgePct}%`,
                        `${kpis.hedgedCount} / ${kpis.liveCount} live`),
-                  // Placeholder tile — will swap the "—" / "API pending" pair
-                  // for the live Binance VIP loan LTV once the integration is
-                  // wired in. Muted border keeps it visually subordinate so
-                  // it doesn't read as a real metric while it's a stub.
-                  tile("var(--ink-4)", "Binance VIP · LTV",
-                       <span style={{ color: "var(--ink-4)" }}>—</span>,
-                       "API pending"),
+                  // Binance VIP loan LTV — live from /api/binance/vip-loan/ltv
+                  // (server-cached 60s). Accent + number colour track the
+                  // status band: healthy <71% (blue), warn 71–77% (orange),
+                  // danger ≥77% margin-call (red). Sub-line carries the fixed
+                  // Binance thresholds. Loading / error / no-loans degrade
+                  // gracefully to a muted glyph so it never shows a fake LTV.
+                  (() => {
+                    const st = vipLtv && vipLtv.status;
+                    // Warn band uses a brighter pumpkin orange than the muted
+                    // --signal-warn (#a35c12) token, so the 71–77% zone reads
+                    // clearly as orange between the blue (<71%) and red (≥77%).
+                    const accent = st === "healthy" ? "var(--signal-link)"
+                      : st === "warn" ? "#e8730c"
+                      : st === "danger" ? "var(--signal-sell)"
+                      : "var(--ink-4)";
+                    let value;
+                    let sub;
+                    if (vipLtvError) {
+                      value = <span style={{ color: "var(--ink-4)" }}>—</span>;
+                      sub = "unavailable";
+                    } else if (!vipLtv) {
+                      value = <span style={{ color: "var(--ink-4)" }}>…</span>;
+                      sub = "loading";
+                    } else if (vipLtv.ltv_pct == null || st === "none") {
+                      value = <span style={{ color: "var(--ink-4)" }}>n/a</span>;
+                      sub = "no ongoing loans";
+                    } else {
+                      value = <span style={{ color: accent }}>{vipLtv.ltv_pct.toFixed(2)}%</span>;
+                      sub = "MC 77% · Liq 91%";
+                    }
+                    const title = vipLtvError
+                      ? `LTV unavailable: ${vipLtvError}`
+                      : (vipLtv && vipLtv.order_count)
+                        ? `${vipLtv.order_count} ongoing order${vipLtv.order_count === 1 ? "" : "s"} · as of ${vipLtv.as_of} · click for collateral & triggers`
+                        : "Binance VIP loan LTV — click for collateral & triggers";
+                    return tile(accent, "Binance VIP · LTV", value, sub, {
+                      title,
+                      onClick: toggleVipExpand,
+                      active: vipExpanded,
+                    });
+                  })(),
                 ]}
               </div>
             </>
           );
         })()}
+
+      {/* ─── Binance VIP loan · collateral & trigger detail. Opens when the
+          "Binance VIP · LTV" tile is clicked. Mirrors the MO dashboard's
+          VIP loan view: per-asset collateral with margin-call (77%) and
+          liquidation (91%) trigger prices, plus the uniform volatile-drop
+          needed to reach each. ─── */}
+      {vipExpanded && (() => {
+        const fmtUsd = (n, dp = 2) => (n == null || Number.isNaN(n))
+          ? "—"
+          : "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+        const fmtNum = (n, dp = 4) => (n == null || Number.isNaN(n))
+          ? "—"
+          : Number(n).toLocaleString("en-US", { maximumFractionDigits: dp });
+        const st = vipLtv && vipLtv.status;
+        const accent = st === "healthy" ? "var(--signal-link)"
+          : st === "warn" ? "#e8730c"
+          : st === "danger" ? "var(--signal-sell)"
+          : "var(--ink-3)";
+        const d = vipDetail;
+        const ltvPct = vipLtv && vipLtv.ltv_pct != null ? vipLtv.ltv_pct : null;
+        const bufMc = ltvPct != null ? (77 - ltvPct) : null;
+        const bufLiq = ltvPct != null ? (91 - ltvPct) : null;
+        return (
+          <div
+            className="mb-3"
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              borderLeft: `3px solid ${accent}`,
+              borderRadius: 3,
+              fontFamily: "var(--font-mono)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--rule)",
+              background: "var(--paper-2)",
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            }}>
+              <span style={{
+                fontSize: 10, color: "var(--ink-3)",
+                textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500,
+              }}>
+                Binance VIP loan · collateral &amp; triggers
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 10, color: "var(--ink-4)" }}>
+                  {ltvPct != null ? `current LTV ${ltvPct.toFixed(2)}%` : ""}
+                  {d && d.as_of ? ` · as of ${String(d.as_of).slice(11, 19)} UTC` : ""}
+                </span>
+                {d && (() => {
+                  // Build the shareable plain-text block (mirrors the format
+                  // the user pastes into chat). Filters dust (< $1k) from the
+                  // per-asset trigger lines.
+                  const buildCopyText = () => {
+                    const ts = d.as_of ? new Date(d.as_of) : new Date();
+                    const pad = (n) => String(n).padStart(2, "0");
+                    let hr = ts.getHours();
+                    const ampm = hr >= 12 ? "pm" : "am";
+                    hr = hr % 12 || 12;
+                    const tsStr = `${pad(ts.getDate())}-${pad(ts.getMonth() + 1)}-${ts.getFullYear()}   ${pad(hr)}:${pad(ts.getMinutes())}:${pad(ts.getSeconds())}${ampm}`;
+                    const money = (n) => (n == null) ? "—"
+                      : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const pxf = (n) => (n == null) ? "—"
+                      : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: n < 100 ? 4 : 2 });
+                    const sm = d.summary || {};
+                    const vol = (d.collateral || []).filter((c) => c.volatile && c.value > 1000);
+                    const out = [];
+                    out.push(`Rates Timestamp:    ${tsStr}`);
+                    out.push(`Loan amount:    ${money(sm.total_loan_usd)}`);
+                    out.push(`Collateral:    ${money(sm.collateral_post_haircut)}`);
+                    out.push(`Borrowable USDT:    ${money(sm.borrowable_usdt)}`);
+                    out.push("");
+                    out.push(`Current LTV    ${ltvPct != null ? ltvPct.toFixed(2) : "—"}%`);
+                    out.push("");
+                    out.push(`Margin call LTV    77%`);
+                    vol.forEach((c) => out.push(`${c.asset}: ${pxf(c.mc_price)} PX`));
+                    out.push("");
+                    out.push(`Liquidation LTV    91%`);
+                    vol.forEach((c) => out.push(`${c.asset}: ${pxf(c.liq_price)} PX`));
+                    return out.join("\n");
+                  };
+                  const onCopy = async () => {
+                    try {
+                      await navigator.clipboard.writeText(buildCopyText());
+                      setVipCopied(true);
+                      setTimeout(() => setVipCopied(false), 1800);
+                    } catch (e) {
+                      setVipCopied(false);
+                    }
+                  };
+                  return (
+                    <button
+                      type="button"
+                      onClick={onCopy}
+                      title="Copy loan summary to clipboard"
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "3px 8px", cursor: "pointer",
+                        border: "1px solid var(--rule)", borderRadius: 3,
+                        background: vipCopied ? "var(--signal-buy-bg)" : "var(--paper)",
+                        color: vipCopied ? "var(--signal-buy)" : "var(--ink-3)",
+                        fontFamily: "var(--font-mono)", fontSize: 10,
+                        textTransform: "uppercase", letterSpacing: "0.06em",
+                      }}
+                    >
+                      {vipCopied ? <Check size={11} /> : <Copy size={11} />}
+                      {vipCopied ? "Copied" : "Copy"}
+                    </button>
+                  );
+                })()}
+              </span>
+            </div>
+
+            {vipDetailLoading && !d && (
+              <div style={{ padding: "12px", fontSize: 12, color: "var(--ink-3)" }}>
+                Loading collateral &amp; triggers…
+              </div>
+            )}
+            {!vipDetailLoading && vipDetailError && !d && (
+              <div style={{ padding: "12px", fontSize: 12, color: "var(--signal-sell)" }}>
+                Detail unavailable: {vipDetailError}
+              </div>
+            )}
+
+            {d && (
+              <>
+                {/* Headline figures — loan, collateral, borrowable USDT.
+                    Same numbers the Copy button writes to the clipboard. */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  borderBottom: "1px solid var(--rule)",
+                }}>
+                  {[
+                    { label: "Loan amount", val: d.summary && d.summary.total_loan_usd },
+                    { label: "Collateral", val: d.summary && d.summary.collateral_post_haircut },
+                    { label: "Borrowable USDT", val: d.summary && d.summary.borrowable_usdt },
+                  ].map((m, i) => (
+                    <div key={m.label} style={{
+                      padding: "10px 12px",
+                      borderRight: i < 2 ? "1px solid var(--rule)" : "none",
+                    }}>
+                      <div style={{
+                        fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+                        letterSpacing: "0.06em", marginBottom: 4,
+                      }}>{m.label}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>
+                        {fmtUsd(m.val, 0)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Buffer summary — two cells: margin call + liquidation.
+                    Leads with the LTV buffer (pp) like the MO dashboard;
+                    the uniform price drop + required collateral are the
+                    supporting detail. */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  borderBottom: "1px solid var(--rule)",
+                }}>
+                  {[
+                    { label: "Buffer to margin call", thr: 77, t: d.margin_call, buf: bufMc, col: "#e8730c" },
+                    { label: "Buffer to liquidation", thr: 91, t: d.liquidation, buf: bufLiq, col: "var(--signal-sell)" },
+                  ].map((cell, i) => (
+                    <div key={cell.label} style={{
+                      padding: "10px 12px",
+                      borderRight: i === 0 ? "1px solid var(--rule)" : "none",
+                    }}>
+                      <div style={{
+                        fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+                        letterSpacing: "0.06em", marginBottom: 4,
+                      }}>
+                        {cell.label}
+                        <span style={{ color: "var(--ink-4)", marginLeft: 6 }}>LTV {cell.thr}%</span>
+                      </div>
+                      <div style={{ fontSize: 18, fontWeight: 600, color: cell.col, fontVariantNumeric: "tabular-nums" }}>
+                        {cell.buf != null ? `${cell.buf.toFixed(2)}pp` : "—"}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>
+                        {cell.t ? `uniform drop −${Number(cell.t.pct_drop).toFixed(2)}%` : ""}
+                        {cell.t ? ` · req. collateral ${fmtUsd(cell.t.required_collateral, 0)}` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Collateral basket — current price, trigger prices, and
+                    USD value, with a grand total. MC/Liq px blank for
+                    stablecoins (they're held flat in the trigger maths). */}
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{
+                      background: "var(--paper-2)", color: "var(--ink-3)",
+                      fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 500,
+                      borderBottom: "1px solid var(--rule)",
+                    }}>
+                      <th style={{ textAlign: "left", padding: "6px 12px" }}>Asset</th>
+                      <th style={{ textAlign: "right", padding: "6px 12px" }}>Qty</th>
+                      <th style={{ textAlign: "right", padding: "6px 12px" }}>Current px</th>
+                      <th style={{ textAlign: "right", padding: "6px 12px" }}>Collateral value</th>
+                      <th style={{ textAlign: "right", padding: "6px 12px" }}>MC px</th>
+                      <th style={{ textAlign: "right", padding: "6px 12px" }}>Liq px</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(d.collateral || []).map((c, i) => (
+                      <tr key={c.asset} style={{
+                        background: i % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)",
+                        borderTop: "1px solid var(--rule)",
+                      }}>
+                        <td style={{ padding: "6px 12px", color: "var(--ink)", fontWeight: 500 }}>{c.asset}</td>
+                        <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.qty, 6)}</td>
+                        <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.price, c.price >= 100 ? 2 : 4)}</td>
+                        <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.value, 0)}</td>
+                        <td style={{ padding: "6px 12px", textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtUsd(c.mc_price, c.mc_price >= 100 ? 2 : 4)}</td>
+                        <td style={{ padding: "6px 12px", textAlign: "right", color: c.liq_price == null ? "var(--ink-4)" : "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>{c.liq_price == null ? "—" : fmtUsd(c.liq_price, c.liq_price >= 100 ? 2 : 4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{
+                      borderTop: "2px solid var(--rule)",
+                      background: "var(--paper-2)",
+                      fontWeight: 600,
+                    }}>
+                      <td style={{ padding: "7px 12px", color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10 }} colSpan={3}>
+                        Total collateral
+                      </td>
+                      <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>
+                        {fmtUsd(d.summary && d.summary.collateral_raw_value, 0)}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {d.detail_error && (
+                  <div style={{ padding: "8px 12px", fontSize: 10, color: "var(--signal-warn)", borderTop: "1px solid var(--rule)" }}>
+                    Partial data: {d.detail_error}
+                  </div>
+                )}
+                <div style={{ padding: "8px 12px", fontSize: 10, color: "var(--ink-4)", borderTop: "1px solid var(--rule)" }}>
+                  Indicative — assumes a uniform % move across non-stablecoin collateral; stablecoins held flat. Total loan {fmtUsd(d.summary && d.summary.total_loan_usd, 0)}.
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ─── Upcoming expiry — LIVE loans whose maturity_date is in
           the next 30 days, soonest first. Hidden by default; opens
