@@ -7,22 +7,19 @@ ingress:
     enabled: false
 
 # Binance VIP loan READ-ONLY keys for the Loan Enquiry LTV tile.
-# UAT uses a plain k8s Secret (prod will switch to the Vault sidecar
-# reading /vault/secret/gw_secret.json — see binance_vip_loan_ltv.py).
-# Marked optional:true so a missing Secret degrades the LTV tile to
-# "unavailable" instead of blocking the pod from starting. Deep-merges
-# with the DB env_secrets from helm_values/base.yaml.
-#
-# Create the Secret before (or after) deploy:
-#   kubectl -n middle-office create secret generic trade-booking-binance \
-#     --from-literal=api_key=<READONLY_KEY> \
-#     --from-literal=api_secret=<READONLY_SECRET>
-env_secrets:
-  BINANCE_API_KEY:
-    name: trade-booking-binance
-    key: api_key
-    optional: true
-  BINANCE_API_SECRET:
-    name: trade-booking-binance
-    key: api_secret
-    optional: true
+# UAT reads them from Vault via the agent-inject sidecar — the SAME
+# mechanism as prod (see helm_values/trade-booking/server-prod.yaml and
+# binance_vip_loan_ltv.py, which loads /vault/secrets/gw_secret.json) —
+# but pointed at the UAT Vault server, auth path and role.
+vault:
+  enabled: true
+  service: https://test-jp-vault.internal.tokkalabs.com
+  authPath: "auth/kubernetes/uat-k8s"
+  role: "vault-main-trading-test"
+  agentInjectDefaultTemplate: json
+  agentInjectSecrets:
+      paths:
+        # KV v2 engine: the read path needs the "/data/" segment, otherwise
+        # the json template's {{ .Data.data }} resolves to empty (creds not
+        # found). gw_secret.json lands at /vault/secrets/gw_secret.json.
+        gw_secret.json: "kv/data/read_only/uat/cex"
