@@ -30,6 +30,8 @@ const LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT = resolve(__dirname, "scripts", "loan_
 const RATES_LATEST_SCRIPT = resolve(__dirname, "scripts", "rates_latest.py");
 const SPOT_INSERT_SCRIPT  = resolve(__dirname, "scripts", "spot_insert.py");
 const SPOT_AMEND_SCRIPT   = resolve(__dirname, "scripts", "spot_amend.py");
+const CASHFLOW_AMEND_BATCH_SCRIPT = resolve(__dirname, "scripts", "cashflow_amend_batch.py");
+const SPOT_AMEND_BATCH_SCRIPT     = resolve(__dirname, "scripts", "spot_amend_batch.py");
 const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
@@ -356,6 +358,17 @@ function stampUserId(rawBody, username) {
     }
   }
   return JSON.stringify(payload);
+}
+
+// Like stampUserId, but for a bulk-amend body {rows:[...]} (or a bare array):
+// force user_id from the session onto every row so the frontend can't spoof it.
+function stampBatchUserId(rawBody, username) {
+  let data;
+  try { data = JSON.parse(rawBody || "{}"); }
+  catch { return rawBody; }  // let Python report the bad-JSON error
+  const rows = Array.isArray(data) ? data : (data && Array.isArray(data.rows) ? data.rows : null);
+  if (rows) for (const r of rows) { if (r && typeof r === "object") r.user_id = username; }
+  return JSON.stringify(data);
 }
 
 // One structured JSON line per /api/* response on stdout. Tokka's Loki
@@ -846,6 +859,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/cashflow/amend/batch  — bulk amend, all-or-nothing (one txn)
+  if (req.url === "/api/cashflow/amend/batch" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampBatchUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_BATCH_SCRIPT, stampedBody);
+    console.log(`[cashflow] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // GET /api/cashflow/recent?limit=N
   if (req.method === "GET" && req.url.startsWith("/api/cashflow/recent")) {
     const url = new URL(req.url, "http://localhost");
@@ -1071,6 +1098,20 @@ const server = createServer(async (req, res) => {
     const { code, json, stderr } = await spawnPython(SPOT_AMEND_SCRIPT, stampedBody);
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[spot] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // POST /api/spot/amend/batch  — bulk amend, all-or-nothing (one txn)
+  if (req.url === "/api/spot/amend/batch" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampBatchUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(SPOT_AMEND_BATCH_SCRIPT, stampedBody);
+    console.log(`[spot] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
