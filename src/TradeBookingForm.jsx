@@ -18,6 +18,7 @@ import {
 import tokkaLogo from "./assets/tokka-labs-logo.png";
 import { NETWORKS } from "./data/networks.js";
 import { TOKENS, ASSET_SYMBOLS } from "./data/tokens.js";
+import { loanMatchesQuery } from "./loanSearch.js";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { api } from "./auth/api.js";
 import UserAdmin from "./admin/UserAdmin.jsx";
@@ -958,6 +959,7 @@ const DateTimePicker24 = ({ value, onChange, syncLabel, onSync }) => {
               commitDraft();
               setOpen(false);
             } else if (e.key === "Escape") {
+              e.preventDefault();
               setDraft(display);
               setParseErr(false);
               setOpen(false);
@@ -1401,6 +1403,7 @@ const DatePicker = ({ value, onChange, placeholder = "dd/mm/yyyy", min, max, all
               commitDraft();
               setOpen(false);
             } else if (e.key === "Escape") {
+              e.preventDefault();
               setDraft(display);
               setParseErr(false);
               setOpen(false);
@@ -2096,7 +2099,9 @@ function formatLoanOptionLabel(loan) {
 // live trades_loan rows already filtered to the relevant portfolio.
 const LoanPicker = ({ selected, onChange, options }) => {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const wrapRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -2107,13 +2112,20 @@ const LoanPicker = ({ selected, onChange, options }) => {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
   const byRef = new Map(options.map((o) => [o.deal_ref, o]));
   const remaining = options.filter((o) => !selected.includes(o.deal_ref));
+  const q = search.trim().toLowerCase();
+  const visible = q ? remaining.filter((o) => loanMatchesQuery(o, q)) : remaining;
 
   const addRef = (ref) => {
     if (!ref || selected.includes(ref)) return;
     onChange([...selected, ref]);
     setOpen(false);
+    setSearch("");
   };
   const removeRef = (ref) => onChange(selected.filter((r) => r !== ref));
 
@@ -2149,7 +2161,10 @@ const LoanPicker = ({ selected, onChange, options }) => {
         })}
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            setOpen((o) => !o);
+            setSearch("");
+          }}
           className="px-2 py-0.5 ml-auto"
           style={{
             background: open ? "#1f63ea" : "transparent",
@@ -2172,40 +2187,65 @@ const LoanPicker = ({ selected, onChange, options }) => {
             boxShadow: "0 12px 32px rgba(13,13,13,0.12)",
             minWidth: "100%",
             width: 540,
-            maxHeight: 360,
-            overflowY: "auto",
           }}
         >
-          {remaining.map((loan) => (
-            <button
-              key={loan.deal_ref}
-              type="button"
-              onClick={() => addRef(loan.deal_ref)}
-              className="block w-full text-left px-3 py-2 text-[12px] font-mono"
-              style={{
-                background: "transparent",
-                border: "none",
-                borderBottom: "1px solid #efece4",
-                cursor: "pointer",
-                color: "#0d0d0d",
+          <div className="p-1.5" style={{ borderBottom: "1px solid #d9d4c7" }}>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Type to filter — e.g. “echocreek 100 btc” (all terms must match, any order)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setOpen(false);
+                }
+                if (e.key === "Enter" && visible.length === 1) {
+                  e.preventDefault();
+                  addRef(visible[0].deal_ref);
+                }
               }}
-              onMouseEnter={(ev) => { ev.currentTarget.style.background = "#f3f1ea"; }}
-              onMouseLeave={(ev) => { ev.currentTarget.style.background = "transparent"; }}
-            >
-              <span style={{ color: "#1f63ea" }}>{loan.deal_ref}</span>
-              <span style={{ color: "#9a9488" }}> · </span>
-              <span>{loan.direction} {parseFloat(loan.principal_amount || 0).toLocaleString("en-US", { maximumFractionDigits: 5 })} {loan.principal_asset}</span>
-              <span style={{ color: "#9a9488" }}> · </span>
-              <span>{loan.interest_rate_pa_pct || 0}% {loan.interest_type}</span>
-              {loan.counterparty && <>
-                <span style={{ color: "#9a9488" }}> · </span>
-                <span>{loan.counterparty}</span>
-              </>}
-              <div className="text-[10px] mt-0.5" style={{ color: "#6a665c" }}>
-                matures {loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "open-term"}
+              className="w-full bg-[#f8f6f1] border border-[#d9d4c7] px-2.5 py-1.5 text-[12px] text-[#0d0d0d] font-mono focus:outline-none focus:border-[#0d0d0d] focus:bg-[#ffffff] placeholder:text-[#9a9488] rounded-none caret-[#1f63ea]"
+            />
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
+            {visible.length === 0 && (
+              <div className="text-[11px] text-center py-3 font-mono" style={{ color: "#9a9488" }}>
+                No loans match “{search.trim()}”
               </div>
-            </button>
-          ))}
+            )}
+            {visible.map((loan) => (
+              <button
+                key={loan.deal_ref}
+                type="button"
+                onClick={() => addRef(loan.deal_ref)}
+                className="block w-full text-left px-3 py-2 text-[12px] font-mono"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: "1px solid #efece4",
+                  cursor: "pointer",
+                  color: "#0d0d0d",
+                }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.background = "#f3f1ea"; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.background = "transparent"; }}
+              >
+                <span style={{ color: "#1f63ea" }}>{loan.deal_ref}</span>
+                <span style={{ color: "#9a9488" }}> · </span>
+                <span>{loan.direction} {parseFloat(loan.principal_amount || 0).toLocaleString("en-US", { maximumFractionDigits: 5 })} {loan.principal_asset}</span>
+                <span style={{ color: "#9a9488" }}> · </span>
+                <span>{loan.interest_rate_pa_pct || 0}% {loan.interest_type}</span>
+                {loan.counterparty && <>
+                  <span style={{ color: "#9a9488" }}> · </span>
+                  <span>{loan.counterparty}</span>
+                </>}
+                <div className="text-[10px] mt-0.5" style={{ color: "#6a665c" }}>
+                  matures {loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "open-term"}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -2723,7 +2763,10 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
   // doesn't intercept Escape when the form isn't on screen.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    // Ignore Escape that an inner control already handled (open dropdown,
+    // editable field reverting its draft, etc. — they call preventDefault).
+    // Only a "bare" Escape, not consumed by anything else, closes the modal.
+    const onKey = (e) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -2886,7 +2929,10 @@ function HistoryModal({ open, dealRef, state, onClose }) {
   // ESC closes the modal.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    // Ignore Escape that an inner control already handled (open dropdown,
+    // editable field reverting its draft, etc. — they call preventDefault).
+    // Only a "bare" Escape, not consumed by anything else, closes the modal.
+    const onKey = (e) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -3895,9 +3941,9 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                 One row per principal-balance segment · accrued = notional × rate × days / {dayBasis}
               </div>
             </div>
-            <div className="overflow-x-auto" style={{ border: "1px solid #efece4" }}>
-              <table className="w-full text-[11px]" style={{ fontFamily: "var(--font-mono)" }}>
-                <thead>
+            <div className="overflow-auto" style={{ border: "1px solid #efece4", maxHeight: "60vh" }}>
+              <table className="text-[11px]" style={{ fontFamily: "var(--font-mono)", minWidth: "100%" }}>
+                <thead className="sticky top-0 z-10">
                   <tr style={{ background: "#efece4", color: "#6a665c" }}>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Start Date</th>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Maturity Date</th>
@@ -3912,7 +3958,8 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                     <th className="px-2 py-2 text-left whitespace-nowrap">Interest Asset</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">Accrued Interest</th>
                     <th className="px-2 py-2 text-right whitespace-nowrap">WHT</th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">Net Paid Interest</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Net Paid</th>
+                    <th className="px-2 py-2 text-right whitespace-nowrap">Total Paid</th>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Loan Type</th>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Counterparty</th>
                     <th className="px-2 py-2 text-left whitespace-nowrap">Comment</th>
@@ -3979,7 +4026,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                         }
                       }
                       return (
-                        <tr key={i} style={{ borderTop: "1px solid #efece4" }}>
+                        <tr key={i} style={{ borderTop: "1px solid #efece4", background: i % 2 ? "rgba(0,0,0,0.025)" : "transparent" }}>
                           {/* Start Date */}
                           <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {fmtScheduleDate(p.startMs)}
@@ -4042,9 +4089,19 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                               );
                             })()}
                           </td>
-                          {/* Net Paid Interest */}
+                          {/* Net Paid */}
                           <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
                             {p.netPaid > 0 ? fmt(p.netPaid) : dash}
+                          </td>
+                          {/* Total Paid = WHT + Net Paid */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: "#0d0d0d" }}>
+                            {(() => {
+                              const whtPct = parseFloat(loan?.wht_pct);
+                              const whtAmt = (isFinite(whtPct) && whtPct > 0 && p.days > 0 && p.accrued > 0) ? (p.accrued * whtPct / 100) : 0;
+                              const netPaid = p.netPaid > 0 ? p.netPaid : 0;
+                              const total = whtAmt + netPaid;
+                              return total > 0 ? fmt(total) : dash;
+                            })()}
                           </td>
                           {/* Loan Type */}
                           <td className="px-2 py-1.5 whitespace-nowrap">{loan.loan_type || "—"}</td>
@@ -4157,7 +4214,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                     });
                     // Final totals row — sums for Hedged Interest, Hedge USDT,
                     // and Acc Interest To Date (Σ accrued × hedged_price).
-                    // 17 leading columns are blank/labelled "TOTAL".
+                    // 18 leading columns are blank/labelled "TOTAL".
                     const totalAccInterestToDateUSD =
                       hedgedPrice > 0 ? cumAcc * hedgedPrice : 0;
                     const totalsRow = (
@@ -4170,7 +4227,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                         }}
                       >
                         <td
-                          colSpan={17}
+                          colSpan={18}
                           className="px-2 py-2 text-right whitespace-nowrap"
                           style={{
                             color: "#6a665c",
@@ -4243,14 +4300,15 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
               <thead>
                 <tr style={{ background: "#efece4", color: "#6a665c" }}>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Trade Date</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Value Date</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Cashflow Ref</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Type</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Direction</th>
                   <th className="px-2 py-2 text-right whitespace-nowrap">Amount</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">Asset</th>
                   <th className="px-2 py-2 text-right whitespace-nowrap">Interest Accrued</th>
-                  <th className="px-2 py-2 text-right whitespace-nowrap">Hedged Interest Accrued</th>
                   <th className="px-2 py-2 text-left whitespace-nowrap">CF Type</th>
+                  <th className="px-2 py-2 text-left whitespace-nowrap">Tx ID</th>
                 </tr>
               </thead>
               <tbody>
@@ -4265,6 +4323,9 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                     <tr key={m.counterpart_deal_ref + "/" + i} style={{ borderTop: "1px solid #efece4" }}>
                       <td className="px-2 py-1.5 whitespace-nowrap">
                         <HoverTip text={m.trade_date}>{fmtTs(m.trade_date)}</HoverTip>
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        {m.value_date ? <HoverTip text={m.value_date}>{fmtTs(m.value_date)}</HoverTip> : <span style={{ opacity: 0.4 }}>—</span>}
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap">
                         <button
@@ -4297,19 +4358,21 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                           <span style={{ opacity: 0.4 }}>—</span>
                         )}
                       </td>
-                      <td className="px-2 py-2 text-right whitespace-nowrap font-mono" style={{ color: "#0d0d0d" }}>
-                        {acc != null && isHedged && hedgedPrice > 0 ? (
-                          <HoverTip
-                            text={`${fmt(acc)} ${interestAsset} × hedged_price ${fmt(hedgedPrice)}`}
-                          >
-                            {fmt(acc * hedgedPrice)} {hedgeProceedsAsset}
-                          </HoverTip>
+                      <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: "#6a665c" }}>
+                        {m.cashflow_type || "—"}
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        {m.txid_reference ? (
+                          /^https?:\/\//.test(m.txid_reference) ? (
+                            <a href={m.txid_reference} target="_blank" rel="noreferrer" style={{ color: "#1f63ea" }}>
+                              <HoverTip text={m.txid_reference}>tx ↗</HoverTip>
+                            </a>
+                          ) : (
+                            <span style={{ color: "#0d0d0d" }}>{m.txid_reference}</span>
+                          )
                         ) : (
                           <span style={{ opacity: 0.4 }}>—</span>
                         )}
-                      </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: "#6a665c" }}>
-                        {m.cashflow_type || "—"}
                       </td>
                     </tr>
                   );
@@ -5115,7 +5178,9 @@ const DEAL_ENQUIRY_INITIAL_FILTERS = {
   // Default = all-except-CANCELLED (lifecycle-active rows).
   statuses: TRADE_STATUSES.filter((s) => s !== "CANCELLED"),
   // Dynamic text filters keyed by DEAL_DYNAMIC_FIELDS[].key.
-  dynamic: {},
+  // deal_ref is seeded so the Deal Reference search shows by default —
+  // DynamicFilterRows renders a labeled row for every key present here.
+  dynamic: { deal_ref: "" },
 };
 
 // Deep-equal compare for INITIAL_FILTERS vs current filters — drives
@@ -5352,6 +5417,308 @@ const DynamicFilterRows = ({ fields, values, onChange }) => {
   );
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// Bulk amend (Deal Enquiry) — select N rows of ONE product type and set
+// one or more common fields across all of them, applied in a single
+// all-or-nothing transaction via POST /api/{cashflow|spot}/amend/batch.
+// Trade-economics fields (amounts, price, base asset, direction) are
+// deliberately excluded from the curated set.
+// ═══════════════════════════════════════════════════════════════════
+const BULK_FIELD_DEFS = {
+  CASHFLOW: [
+    { key: "status", label: "Status" },
+    { key: "counterparty", label: "Counterparty" },
+    { key: "account", label: "Account" },
+    { key: "value_date", label: "Value Date" },
+    { key: "portfolio", label: "Portfolio" },
+    { key: "linked_loans", label: "Linked Loans" },
+    { key: "comment", label: "Comment" },
+  ],
+  SPOT: [
+    { key: "status", label: "Status" },
+    { key: "counterparty", label: "Counterparty" },
+    { key: "account", label: "Account" },
+    { key: "value_date", label: "Value Date" },
+    { key: "portfolio", label: "Portfolio" },
+    { key: "quote_asset", label: "Quote Asset" },
+    { key: "fee_asset", label: "Fee Asset" },
+    { key: "comment", label: "Comment" },
+  ],
+};
+
+function bulkAccountType(name) {
+  for (const [list, type] of [
+    [ACCOUNTS_EXCHANGE, "EXCHANGE"], [ACCOUNTS_WALLET, "WALLET"],
+    [ACCOUNTS_BROKER, "BROKER"], [ACCOUNTS_BANK, "BANK"],
+  ]) { if (list.some((a) => a.name === name)) return type; }
+  return null;
+}
+function bulkAllAccounts() {
+  return [...ACCOUNTS_EXCHANGE, ...ACCOUNTS_WALLET, ...ACCOUNTS_BROKER, ...ACCOUNTS_BANK];
+}
+
+// Build a full amend payload for one row, overriding only the enabled
+// fields. The row carries the complete DB record (from /recent), so
+// untouched fields pass straight through. expected_effective_start drives
+// the server-side optimistic-concurrency check.
+function buildBulkAmendPayload(row, enabled, vals) {
+  const has = (k) => enabled.has(k);
+  const p = {
+    deal_ref: row.deal_ref,
+    expected_effective_start: row.effective_start,
+    external_trade_id: row.external_trade_id ?? null,
+    direction: row.direction,
+    entity: row.entity ?? null,
+    portfolio_id: String(row.portfolio_id),
+    portfolio_name: row.portfolio_name ?? null,
+    counterparty: row.counterparty ?? null,
+    counterparty_id: row.counterparty_id ?? null,
+    account: row.account ?? null,
+    account_type: row.account_type ?? null,
+    fee_asset: row.fee_asset ?? null,
+    fee_amount: row.fee_amount ?? "0",
+    trade_date: row.trade_date,
+    value_date: row.value_date,
+    txid_reference: row.txid_reference ?? null,
+    status: row.status,
+    comment: row.comment ?? null,
+  };
+  if (has("status")) p.status = vals.status;
+  if (has("comment")) p.comment = vals.comment ?? null;
+  if (has("value_date")) p.value_date = vals.value_date;
+  if (has("fee_asset")) p.fee_asset = vals.fee_asset || null;
+  if (has("counterparty")) {
+    p.counterparty = vals.counterparty;
+    p.counterparty_id = formatCID(COUNTERPARTY_IDS[vals.counterparty]);
+  }
+  if (has("account")) {
+    p.account = vals.account;
+    p.account_type = bulkAccountType(vals.account);
+  }
+  if (has("portfolio")) {
+    const port = PORTFOLIOS.find((x) => String(x.number) === String(vals.portfolio));
+    p.portfolio_id = String(vals.portfolio);
+    if (port) { p.portfolio_name = port.name; p.entity = port.entity; }
+  }
+  if (row.txn_type === "CASHFLOW") {
+    return {
+      ...p,
+      txn_type: "CASHFLOW",
+      cashflow_type: row.cashflow_type,
+      asset: row.asset,
+      amount: row.amount,
+      network: row.network ?? null,
+      _meta: {
+        loan_deal_refs: has("linked_loans")
+          ? (vals.linked_loans || [])
+          : (row.mappings || []).map((m) => m.counterpart_deal_ref).filter(Boolean),
+      },
+    };
+  }
+  return {
+    ...p,
+    txn_type: "SPOT",
+    base_asset: row.base_asset,
+    base_amount: row.base_amount,
+    quote_asset: has("quote_asset") ? vals.quote_asset : row.quote_asset,
+    quote_amount: row.quote_amount,
+    price: row.price,
+  };
+}
+
+// Modal: pick fields + values, preview, then apply to every selected row.
+function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
+  const [enabled, setEnabled] = useState(() => new Set());
+  const [vals, setVals] = useState({});
+  const [phase, setPhase] = useState("edit");   // edit | preview | applying
+  const [error, setError] = useState(null);
+  const [liveLoans, setLiveLoans] = useState([]);
+
+  // Loans for the Linked Loans picker (cashflow only). DealEnquiry doesn't
+  // hold the loan list, so fetch it lazily when the modal opens.
+  useEffect(() => {
+    if (batchType !== "CASHFLOW") return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await api("/api/loan/recent?limit=200");
+        const j = await r.json();
+        if (alive && j.ok && Array.isArray(j.rows)) setLiveLoans(j.rows);
+      } catch { /* picker just shows empty */ }
+    })();
+    return () => { alive = false; };
+  }, [batchType]);
+
+  // Esc closes the modal (preventDefault so it can't bubble anywhere else).
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const defs = BULK_FIELD_DEFS[batchType] || [];
+  const toggleField = (k) => setEnabled((prev) => {
+    const next = new Set(prev);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const setVal = (k, v) => setVals((s) => ({ ...s, [k]: v }));
+
+  const fieldReady = (k) => {
+    const v = vals[k];
+    if (k === "linked_loans") return Array.isArray(v);   // [] = clear links (allowed)
+    if (k === "comment") return v != null;               // "" = blank the comment (allowed)
+    return v != null && v !== "";
+  };
+  const enabledKeys = [...enabled];
+  const canApply = enabledKeys.length > 0 && enabledKeys.every(fieldReady);
+
+  const labelFor = (k) => (defs.find((d) => d.key === k) || {}).label || k;
+  const summarizeVal = (k) => {
+    const v = vals[k];
+    if (k === "linked_loans") return (v && v.length) ? v.join(", ") : "(none — clears links)";
+    if (k === "portfolio") {
+      const port = PORTFOLIOS.find((x) => String(x.number) === String(v));
+      return port ? `${port.number} — ${port.name}` : String(v);
+    }
+    if (k === "comment") return v === "" ? "(blank)" : String(v);
+    return String(v);
+  };
+
+  const apply = async () => {
+    setError(null);
+    setPhase("applying");
+    const payloads = rows.map((r) => buildBulkAmendPayload(r, enabled, vals));
+    const endpoint = batchType === "CASHFLOW" ? "/api/cashflow/amend/batch" : "/api/spot/amend/batch";
+    try {
+      const res = await api(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: payloads }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+      if (j.ok) { onApplied(j.count || payloads.length); return; }
+      setError(j.deal_ref ? `${j.error} (${j.deal_ref})` : (j.error || `HTTP ${res.status}`));
+      setPhase("preview");
+    } catch (e) {
+      setError(String(e && e.message ? e.message : e));
+      setPhase("preview");
+    }
+  };
+
+  const renderEditor = (k) => {
+    if (k === "status") return (
+      <Select value={vals.status || ""} onChange={(e) => setVal("status", e.target.value)}>
+        <option value="">— pick status —</option>
+        {TRADE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+      </Select>
+    );
+    if (k === "comment") return (
+      <Input type="text" value={vals.comment || ""} onChange={(e) => setVal("comment", e.target.value)} placeholder="New comment (applies to all selected)" />
+    );
+    if (k === "value_date") return (
+      <DateTimePicker24 value={vals.value_date || ""} onChange={(v) => setVal("value_date", v)} />
+    );
+    if (k === "counterparty") return (
+      <CounterpartyPicker value={vals.counterparty || ""} onChange={(v) => setVal("counterparty", v)} options={COUNTERPARTIES} />
+    );
+    if (k === "account") return (
+      <AccountPicker value={vals.account || ""} onChange={(v) => setVal("account", v)} options={bulkAllAccounts()} />
+    );
+    if (k === "portfolio") return (
+      <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={PORTFOLIOS} />
+    );
+    if (k === "linked_loans") return (
+      <LoanPicker selected={vals.linked_loans || []} onChange={(v) => setVal("linked_loans", v)} options={liveLoans} />
+    );
+    if (k === "quote_asset" || k === "fee_asset") return (
+      <AssetPicker value={vals[k] || ""} onChange={(v) => setVal(k, v)} options={TOKENS} />
+    );
+    return null;
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(13,13,13,0.45)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 80 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "var(--paper)", border: "1px solid var(--rule)", width: 760, maxWidth: "94vw", maxHeight: "82vh", overflowY: "auto", fontFamily: "var(--font-mono)", boxShadow: "0 24px 64px rgba(13,13,13,0.25)" }}>
+        <div className="flex items-center justify-between" style={{ padding: "12px 18px", borderBottom: "1px solid var(--rule)" }}>
+          <div className="text-[15px]" style={{ fontFamily: "var(--font-serif)", color: "var(--ink)" }}>
+            Bulk edit · {rows.length} {batchType} deal{rows.length === 1 ? "" : "s"}
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1, color: "var(--ink-3)" }} aria-label="Close">×</button>
+        </div>
+
+        {phase !== "preview" && (
+          <div style={{ padding: "8px 18px 14px" }}>
+            <div className="text-[10px] tracking-[0.06em] uppercase" style={{ color: "var(--ink-3)", padding: "6px 0" }}>
+              Tick the fields to change — only ticked fields are applied
+            </div>
+            {defs.map((d) => {
+              const on = enabled.has(d.key);
+              return (
+                <div key={d.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "8px 0", borderTop: "1px solid var(--rule)" }}>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 150, paddingTop: 6, cursor: "pointer", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: on ? "var(--ink)" : "var(--ink-3)" }}>
+                    <input type="checkbox" checked={on} onChange={() => toggleField(d.key)} />
+                    {d.label}
+                  </label>
+                  <div style={{ flex: 1, opacity: on ? 1 : 0.4, pointerEvents: on ? "auto" : "none" }}>
+                    {renderEditor(d.key)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {phase === "preview" && (
+          <div style={{ padding: "14px 18px" }}>
+            <div className="text-[12px]" style={{ color: "var(--ink)", marginBottom: 10 }}>
+              Apply the following to <b>{rows.length}</b> {batchType} deal{rows.length === 1 ? "" : "s"}:
+            </div>
+            <div style={{ border: "1px solid var(--rule)" }}>
+              {enabledKeys.map((k) => (
+                <div key={k} style={{ display: "flex", gap: 10, padding: "6px 10px", borderTop: "1px solid var(--rule)", fontSize: 12 }}>
+                  <span style={{ minWidth: 130, color: "var(--ink-3)", textTransform: "uppercase", fontSize: 10, letterSpacing: "0.08em", paddingTop: 2 }}>{labelFor(k)}</span>
+                  <span style={{ color: "var(--ink)" }}>{summarizeVal(k)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px]" style={{ color: "var(--ink-3)", marginTop: 8 }}>
+              This writes to the live ledger as an amendment (all-or-nothing — if any row was changed since the page loaded, nothing changes).
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ margin: "0 18px 12px", padding: "8px 10px", background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00", fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3" style={{ padding: "12px 18px", borderTop: "1px solid var(--rule)" }}>
+          {phase === "edit" && (
+            <>
+              <button type="button" onClick={onClose} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink)", cursor: "pointer" }}>Cancel</button>
+              <button type="button" disabled={!canApply} onClick={() => setPhase("preview")} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: canApply ? "var(--ink)" : "transparent", color: canApply ? "var(--paper)" : "var(--ink-4)", border: `1px solid ${canApply ? "var(--ink)" : "var(--rule)"}`, cursor: canApply ? "pointer" : "not-allowed" }}>Review →</button>
+            </>
+          )}
+          {phase === "preview" && (
+            <>
+              <button type="button" onClick={() => setPhase("edit")} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink)", cursor: "pointer" }}>← Back</button>
+              <button type="button" onClick={apply} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)", cursor: "pointer" }}>Apply to {rows.length}</button>
+            </>
+          )}
+          {phase === "applying" && (
+            <span className="text-[11px] tracking-[0.18em] uppercase" style={{ color: "var(--ink-3)" }}>Applying…</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -5363,6 +5730,11 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
   const filtersActive = filtersDifferFromDefault(filters, DEAL_ENQUIRY_INITIAL_FILTERS);
   const hasDateFilter = !!(filters.trade_date_from || filters.trade_date_to || filters.value_date_from || filters.value_date_to);
   const [showDates, setShowDates] = useState(false);
+  // Portfolio is opt-in (demoted from the default row): shown when the user
+  // toggles it on, or auto-shown when a portfolio is already selected so an
+  // active filter is never hidden.
+  const hasPortfolioFilter = filters.portfolios.length > 0;
+  const [showPortfolio, setShowPortfolio] = useState(false);
   // Pagination — page is 1-indexed; resets to 1 whenever filters change.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -5426,6 +5798,49 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
   );
   const pageStart = totalRows === 0 ? 0 : (page - 1) * pageSize + 1;
   const pageEnd = Math.min(page * pageSize, totalRows);
+
+  // ── Bulk-amend selection (one product type at a time) ──────────────
+  const [selectedRefs, setSelectedRefs] = useState(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkNote, setBulkNote] = useState(null);
+  // Clear selection whenever the data set changes underneath us.
+  useEffect(() => { setSelectedRefs(new Set()); setBulkNote(null); }, [filters, refreshSignal]);
+  const rowsByRef = useMemo(() => {
+    const m = new Map();
+    for (const r of rows) m.set(r.deal_ref, r);
+    return m;
+  }, [rows]);
+  const selectedRows = useMemo(
+    () => [...selectedRefs].map((ref) => rowsByRef.get(ref)).filter(Boolean),
+    [selectedRefs, rowsByRef]
+  );
+  const batchType = selectedRows.length ? selectedRows[0].txn_type : null;
+  const toggleRowSel = (r) => {
+    setBulkNote(null);
+    setSelectedRefs((prev) => {
+      const next = new Set(prev);
+      if (next.has(r.deal_ref)) { next.delete(r.deal_ref); return next; }
+      if (next.size > 0) {
+        const firstType = rowsByRef.get([...next][0])?.txn_type;
+        if (firstType && r.txn_type !== firstType) return prev;  // ignore cross-type
+      }
+      next.add(r.deal_ref);
+      return next;
+    });
+  };
+  const clearSel = () => { setSelectedRefs(new Set()); };
+  const pageSelType = batchType || (pagedRows[0] && pagedRows[0].txn_type) || null;
+  const pageSelectable = pagedRows.filter((r) => r.txn_type === pageSelType);
+  const allPageSel = pageSelectable.length > 0 && pageSelectable.every((r) => selectedRefs.has(r.deal_ref));
+  const toggleSelAllPage = () => {
+    setBulkNote(null);
+    setSelectedRefs((prev) => {
+      const next = new Set(prev);
+      if (allPageSel) { for (const r of pageSelectable) next.delete(r.deal_ref); }
+      else { for (const r of pageSelectable) next.add(r.deal_ref); }
+      return next;
+    });
+  };
 
   const exportCsv = useCallback(() => {
     const csv = rowsToCsv(filteredRows, DEAL_CSV_COLUMNS);
@@ -5508,6 +5923,20 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
           <div className="flex items-center gap-5">
             <button
               type="button"
+              onClick={() => setShowPortfolio((s) => !s)}
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "var(--ink)",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              {(showPortfolio || hasPortfolioFilter) ? "− Hide portfolio" : "+ Portfolio"}
+            </button>
+            <button
+              type="button"
               onClick={() => setShowDates((s) => !s)}
               className="text-[10px] tracking-[0.06em] uppercase transition-colors"
               style={{
@@ -5578,11 +6007,11 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               marginBottom: 10,
             }}
           >
-            {/* Portfolio — searchable picker + refined white chip stack.
-                Uses PortfolioPicker (same component the booking form uses)
-                so the user gets type-to-filter over the full refdata list.
-                value="" keeps the picker in "add another" mode after each
-                pick; chips below are the actual selection. */}
+            {/* Portfolio — opt-in under the "+ Portfolio" header toggle
+                (auto-shown when a portfolio is already selected, so an
+                active filter is never hidden). Uses PortfolioPicker for
+                type-to-filter over the full refdata list. */}
+            {(showPortfolio || hasPortfolioFilter) && (
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
               <span>Portfolio</span>
               <PortfolioPicker
@@ -5639,6 +6068,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                 </div>
               )}
             </div>
+            )}
 
             {/* Status — chip toggles. Default = all except CANCELLED. */}
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
@@ -5718,6 +6148,22 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         )}
       </div>
 
+      {(selectedRows.length > 0 || bulkNote) && (
+        <div className="flex items-center gap-4 mb-2" style={{ padding: "8px 12px", background: "var(--paper-2)", border: "1px solid var(--rule)" }}>
+          {selectedRows.length > 0 ? (
+            <>
+              <span className="text-[11px]" style={{ color: "var(--ink)" }}>
+                <b>{selectedRows.length}</b> selected · {batchType}
+              </span>
+              <button type="button" onClick={() => setBulkOpen(true)} className="text-[10px] tracking-[0.18em] uppercase px-3 py-1" style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)", cursor: "pointer" }}>Bulk edit</button>
+              <button type="button" onClick={clearSel} className="text-[10px] tracking-[0.18em] uppercase px-3 py-1" style={{ background: "transparent", color: "var(--ink)", border: "1px solid var(--rule)", cursor: "pointer" }}>Clear</button>
+            </>
+          ) : (
+            <span className="text-[11px]" style={{ color: "var(--signal-buy)" }}>{bulkNote}</span>
+          )}
+        </div>
+      )}
+
       <div className="overflow-x-auto" style={{ border: `1px solid ${BB.border}` }}>
         <table className="w-full text-[12px]" style={{ fontFamily: "var(--font-mono)", borderCollapse: "collapse", minWidth: "100%" }}>
           <thead className="sticky top-0 z-10">
@@ -5725,6 +6171,15 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
               className="text-[10px] uppercase tracking-[0.06em] font-medium"
               style={{ background: "var(--paper-2)", color: "var(--ink-3)", borderBottom: "1px solid var(--rule)" }}
             >
+              <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Select">
+                <input
+                  type="checkbox"
+                  checked={allPageSel}
+                  onChange={toggleSelAllPage}
+                  disabled={pageSelectable.length === 0}
+                  title="Select all on this page (one product type)"
+                />
+              </th>
               <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Refresh">
                 <button
                   type="button"
@@ -5783,7 +6238,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={15} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -5803,7 +6258,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
             )}
             {!loading && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={14} className="px-3 py-6 text-center opacity-60">
+                <td colSpan={15} className="px-3 py-6 text-center opacity-60">
                   {rows.length === 0
                     ? "No live cashflow or spot bookings yet."
                     : filtersActive
@@ -5824,6 +6279,15 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                   onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = altBg}
                 >
+                  <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedRefs.has(r.deal_ref)}
+                      onChange={() => toggleRowSel(r)}
+                      disabled={batchType != null && r.txn_type !== batchType}
+                      title={batchType != null && r.txn_type !== batchType ? `Clear selection to switch to ${r.txn_type}` : "Select for bulk edit"}
+                    />
+                  </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     <button
                       type="button"
@@ -6005,6 +6469,21 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         onClose={() => setShowTradeBookingsModal(false)}
         onError={setError}
       />
+
+      {bulkOpen && selectedRows.length > 0 && (
+        <BulkEditDealsModal
+          batchType={batchType}
+          rows={selectedRows}
+          onClose={() => setBulkOpen(false)}
+          onApplied={(n) => {
+            setBulkOpen(false);
+            clearSel();
+            setBulkNote(`${n} ${String(batchType).toLowerCase()} deal${n === 1 ? "" : "s"} updated`);
+            fetchRecent();
+          }}
+          BB={BB}
+        />
+      )}
     </div>
   );
 }
@@ -6636,7 +7115,8 @@ const LOAN_ENQUIRY_INITIAL_FILTERS = {
   statuses: ["LIVE"],
   loan_types: ["INTERNAL"],
   // Dynamic text filters keyed by LOAN_DYNAMIC_FIELDS[].key.
-  dynamic: {},
+  // deal_ref is seeded so the Deal Reference search shows by default.
+  dynamic: { deal_ref: "" },
 };
 
 function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
@@ -6675,6 +7155,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
   const filtersActive = filtersDifferFromDefault(filters, LOAN_ENQUIRY_INITIAL_FILTERS);
+  // Portfolio is opt-in (demoted from the default row): shown on toggle, or
+  // auto-shown when a portfolio is already selected so it's never hidden.
+  const hasPortfolioFilter = filters.portfolios.length > 0;
+  const [showPortfolio, setShowPortfolio] = useState(false);
   // Pagination — page is 1-indexed; resets to 1 whenever filters change.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -7833,6 +8317,20 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <div className="flex items-center gap-5">
             <button
               type="button"
+              onClick={() => setShowPortfolio((s) => !s)}
+              className="text-[10px] tracking-[0.22em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: "#1f1f1f",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              {(showPortfolio || hasPortfolioFilter) ? "− Hide portfolio" : "+ Portfolio"}
+            </button>
+            <button
+              type="button"
               onClick={clearFilters}
               disabled={!filtersActive}
               className="text-[10px] tracking-[0.22em] uppercase transition-colors"
@@ -7886,11 +8384,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               marginBottom: 10,
             }}
           >
-            {/* Portfolio — searchable picker + refined white chip stack.
-                Parallel to Deal Enquiry: uses PortfolioPicker so users
-                can type to filter the full refdata list. value="" keeps
-                the picker in "add another" mode; chips below carry the
-                actual selection. */}
+            {/* Portfolio — opt-in under the "+ Portfolio" header toggle
+                (auto-shown when a portfolio is already selected). Uses
+                PortfolioPicker for type-to-filter over the refdata list. */}
+            {(showPortfolio || hasPortfolioFilter) && (
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
               <span>Portfolio</span>
               <PortfolioPicker
@@ -7947,6 +8444,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 </div>
               )}
             </div>
+            )}
 
             {/* Status — chip toggles */}
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
@@ -10792,28 +11290,29 @@ export default function TradeBookingForm() {
                   </div>
                 ) : LOAN_RELATED_CF_TYPES.has(form.cf_type) ? (
                   (() => {
-                    // Picker options = live loans (effective_end IS NULL)
-                    // filtered to the cashflow's selected portfolio. If
-                    // portfolio is blank we show everything so the user
-                    // can preview; the filter snaps once they pick one.
-                    const onPortfolio = form.portfolio
-                      ? liveLoans.filter((l) => String(l.portfolio_id) === String(form.portfolio))
-                      : liveLoans;
-                    // Asset-compatibility filter: once one loan is picked,
-                    // hide loans whose locking-asset would conflict (so the
-                    // user can never end up in a "mixed assets" state).
-                    // cfAssetLock=="" means no lock yet (zero picked or all
-                    // candidate loans agree); cfAssetLock=null means
-                    // existing picks already conflict — show everything so
-                    // the user can recover by removing one.
+                    // Picker options = ALL live loans (effective_end IS NULL),
+                    // across every portfolio. The free-text search in the
+                    // LoanPicker is how the user finds one. (Previously gated
+                    // to the cashflow's selected portfolio; that gate was
+                    // dropped per request so loans on any portfolio are
+                    // searchable.)
+                    const allLive = liveLoans;
+                    // Asset-compatibility filter: once one loan is picked, hide
+                    // loans whose locking-asset would conflict (so the user can
+                    // never end up in a "mixed assets" state). Only narrows
+                    // AFTER the first pick — the initial search still spans all
+                    // live loans. cfAssetLock=="" means no lock yet (zero picked
+                    // or all candidates agree); cfAssetLock=null means existing
+                    // picks already conflict — show everything so the user can
+                    // recover by removing one.
                     const useInterest =
                       form.cf_type === "INTEREST EXPENSE" || form.cf_type === "INTEREST INCOME";
                     const eligible = cfAssetLock
-                      ? onPortfolio.filter((l) => {
+                      ? allLive.filter((l) => {
                           const a = useInterest ? l.interest_asset : l.principal_asset;
                           return a === cfAssetLock;
                         })
-                      : onPortfolio;
+                      : allLive;
                     return (
                       <Field label="Linked Loans (optional)" span={8}>
                         <LoanPicker
@@ -10821,14 +11320,14 @@ export default function TradeBookingForm() {
                           onChange={(next) => set("cf_loan_deal_refs", next)}
                           options={eligible}
                         />
-                        {form.portfolio && eligible.length === 0 && (
+                        {eligible.length === 0 && (
                           <div
                             className="text-[10px] mt-1 font-mono"
                             style={{ color: BB.mute || "#6a665c" }}
                           >
                             {cfAssetLock
-                              ? `No more live loans on portfolio ${form.portfolio} in ${cfAssetLock}.`
-                              : `No live loans on portfolio ${form.portfolio} — book the loan first if needed.`}
+                              ? `No more live loans in ${cfAssetLock}.`
+                              : `No live loans found — book the loan first if needed.`}
                           </div>
                         )}
                         {cfAssetLock === null && (
