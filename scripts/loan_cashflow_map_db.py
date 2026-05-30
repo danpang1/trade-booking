@@ -161,7 +161,9 @@ LOAN_MAPPINGS_JSON_AGG = (
     "  'direction', cf.direction,"
     "  'amount', cf.amount,"
     "  'asset', cf.asset,"
-    "  'trade_date', cf.trade_date"  # used by the loan-schedule modal for chronological ordering
+    "  'trade_date', cf.trade_date,"  # used by the loan-schedule modal for chronological ordering
+    "  'value_date', cf.value_date,"   # shown in the Linked Cashflows table
+    "  'txid_reference', cf.txid_reference"  # shown in the Linked Cashflows table
     # Filter the aggregate on (a) a real mapping row AND (b) the
     # joined cashflow actually surviving the JOIN predicate (live +
     # not cancelled). Without the cf.deal_ref guard a cancelled
