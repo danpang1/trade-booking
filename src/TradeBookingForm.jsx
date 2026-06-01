@@ -3290,9 +3290,7 @@ function buildLoanScheduleRows(loan, accrualDate) {
   });
   const dayBasis = parseInt(loan.day_count_basis, 10) || 365;
   const rate = (parseFloat(loan.interest_rate_pa_pct) || 0) / 100;
-  const principalAmount = parseFloat(loan.principal_amount) || 0;
   const accrualEndMs = accrualDate ? Date.parse(accrualDate + "T23:59:59Z") : null;
-  const tradeStartMs = loan.trade_date ? _parseLoanTradeDateMs(loan.trade_date) : null;
 
   const events = [];
   for (const m of mappings) {
@@ -3307,10 +3305,10 @@ function buildLoanScheduleRows(loan, accrualDate) {
       events.push({ ms, type: "INTEREST", amount: Math.abs(parseFloat(m.amount) || 0), dealRef: m.counterpart_deal_ref });
     }
   }
-  // Fallback: no disburse cashflow linked → synthesise from the loan row itself.
-  if (!events.some((e) => e.type === "DISBURSE") && tradeStartMs != null) {
-    events.push({ ms: tradeStartMs, type: "DISBURSE", amount: principalAmount, dealRef: null });
-  }
+  // No synthesis fallback: the schedule is driven purely by linked
+  // disbursement cashflows (loan_cashflow_map). A loan with no linked
+  // PRINCIPAL_DISBURSE cashflow shows an empty schedule — same rule as
+  // the Linked Cashflows tab, so the two tabs stay consistent.
   events.sort((a, b) => a.ms - b.ms);
   if (events.length === 0) return [];
 
@@ -3804,6 +3802,7 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
               {[
                 ["Direction", loan.direction],
                 ["Loan Type", loan.loan_type],
+                ["Order ID", loan.order_id || "—"],
                 ["Counterparty", loan.counterparty || "—"],
                 ["Counterparty ID", loan.counterparty_id || "—"],
                 ["Principal", `${fmt(loan.principal_amount)} ${loan.principal_asset}`],
@@ -5080,6 +5079,7 @@ const LOAN_CSV_COLUMNS = [
   { header: "Hedged Qty",         key: "hedged_qty" },
   { header: "Hedged Asset",       key: "hedged_asset" },
   { header: "Status",             key: "status" },
+  { header: "Order ID",           key: "order_id" },
 ];
 
 // Page-size options for the enquiry tables — used by both DealEnquiry and
@@ -5687,6 +5687,300 @@ function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
             </div>
             <div className="text-[10px]" style={{ color: "var(--ink-3)", marginTop: 8 }}>
               This writes to the live ledger as an amendment (all-or-nothing — if any row was changed since the page loaded, nothing changes).
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ margin: "0 18px 12px", padding: "8px 10px", background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00", fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3" style={{ padding: "12px 18px", borderTop: "1px solid var(--rule)" }}>
+          {phase === "edit" && (
+            <>
+              <button type="button" onClick={onClose} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink)", cursor: "pointer" }}>Cancel</button>
+              <button type="button" disabled={!canApply} onClick={() => setPhase("preview")} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: canApply ? "var(--ink)" : "transparent", color: canApply ? "var(--paper)" : "var(--ink-4)", border: `1px solid ${canApply ? "var(--ink)" : "var(--rule)"}`, cursor: canApply ? "pointer" : "not-allowed" }}>Review →</button>
+            </>
+          )}
+          {phase === "preview" && (
+            <>
+              <button type="button" onClick={() => setPhase("edit")} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink)", cursor: "pointer" }}>← Back</button>
+              <button type="button" onClick={apply} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)", cursor: "pointer" }}>Apply to {rows.length}</button>
+            </>
+          )}
+          {phase === "applying" && (
+            <span className="text-[11px] tracking-[0.18em] uppercase" style={{ color: "var(--ink-3)" }}>Applying…</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Loan bulk-edit ──────────────────────────────────────────────────
+// Mirrors the Deal Enquiry bulk-amend, but loans are a single product
+// type so there's no batchType branching. Curated editable fields only —
+// economic terms (principal, direction, interest asset/type, trade date)
+// are excluded, same spirit as the cashflow/spot field lists.
+const LOAN_BULK_FIELD_DEFS = [
+  { key: "status", label: "Status" },
+  { key: "maturity_date", label: "Maturity Date" },
+  { key: "counterparty", label: "Counterparty" },
+  { key: "order_id", label: "Order ID" },
+  { key: "portfolio", label: "Portfolio" },
+  { key: "interest", label: "Interest" },
+  { key: "wht_pct", label: "WHT %" },
+  { key: "comment", label: "Comment" },
+];
+
+// Build a full loan amend payload for one row, overriding only the enabled
+// fields. The row carries the complete DB record (from /api/loan/recent), so
+// untouched fields pass straight through. expected_effective_start drives the
+// server-side optimistic-concurrency check.
+function buildLoanBulkAmendPayload(row, enabled, vals) {
+  const has = (k) => enabled.has(k);
+  const p = {
+    deal_ref: row.deal_ref,
+    expected_effective_start: row.effective_start,
+    order_id: row.order_id ?? null,
+    direction: row.direction,
+    loan_type: row.loan_type,
+    entity: row.entity ?? null,
+    portfolio_id: String(row.portfolio_id),
+    portfolio_name: row.portfolio_name ?? null,
+    counterparty_id: row.counterparty_id ?? null,
+    counterparty: row.counterparty ?? null,
+    principal_asset: row.principal_asset,
+    principal_amount: row.principal_amount,
+    interest_asset: row.interest_asset ?? null,
+    interest_rate_pa_pct: row.interest_rate_pa_pct ?? null,
+    interest_type: row.interest_type,
+    day_count_basis: row.day_count_basis ?? null,
+    floating_benchmark: row.floating_benchmark ?? null,
+    collateral_asset: row.collateral_asset ?? null,
+    collateral_amount: row.collateral_amount ?? null,
+    is_hedged: row.is_hedged ?? false,
+    hedged_asset: row.hedged_asset ?? null,
+    hedged_qty: row.hedged_qty ?? null,
+    hedged_price: row.hedged_price ?? null,
+    hedge_proceeds_asset: row.hedge_proceeds_asset ?? null,
+    hedge_proceeds_amount: row.hedge_proceeds_amount ?? null,
+    trade_date: row.trade_date,
+    maturity_date: row.maturity_date ?? null,
+    status: row.status,
+    comment: row.comment ?? null,
+    wht_pct: row.wht_pct ?? null,
+  };
+  if (has("status")) p.status = vals.status;
+  if (has("maturity_date")) p.maturity_date = vals.maturity_date || null;
+  if (has("order_id")) p.order_id = vals.order_id || null;
+  if (has("comment")) p.comment = vals.comment ?? null;
+  if (has("interest")) {
+    // Type + rate + benchmark are set together so the floating-benchmark
+    // consistency rule holds (benchmark null unless FLOATING). Rate is
+    // optional — left blank, the row's existing rate passes through.
+    const t = vals.interest_type || "FIXED";
+    p.interest_type = t;
+    if (vals.interest_rate_pa_pct != null && vals.interest_rate_pa_pct !== "") {
+      p.interest_rate_pa_pct = vals.interest_rate_pa_pct;
+    }
+    p.floating_benchmark = t === "FLOATING" ? (vals.floating_benchmark || null) : null;
+  }
+  if (has("wht_pct")) p.wht_pct = vals.wht_pct;
+  if (has("counterparty")) {
+    p.counterparty = vals.counterparty;
+    p.counterparty_id = formatCID(COUNTERPARTY_IDS[vals.counterparty]);
+  }
+  if (has("portfolio")) {
+    const port = PORTFOLIOS.find((x) => String(x.number) === String(vals.portfolio));
+    p.portfolio_id = String(vals.portfolio);
+    if (port) { p.portfolio_name = port.name; p.entity = port.entity; }
+  }
+  return p;
+}
+
+// Modal: pick fields + values, preview, then apply to every selected loan.
+function BulkEditLoansModal({ rows, onClose, onApplied, BB }) {
+  const [enabled, setEnabled] = useState(() => new Set());
+  const [vals, setVals] = useState({});
+  const [phase, setPhase] = useState("edit");   // edit | preview | applying
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const defs = LOAN_BULK_FIELD_DEFS;
+  const toggleField = (k) => setEnabled((prev) => {
+    const next = new Set(prev);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const setVal = (k, v) => setVals((s) => ({ ...s, [k]: v }));
+
+  const fieldReady = (k) => {
+    const v = vals[k];
+    // "" is a valid clear for these (blank comment / clear order id / open-term maturity)
+    if (k === "comment" || k === "order_id" || k === "maturity_date") return v != null;
+    // Interest is always ready: type defaults to FIXED, rate is optional
+    // (blank keeps current), and FLOATING does not require a benchmark.
+    if (k === "interest") return true;
+    return v != null && v !== "";
+  };
+  const enabledKeys = [...enabled];
+  const canApply = enabledKeys.length > 0 && enabledKeys.every(fieldReady);
+
+  const labelFor = (k) => (defs.find((d) => d.key === k) || {}).label || k;
+  const summarizeVal = (k) => {
+    const v = vals[k];
+    if (k === "portfolio") {
+      const port = PORTFOLIOS.find((x) => String(x.number) === String(v));
+      return port ? `${port.number} — ${port.name}` : String(v);
+    }
+    if (k === "maturity_date") return v ? String(v) : "(open-term — cleared)";
+    if (k === "order_id") return v === "" ? "(cleared)" : String(v);
+    if (k === "comment") return v === "" ? "(blank)" : String(v);
+    if (k === "interest") {
+      const t = vals.interest_type || "FIXED";
+      const rate = (vals.interest_rate_pa_pct != null && vals.interest_rate_pa_pct !== "")
+        ? `${vals.interest_rate_pa_pct}%` : "rate unchanged";
+      if (t === "FLOATING") {
+        const bm = (vals.floating_benchmark && String(vals.floating_benchmark).trim()) ? vals.floating_benchmark : "no benchmark";
+        return `FLOATING · ${bm} · ${rate}`;
+      }
+      return `FIXED · ${rate}`;
+    }
+    return String(v);
+  };
+
+  const apply = async () => {
+    setError(null);
+    setPhase("applying");
+    const payloads = rows.map((r) => buildLoanBulkAmendPayload(r, enabled, vals));
+    try {
+      const res = await api("/api/loan/amend/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: payloads }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+      if (j.ok) { onApplied(j.count || payloads.length); return; }
+      setError(j.deal_ref ? `${j.error} (${j.deal_ref})` : (j.error || `HTTP ${res.status}`));
+      setPhase("preview");
+    } catch (e) {
+      setError(String(e && e.message ? e.message : e));
+      setPhase("preview");
+    }
+  };
+
+  const renderEditor = (k) => {
+    if (k === "status") return (
+      <Select value={vals.status || ""} onChange={(e) => setVal("status", e.target.value)}>
+        <option value="">— pick status —</option>
+        {LOAN_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+      </Select>
+    );
+    if (k === "maturity_date") return (
+      <DateTimePicker24 value={vals.maturity_date || ""} onChange={(v) => setVal("maturity_date", v)} />
+    );
+    if (k === "counterparty") return (
+      <CounterpartyPicker value={vals.counterparty || ""} onChange={(v) => setVal("counterparty", v)} options={COUNTERPARTIES} />
+    );
+    if (k === "portfolio") return (
+      <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={PORTFOLIOS} />
+    );
+    if (k === "order_id") return (
+      <Input type="text" value={vals.order_id || ""} onChange={(e) => setVal("order_id", e.target.value)} placeholder="Binance order id (blank clears)" />
+    );
+    if (k === "interest") return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ flex: "0 0 130px" }}>
+            <Select
+              value={vals.interest_type || "FIXED"}
+              onChange={(e) => {
+                const t = e.target.value;
+                // Switching away from FLOATING clears the benchmark so the
+                // consistency rule (benchmark null unless FLOATING) holds.
+                setVals((s) => ({ ...s, interest_type: t, ...(t !== "FLOATING" ? { floating_benchmark: "" } : {}) }));
+              }}
+            >
+              <option value="FIXED">FIXED</option>
+              <option value="FLOATING">FLOATING</option>
+            </Select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Input type="number" step="any" value={vals.interest_rate_pa_pct ?? ""} onChange={(e) => setVal("interest_rate_pa_pct", e.target.value)} placeholder="Rate % p.a. — blank keeps current" />
+          </div>
+        </div>
+        {(vals.interest_type || "FIXED") === "FLOATING" && (
+          <Input type="text" value={vals.floating_benchmark || ""} onChange={(e) => setVal("floating_benchmark", e.target.value)} placeholder="Floating benchmark — optional (e.g. SOFR + 200bps)" />
+        )}
+      </div>
+    );
+    if (k === "wht_pct") return (
+      <Input type="number" step="any" value={vals.wht_pct ?? ""} onChange={(e) => setVal("wht_pct", e.target.value)} placeholder="e.g. 10" />
+    );
+    if (k === "comment") return (
+      <Input type="text" value={vals.comment || ""} onChange={(e) => setVal("comment", e.target.value)} placeholder="New comment (applies to all selected)" />
+    );
+    return null;
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(13,13,13,0.45)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 80 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "var(--paper)", border: "1px solid var(--rule)", width: 760, maxWidth: "94vw", maxHeight: "82vh", overflowY: "auto", fontFamily: "var(--font-mono)", boxShadow: "0 24px 64px rgba(13,13,13,0.25)" }}>
+        <div className="flex items-center justify-between" style={{ padding: "12px 18px", borderBottom: "1px solid var(--rule)" }}>
+          <div className="text-[15px]" style={{ fontFamily: "var(--font-serif)", color: "var(--ink)" }}>
+            Bulk edit · {rows.length} loan{rows.length === 1 ? "" : "s"}
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1, color: "var(--ink-3)" }} aria-label="Close">×</button>
+        </div>
+
+        {phase !== "preview" && (
+          <div style={{ padding: "8px 18px 14px" }}>
+            <div className="text-[10px] tracking-[0.06em] uppercase" style={{ color: "var(--ink-3)", padding: "6px 0" }}>
+              Tick the fields to change — only ticked fields are applied
+            </div>
+            {defs.map((d) => {
+              const on = enabled.has(d.key);
+              return (
+                <div key={d.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "8px 0", borderTop: "1px solid var(--rule)" }}>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 150, paddingTop: 6, cursor: "pointer", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: on ? "var(--ink)" : "var(--ink-3)" }}>
+                    <input type="checkbox" checked={on} onChange={() => toggleField(d.key)} />
+                    {d.label}
+                  </label>
+                  <div style={{ flex: 1, opacity: on ? 1 : 0.4, pointerEvents: on ? "auto" : "none" }}>
+                    {renderEditor(d.key)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {phase === "preview" && (
+          <div style={{ padding: "14px 18px" }}>
+            <div className="text-[12px]" style={{ color: "var(--ink)", marginBottom: 10 }}>
+              Apply the following to <b>{rows.length}</b> loan{rows.length === 1 ? "" : "s"}:
+            </div>
+            <div style={{ border: "1px solid var(--rule)" }}>
+              {enabledKeys.map((k) => (
+                <div key={k} style={{ display: "flex", gap: 10, padding: "6px 10px", borderTop: "1px solid var(--rule)", fontSize: 12 }}>
+                  <span style={{ minWidth: 130, color: "var(--ink-3)", textTransform: "uppercase", fontSize: 10, letterSpacing: "0.08em", paddingTop: 2 }}>{labelFor(k)}</span>
+                  <span style={{ color: "var(--ink)" }}>{summarizeVal(k)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px]" style={{ color: "var(--ink-3)", marginTop: 8 }}>
+              This writes to the live ledger as an amendment (all-or-nothing — if any loan was changed since the page loaded, nothing changes).
             </div>
           </div>
         )}
@@ -7144,6 +7438,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   // vipLtvError holds the failure reason so the tile sub-line can say why.
   const [vipLtv, setVipLtv] = useState(null);
   const [vipLtvError, setVipLtvError] = useState(null);
+  const [vipRefreshing, setVipRefreshing] = useState(false);
   // Expand/collapse + lazily-loaded collateral & trigger detail for the
   // VIP LTV tile (mirrors the active-loan type tiles' expand behaviour).
   const [vipExpanded, setVipExpanded] = useState(false);
@@ -7210,6 +7505,41 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     downloadCsv(`loan-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
 
+  // ── Bulk-amend selection (loans are a single product type, so no
+  // batchType branching like Deal Enquiry needs) ──────────────────────
+  const [selectedRefs, setSelectedRefs] = useState(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkNote, setBulkNote] = useState(null);
+  useEffect(() => { setSelectedRefs(new Set()); setBulkNote(null); }, [filters, refreshSignal]);
+  const rowsByRef = useMemo(() => {
+    const m = new Map();
+    for (const r of rows) m.set(r.deal_ref, r);
+    return m;
+  }, [rows]);
+  const selectedRows = useMemo(
+    () => [...selectedRefs].map((ref) => rowsByRef.get(ref)).filter(Boolean),
+    [selectedRefs, rowsByRef]
+  );
+  const toggleRowSel = (r) => {
+    setBulkNote(null);
+    setSelectedRefs((prev) => {
+      const next = new Set(prev);
+      if (next.has(r.deal_ref)) next.delete(r.deal_ref); else next.add(r.deal_ref);
+      return next;
+    });
+  };
+  const clearSel = () => setSelectedRefs(new Set());
+  const allPageSel = pagedRows.length > 0 && pagedRows.every((r) => selectedRefs.has(r.deal_ref));
+  const toggleSelAllPage = () => {
+    setBulkNote(null);
+    setSelectedRefs((prev) => {
+      const next = new Set(prev);
+      if (allPageSel) { for (const r of pagedRows) next.delete(r.deal_ref); }
+      else { for (const r of pagedRows) next.add(r.deal_ref); }
+      return next;
+    });
+  };
+
   const [showLoanScheduleModal, setShowLoanScheduleModal] = useState(false);
 
   const fetchRecent = useCallback(async () => {
@@ -7259,54 +7589,91 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     })();
   }, []);
 
-  // Binance VIP loan LTV — one-shot fetch on mount, served from the
-  // server's 60s cache. Failures land in vipLtvError so the tile can show
-  // "unavailable" with a reason rather than a stale or fake number.
+  // Binance VIP loan — live ticker, 5s. Keeps the whole VIP block in sync:
+  //   • collapsed → poll the cheap /ltv summary (headline % only is visible).
+  //   • expanded  → poll the heavier /detail, and feed BOTH the headline
+  //     (vipLtv) and the collateral basket (vipDetail) from that single
+  //     response. The script stamps one `as_of` shared by the summary and the
+  //     basket, so everything on screen carries the same timestamp and moves
+  //     together — no two-fetch drift.
+  // We only make the heavy /detail calls while the panel is open (no point
+  // refreshing a basket nobody's looking at) and pause entirely while the
+  // browser tab is hidden, resuming with an immediate pull on return. A
+  // failed poll only sets the error flag — it never clears vipLtv/vipDetail,
+  // so the panel keeps the last good values (flagged "stale" in render)
+  // instead of blanking on a single transient hiccup. The server's 5s caches
+  // coalesce concurrent viewers into ~one Binance call per window.
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    const pull = async () => {
       try {
-        const r = await api("/api/binance/vip-loan/ltv");
+        const url = vipExpanded ? "/api/binance/vip-loan/detail" : "/api/binance/vip-loan/ltv";
+        const r = await api(url);
         const j = await r.json();
+        if (cancelled) return;
         if (!r.ok || !j || j.ok !== true) {
           setVipLtvError(j && j.error ? String(j.error) : `HTTP ${r.status}`);
+          if (vipExpanded) setVipDetailLoading(false);
           return;
         }
         setVipLtv(j);
         setVipLtvError(null);
+        if (vipExpanded) {
+          setVipDetail(j);
+          setVipDetailError(j.detail_error || null);
+          setVipDetailLoading(false);
+        }
       } catch (e) {
-        setVipLtvError(String(e && e.message ? e.message : e));
+        if (!cancelled) {
+          setVipLtvError(String(e && e.message ? e.message : e));
+          if (vipExpanded) setVipDetailLoading(false);
+        }
       }
-    })();
+    };
+    const timer = setInterval(() => { if (!document.hidden) pull(); }, 5000);
+    const onVisible = () => { if (!document.hidden) pull(); };
+    document.addEventListener("visibilitychange", onVisible);
+    pull(); // immediate pull on mount / when expand state flips
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [vipExpanded]);
+
+  // Manual (instant) refresh for the VIP panel — re-pulls both the LTV and the
+  // collateral/trigger detail (each subject to the server's 5s cache). The 5s
+  // poll already keeps these live; this is the explicit ↻ for an on-demand pull.
+  const refreshVip = useCallback(async () => {
+    setVipRefreshing(true);
+    try {
+      const r = await api("/api/binance/vip-loan/ltv");
+      const j = await r.json();
+      if (!r.ok || !j || j.ok !== true) setVipLtvError(j && j.error ? String(j.error) : `HTTP ${r.status}`);
+      else { setVipLtv(j); setVipLtvError(null); }
+    } catch (e) { setVipLtvError(String(e && e.message ? e.message : e)); }
+    setVipDetailLoading(true);
+    try {
+      const r = await api("/api/binance/vip-loan/detail");
+      const j = await r.json();
+      if (!r.ok || !j || j.ok !== true) setVipDetailError(j && j.error ? String(j.error) : `HTTP ${r.status}`);
+      else { setVipDetail(j); setVipDetailError(null); }
+    } catch (e) { setVipDetailError(String(e && e.message ? e.message : e)); }
+    finally { setVipDetailLoading(false); setVipRefreshing(false); }
   }, []);
 
-  // Toggle the VIP LTV tile's collateral/trigger panel. Detail is fetched
-  // lazily the first time the tile is expanded (the endpoint makes extra,
-  // heavier Binance calls), then reused from state on subsequent toggles.
+  // Toggle the VIP collateral/trigger panel. The actual fetch is owned by the
+  // 5s poll effect (which switches to /detail while expanded); here we just
+  // flip the flag and, on a first open with no detail yet, raise the loading
+  // spinner so the panel shows "Loading…" until the effect's immediate pull
+  // lands. The effect clears the flag on the first detail response.
   const toggleVipExpand = useCallback(() => {
     setVipExpanded((open) => {
       const next = !open;
-      if (next && vipDetail === null && !vipDetailLoading) {
-        setVipDetailLoading(true);
-        (async () => {
-          try {
-            const r = await api("/api/binance/vip-loan/detail");
-            const j = await r.json();
-            if (!r.ok || !j || j.ok !== true) {
-              setVipDetailError(j && j.error ? String(j.error) : `HTTP ${r.status}`);
-            } else {
-              setVipDetail(j);
-              setVipDetailError(j.detail_error || null);
-            }
-          } catch (e) {
-            setVipDetailError(String(e && e.message ? e.message : e));
-          } finally {
-            setVipDetailLoading(false);
-          }
-        })();
-      }
+      if (next && vipDetail === null) setVipDetailLoading(true);
       return next;
     });
-  }, [vipDetail, vipDetailLoading]);
+  }, [vipDetail]);
 
   // KPI strip + exposure breakdown — always reads the unfiltered `rows`
   // so totals reflect book state, not whatever filter is applied below.
@@ -7573,7 +7940,10 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       : "var(--ink-4)";
                     let value;
                     let sub;
-                    if (vipLtvError) {
+                    // On a transient poll failure we keep the last good value
+                    // (vipLtv) and just flag it stale — only blank to "—" when
+                    // we have no value at all (cold start that never succeeded).
+                    if (vipLtvError && !vipLtv) {
                       value = <span style={{ color: "var(--ink-4)" }}>—</span>;
                       sub = "unavailable";
                     } else if (!vipLtv) {
@@ -7584,11 +7954,13 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       sub = "no ongoing loans";
                     } else {
                       value = <span style={{ color: accent }}>{vipLtv.ltv_pct.toFixed(2)}%</span>;
-                      sub = "MC 77% · Liq 91%";
+                      sub = vipLtvError ? "stale · retrying" : "MC 77% · Liq 91%";
                     }
-                    const title = vipLtvError
+                    const title = (vipLtvError && !vipLtv)
                       ? `LTV unavailable: ${vipLtvError}`
-                      : (vipLtv && vipLtv.order_count)
+                      : vipLtvError
+                        ? `last good LTV — refresh failing: ${vipLtvError}`
+                        : (vipLtv && vipLtv.order_count)
                         ? `${vipLtv.order_count} ongoing order${vipLtv.order_count === 1 ? "" : "s"} · as of ${vipLtv.as_of} · click for collateral & triggers`
                         : "Binance VIP loan LTV — click for collateral & triggers";
                     return tile(accent, "Binance VIP · LTV", value, sub, {
@@ -7650,9 +8022,28 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 10, color: "var(--ink-4)" }}>
+                  {/* LTV % and its timestamp both come from the live 5s poll
+                      (vipLtv), so they tick together. The collateral basket
+                      below is a slower on-demand snapshot — it carries its own
+                      "collateral as of" label (d.as_of) so the two aren't
+                      conflated. */}
                   {ltvPct != null ? `current LTV ${ltvPct.toFixed(2)}%` : ""}
-                  {d && d.as_of ? ` · as of ${String(d.as_of).slice(11, 19)} UTC` : ""}
+                  {vipLtv && vipLtv.as_of ? ` · as of ${String(vipLtv.as_of).slice(11, 19)} UTC` : ""}
                 </span>
+                <button
+                  type="button"
+                  onClick={refreshVip}
+                  disabled={vipRefreshing}
+                  title="Refresh LTV & collateral"
+                  style={{
+                    background: "transparent", border: "1px solid var(--rule)",
+                    color: "var(--ink-3)", cursor: vipRefreshing ? "wait" : "pointer",
+                    fontSize: 11, lineHeight: 1, padding: "2px 6px",
+                    display: "inline-flex", alignItems: "center",
+                  }}
+                >
+                  <span aria-hidden className={vipRefreshing ? "animate-spin" : ""} style={{ fontSize: 11 }}>↻</span>
+                </button>
                 {d && (() => {
                   // Build the shareable plain-text block (mirrors the format
                   // the user pastes into chat). Filters dust (< $1k) from the
@@ -8529,6 +8920,22 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         </div>
       </div>
 
+      {(selectedRows.length > 0 || bulkNote) && (
+        <div className="flex items-center gap-4 mb-2" style={{ padding: "8px 12px", background: "var(--paper-2)", border: "1px solid var(--rule)" }}>
+          {selectedRows.length > 0 ? (
+            <>
+              <span className="text-[11px]" style={{ color: "var(--ink)" }}>
+                <b>{selectedRows.length}</b> loan{selectedRows.length === 1 ? "" : "s"} selected
+              </span>
+              <button type="button" onClick={() => setBulkOpen(true)} className="text-[10px] tracking-[0.18em] uppercase px-3 py-1" style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)", cursor: "pointer" }}>Bulk edit</button>
+              <button type="button" onClick={clearSel} className="text-[10px] tracking-[0.18em] uppercase px-3 py-1" style={{ background: "transparent", color: "var(--ink)", border: "1px solid var(--rule)", cursor: "pointer" }}>Clear</button>
+            </>
+          ) : (
+            <span className="text-[11px]" style={{ color: "var(--signal-buy)" }}>{bulkNote}</span>
+          )}
+        </div>
+      )}
+
       {/* ─── Table ─── */}
       <div className="overflow-x-auto" style={{ border: `1px solid ${BB.border}` }}>
         <table className="w-full text-[12px]" style={{ fontFamily: "var(--font-mono)" }}>
@@ -8577,6 +8984,15 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   >↻</span>
                 </button>
               </th>
+              <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Select">
+                <input
+                  type="checkbox"
+                  checked={allPageSel}
+                  onChange={toggleSelAllPage}
+                  disabled={pagedRows.length === 0}
+                  title="Select all on this page"
+                />
+              </th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Updated Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Direction</th>
@@ -8590,13 +9006,14 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-3 py-2 text-center whitespace-nowrap">Interest Hedged</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Hedged Till</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">Order ID</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Linked Cashflows</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 && !loading && (
               <tr>
-                <td colSpan={15} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
+                <td colSpan={17} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
                   {rows.length === 0 ? "No loans booked yet." : "No rows match the current filters."}
                 </td>
               </tr>
@@ -8614,6 +9031,14 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = altBg}
                 >
+                  <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedRefs.has(r.deal_ref)}
+                      onChange={() => toggleRowSel(r)}
+                      title="Select for bulk edit"
+                    />
+                  </td>
                   <td className="px-2 py-1.5 whitespace-nowrap text-center">
                     <button
                       type="button"
@@ -8731,6 +9156,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                       }}
                     >{r.status}</span>
                   </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap font-mono">
+                    {r.order_id ? r.order_id : <span style={{ opacity: 0.4 }}>—</span>}
+                  </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
                     {mapCount === 0 ? (
                       <span style={{ opacity: 0.55 }}>—</span>
@@ -8769,6 +9197,20 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         onClose={() => setShowLoanScheduleModal(false)}
         onError={setError}
       />
+
+      {bulkOpen && selectedRows.length > 0 && (
+        <BulkEditLoansModal
+          rows={selectedRows}
+          onClose={() => setBulkOpen(false)}
+          onApplied={(n) => {
+            setBulkOpen(false);
+            clearSel();
+            setBulkNote(`${n} loan${n === 1 ? "" : "s"} updated`);
+            fetchRecent();
+          }}
+          BB={BB}
+        />
+      )}
     </div>
   );
 }
