@@ -23,6 +23,7 @@ const CASHFLOW_HISTORY_SCRIPT  = resolve(__dirname, "scripts", "cashflow_history
 const CASHFLOW_TX_FETCH_SCRIPT = resolve(__dirname, "scripts", "cashflow_tx_fetch.py");
 const LOAN_INSERT_SCRIPT  = resolve(__dirname, "scripts", "loan_insert.py");
 const LOAN_AMEND_SCRIPT   = resolve(__dirname, "scripts", "loan_amend.py");
+const LOAN_AMEND_BATCH_SCRIPT = resolve(__dirname, "scripts", "loan_amend_batch.py");
 const LOAN_RECENT_SCRIPT  = resolve(__dirname, "scripts", "loan_recent.py");
 const LOAN_GET_SCRIPT     = resolve(__dirname, "scripts", "loan_get.py");
 const LOAN_HISTORY_SCRIPT = resolve(__dirname, "scripts", "loan_history.py");
@@ -398,13 +399,19 @@ function logRequest(req, res, t0) {
 
 // ── HTTP server: serves /tokens.json (for non-Vite hosts) + /api/health ──
 // In-memory cache for the Binance VIP loan LTV. The ongoing-orders call is
-// a signed, rate-limited Binance request; the LTV moves slowly, so we serve
-// a cached payload for up to 60s. Shared per worker — each replica of the
-// prod HA pair keeps its own, which is fine (and halves Binance hits vs.
-// no cache). { ts: epoch_ms, payload: object } | null.
+// a signed, rate-limited Binance request. Shared per worker — each replica
+// of the prod HA pair keeps its own. { ts: epoch_ms, payload: object } | null.
+//
+// The whole VIP block is a 5s live ticker: the front-end polls the summary
+// every 5s, and the detail (collateral + triggers) every 5s while its panel
+// is open. Both caches therefore use a short 5s window — long enough only to
+// COALESCE concurrent viewers into ~one Binance call per 5s rather than one
+// per open tab, not to add staleness. The detail path is heavier (3–4 Binance
+// calls per miss) but is only hit while a user has the panel expanded.
 let binanceLtvCache = null;
 let binanceLtvDetailCache = null;
-const BINANCE_LTV_TTL_MS = 60_000;
+const BINANCE_LTV_SUMMARY_TTL_MS = 5_000;
+const BINANCE_LTV_DETAIL_TTL_MS = 5_000;
 
 const server = createServer(async (req, res) => {
   const t0 = Date.now();
@@ -957,6 +964,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/loan/amend/batch  — bulk amend, all-or-nothing (one txn)
+  if (req.url === "/api/loan/amend/batch" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampBatchUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(LOAN_AMEND_BATCH_SCRIPT, stampedBody);
+    console.log(`[loan] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // GET /api/loan/recent?limit=N
   if (req.method === "GET" && req.url.startsWith("/api/loan/recent")) {
     const url = new URL(req.url, "http://localhost");
@@ -983,13 +1004,14 @@ const server = createServer(async (req, res) => {
 
   // GET /api/binance/vip-loan/ltv
   // Returns the current Binance VIP loan LTV (worst-case across ongoing
-  // orders) for the Loan Enquiry tile. Served from a 60s in-memory cache
-  // to avoid hammering Binance's signed, rate-limited endpoint on every
-  // page load. Only successful payloads are cached; errors fall through
-  // so a transient Binance hiccup self-heals on the next request.
+  // orders) for the Loan Enquiry tile. Served from a short 5s in-memory cache
+  // (BINANCE_LTV_SUMMARY_TTL_MS): the tile polls every 5s, so the cache just
+  // coalesces concurrent viewers into ~one Binance call per window rather than
+  // adding latency. Only successful payloads are cached; errors fall through
+  // so a transient Binance hiccup self-heals on the next poll.
   if (req.method === "GET" && req.url.startsWith("/api/binance/vip-loan/ltv")) {
     const now = Date.now();
-    if (binanceLtvCache && now - binanceLtvCache.ts < BINANCE_LTV_TTL_MS) {
+    if (binanceLtvCache && now - binanceLtvCache.ts < BINANCE_LTV_SUMMARY_TTL_MS) {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(binanceLtvCache.payload));
@@ -1008,12 +1030,13 @@ const server = createServer(async (req, res) => {
   // GET /api/binance/vip-loan/detail
   // Heavier sibling of /ltv: adds the collateral basket (per-asset qty,
   // price, haircut) plus margin-call & liquidation trigger prices. Fetched
-  // lazily when the user expands the LTV tile, so the extra Binance calls
-  // (spot account + collateral/haircut tiers) only run on demand. Own 60s
-  // cache. Passes {detail:true} to the same script.
+  // polled every 5s while the user has the LTV tile expanded, so the extra
+  // Binance calls (spot account + collateral/haircut tiers) run only while the
+  // panel is open. Own 5s cache (BINANCE_LTV_DETAIL_TTL_MS) so concurrent
+  // viewers coalesce. Passes {detail:true} to the same script.
   if (req.method === "GET" && req.url.startsWith("/api/binance/vip-loan/detail")) {
     const now = Date.now();
-    if (binanceLtvDetailCache && now - binanceLtvDetailCache.ts < BINANCE_LTV_TTL_MS) {
+    if (binanceLtvDetailCache && now - binanceLtvDetailCache.ts < BINANCE_LTV_DETAIL_TTL_MS) {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(binanceLtvDetailCache.payload));
