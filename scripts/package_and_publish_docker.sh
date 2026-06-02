@@ -47,6 +47,23 @@ function run_trivy_scan () {
 	log "Trivy scan completed for ${image}"
 }
 
+# Push the image, unless its tag already exists in the (immutable) ECR
+# repository. ECR rejects an overwrite of an existing tag, which would
+# fail the whole step; a commit to main that doesn't bump the chart
+# version (refdata syncs, online edits) would otherwise red the pipeline.
+# Reuses docker's existing registry auth (same auth `docker push` uses),
+# so it needs no extra aws profile. If the inspect fails for any reason
+# other than a missing tag, we fall through to push — no worse than before.
+function publish_or_skip () {
+	local ref="${AWS_ECR_URL}/${IMAGE_NAME}:${VERSION}"
+	if docker manifest inspect "${ref}" > /dev/null 2>&1; then
+		log "Tag ${VERSION} already exists in ${IMAGE_NAME} (immutable repo) — skipping push. Bump the chart version to publish new content."
+		return 0
+	fi
+	log "Publishing docker ${IMAGE_NAME}:${VERSION}"
+	docker push "${ref}"
+}
+
 function package_and_publish_docker () {
 	log "Packaging docker ${IMAGE_NAME}:${VERSION}"
 	IMAGE_BUILD_ARGS_FINAL="${IMAGE_BUILD_ARGS}"
@@ -60,8 +77,7 @@ function package_and_publish_docker () {
 
 	run_trivy_scan "${AWS_ECR_URL}/${IMAGE_NAME}:${VERSION}"
 
-	log "Publishing docker ${IMAGE_NAME}:${VERSION}"
-	docker push "${AWS_ECR_URL}/${IMAGE_NAME}:${VERSION}"
+	publish_or_skip
 
 	log "Finished packaging and publishing docker ${IMAGE_NAME}:${VERSION}"
 }
@@ -102,8 +118,7 @@ function package_and_publish_dockerx () {
 
 	run_trivy_scan "${AWS_ECR_URL}/${IMAGE_NAME}:${VERSION}"
 
-	log "Publishing docker ${IMAGE_NAME}:${VERSION}"
-	docker push "${AWS_ECR_URL}/${IMAGE_NAME}:${VERSION}"
+	publish_or_skip
 
 	log "Finished packaging and publishing docker ${IMAGE_NAME}:${VERSION}"
 }
