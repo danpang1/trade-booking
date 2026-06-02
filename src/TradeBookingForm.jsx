@@ -6845,28 +6845,34 @@ function _scheduleCommentsByTrigger(loan) {
 function loanToScheduleCsvRows(loan, accrualDate) {
   const periods = buildLoanScheduleRows(loan, accrualDate);
   if (periods.length === 0) return [];
-  const principal = loan.principal_amount;
   const rateUsd = loan.hedged_price;
-  const amountUsd =
-    principal != null && rateUsd != null && rateUsd !== ""
-      ? Number(principal) * Number(rateUsd)
-      : "";
+  const hasRateUsd = rateUsd != null && rateUsd !== "";
   const whtPct = (parseFloat(loan.wht_pct) || 0) / 100;
   const commentsByTrigger = _scheduleCommentsByTrigger(loan);
   return periods.map((p) => {
     const accrued = p.accrued || 0;
     const wht = accrued * whtPct;
-    const hedgeUsdt =
-      rateUsd != null && rateUsd !== "" ? accrued * Number(rateUsd) : "";
+    const hedgeUsdt = hasRateUsd ? accrued * Number(rateUsd) : "";
+    // AMOUNT / AMOUNT (USD) follow the per-period outstanding notional,
+    // mirroring the on-screen schedule's Amount column (p.notional).
+    // Previously these used the loan-level principal_amount, so they did
+    // not tie for loans with partial repayments, where notional declines
+    // period over period.
+    const amountUsd = hasRateUsd ? Number(p.notional) * Number(rateUsd) : "";
     const comment = (p.triggerDealRef && commentsByTrigger[p.triggerDealRef]) || "";
     return {
       "DEAL REFERENCE": loan.deal_ref || "",
       "START DATE": _fmtScheduleDateForCsv(p.startMs),
-      "MATURITY DATE": loan.maturity_date ? String(loan.maturity_date).slice(0, 10) : "",
+      // Per-period end date (next principal event), mirroring the on-screen
+      // schedule's Maturity Date column (p.endMs). The last/live tranche has
+      // endMs == null → blank, same as the "LIVE" row on screen. Previously
+      // this wrote the loan-level maturity_date, which is NULL for open-term
+      // loans and constant otherwise, so it never tied to the schedule view.
+      "MATURITY DATE": _fmtScheduleDateForCsv(p.endMs),
       "PORTFOLIO": loan.portfolio_id || "",
       "PORTFOLIO NAME": loan.portfolio_name || "",
       "ASSET": loan.principal_asset || "",
-      "AMOUNT": _fmtNumberForCsv(principal),
+      "AMOUNT": _fmtNumberForCsv(p.notional),
       "RATE (USD)": _fmtNumberForCsv(rateUsd),
       "AMOUNT (USD)": _fmtNumberForCsv(amountUsd),
       "INTEREST CALCULATION DATE": _fmtScheduleDateForCsv(p.calcEndMs),
