@@ -571,6 +571,11 @@
       "portfolio": "TOKKA LABS - SSB - CDA SOL"
     },
     {
+      "name": "TRADING_01@NATIVECORE",
+      "venue": "NATIVE CORE",
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
+    },
+    {
       "name": "TRADING_01@SOSOVALUE",
       "venue": "SOSOVALUE",
       "portfolio": "TOKKA LABS - MM LP - SOSOVALUE"
@@ -663,6 +668,11 @@
     {
       "name": "TRADING_07@HYPERLIQUID",
       "venue": "HYPERLIQUID",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TRADING01@LIGHTER",
+      "venue": "LIGHTER",
       "portfolio": "TOKKA LABS - SSB - CDA SOL"
     }
   ],
@@ -1301,6 +1311,11 @@
       "name": "WALLET_COWSWAP_EVM_GAS_03",
       "venue": "METAMASK",
       "portfolio": "TOKKA LABS - SSB - COWSWAP"
+    },
+    {
+      "name": "WALLET_CRB_EVM_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
     },
     {
       "name": "WALLET_DBSDEX_EVM_01",

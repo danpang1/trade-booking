@@ -939,6 +939,7 @@ export const TOKENS = [
   { symbol: "wNXM", name: "WRAPPED NXM" },
   { symbol: "WOJAK", name: "WOJAK COIN" },
   { symbol: "WOO", name: "WOO" },
+  { symbol: "WPAXG", name: "WRAPPED PAXOS GOLD" },
   { symbol: "wS", name: "WRAPPED SONIC" },
   { symbol: "wstETH", name: "WRAPPED LIQUID STAKED ETHER 2.0" },
   { symbol: "WTAO", name: "Wrapped TAO" },

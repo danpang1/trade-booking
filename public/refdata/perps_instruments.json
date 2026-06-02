@@ -9288,6 +9288,18 @@
     "ccxt_id": "QNT/USDT:USDT"
   },
   {
+    "id": 11964428,
+    "venue": "BINANCE",
+    "type": "PERP",
+    "symbol": "QNTX-PERP",
+    "base": "QNTX",
+    "quote": "USDT",
+    "settlement": "USDT",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "QNTX/USDT:USDT"
+  },
+  {
     "id": 10481334,
     "venue": "BINANCE",
     "type": "PERP",
@@ -59496,6 +59508,18 @@
     "ccxt_id": "QNT/USDT:USDT"
   },
   {
+    "id": 11970499,
+    "venue": "GATE",
+    "type": "PERP",
+    "symbol": "QNTX-PERP",
+    "base": "QNTX",
+    "quote": "USDT",
+    "settlement": "USDT",
+    "contract_size": 0.1,
+    "max_leverage": null,
+    "ccxt_id": "QNTX/USDT:USDT"
+  },
+  {
     "id": 3248387,
     "venue": "GATE",
     "type": "PERP",
@@ -69132,6 +69156,18 @@
     "ccxt_id": "xyz:CRWV/USD:USDC"
   },
   {
+    "id": 11974261,
+    "venue": "HYPERLIQUID",
+    "type": "PERP",
+    "symbol": "XYZ:DELL-PERP",
+    "base": "XYZ:DELL",
+    "quote": "USD",
+    "settlement": "USDC",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "xyz:DELL/USD:USDC"
+  },
+  {
     "id": 10148427,
     "venue": "HYPERLIQUID",
     "type": "PERP",
@@ -77412,6 +77448,18 @@
     "ccxt_id": "DEGEN/USDT:USDT"
   },
   {
+    "id": 11966957,
+    "venue": "KUCOIN",
+    "type": "PERP",
+    "symbol": "DELL-PERP",
+    "base": "DELL",
+    "quote": "USDT",
+    "settlement": "USDT",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "DELL/USDT:USDT"
+  },
+  {
     "id": 4632,
     "venue": "KUCOIN",
     "type": "PERP",
@@ -82932,6 +82980,18 @@
     "ccxt_id": "QNT/USDT:USDT"
   },
   {
+    "id": 11966958,
+    "venue": "KUCOIN",
+    "type": "PERP",
+    "symbol": "QNTX-PERP",
+    "base": "QNTX",
+    "quote": "USDT",
+    "settlement": "USDT",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "QNTX/USDT:USDT"
+  },
+  {
     "id": 10579810,
     "venue": "KUCOIN",
     "type": "PERP",
@@ -87264,6 +87324,18 @@
     "ccxt_id": "BNB/USDC:USDC"
   },
   {
+    "id": 11956711,
+    "venue": "LIGHTER",
+    "type": "PERP",
+    "symbol": "BOT-PERP",
+    "base": "BOT",
+    "quote": "USDC",
+    "settlement": "USDC",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "BOT/USDC:USDC"
+  },
+  {
     "id": 9437072,
     "venue": "LIGHTER",
     "type": "PERP",
@@ -87418,6 +87490,18 @@
     "contract_size": 1.0,
     "max_leverage": null,
     "ccxt_id": "DASH/USDC:USDC"
+  },
+  {
+    "id": 11978473,
+    "venue": "LIGHTER",
+    "type": "PERP",
+    "symbol": "DELL-PERP",
+    "base": "DELL",
+    "quote": "USDC",
+    "settlement": "USDC",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "DELL/USDC:USDC"
   },
   {
     "id": 9437076,
@@ -88426,6 +88510,18 @@
     "contract_size": 1.0,
     "max_leverage": null,
     "ccxt_id": "RIVER/USDC:USDC"
+  },
+  {
+    "id": 11956712,
+    "venue": "LIGHTER",
+    "type": "PERP",
+    "symbol": "RKLB-PERP",
+    "base": "RKLB",
+    "quote": "USDC",
+    "settlement": "USDC",
+    "contract_size": 1.0,
+    "max_leverage": null,
+    "ccxt_id": "RKLB/USDC:USDC"
   },
   {
     "id": 9437074,
@@ -103822,6 +103918,18 @@
     "contract_size": 0.01,
     "max_leverage": null,
     "ccxt_id": "QNT/USDT:USDT"
+  },
+  {
+    "id": 11959962,
+    "venue": "MEXC",
+    "type": "PERP",
+    "symbol": "QNTSTOCK-PERP",
+    "base": "QNTSTOCK",
+    "quote": "USDT",
+    "settlement": "USDT",
+    "contract_size": 0.01,
+    "max_leverage": null,
+    "ccxt_id": "QNTSTOCK/USDT:USDT"
   },
   {
     "id": 5760511,
