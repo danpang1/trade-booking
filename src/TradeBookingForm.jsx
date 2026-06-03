@@ -4093,6 +4093,16 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                           <td className="px-2 py-1.5 whitespace-nowrap">
                             {p.endMs != null ? (
                               <span style={{ color: "#0d0d0d" }}>{fmtScheduleDate(p.endMs)}</span>
+                            ) : (loan?.status === "MATURED" && loan?.maturity_date) ? (
+                              // Open tranche on a MATURED loan: the loan closed at its
+                              // contractual maturity even if principal wasn't fully repaid
+                              // (e.g. a small residual). Show the maturity date in a blue
+                              // matured chip instead of the green LIVE badge.
+                              <span
+                                className="px-1.5 py-0.5 text-[10px]"
+                                style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}
+                                title="Loan matured — residual principal not fully repaid"
+                              >{fmtScheduleDate(_parseLoanTradeDateMs(loan.maturity_date))}</span>
                             ) : (
                               <span
                                 className="px-1.5 py-0.5 text-[10px]"
@@ -5620,7 +5630,7 @@ function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
     let alive = true;
     (async () => {
       try {
-        const r = await api("/api/loan/recent?limit=200");
+        const r = await api("/api/loan/recent?limit=2000");
         const j = await r.json();
         if (alive && j.ok && Array.isArray(j.rows)) setLiveLoans(j.rows);
       } catch { /* picker just shows empty */ }
@@ -6951,7 +6961,13 @@ function loanToScheduleCsvRows(loan, accrualDate) {
       // endMs == null → blank, same as the "LIVE" row on screen. Previously
       // this wrote the loan-level maturity_date, which is NULL for open-term
       // loans and constant otherwise, so it never tied to the schedule view.
-      "MATURITY DATE": _fmtScheduleDateForCsv(p.endMs),
+      // Exception: on a MATURED loan the open tranche shows the contractual
+      // maturity_date (mirrors the blue matured chip on screen).
+      "MATURITY DATE": p.endMs != null
+        ? _fmtScheduleDateForCsv(p.endMs)
+        : (loan.status === "MATURED" && loan.maturity_date)
+          ? _fmtScheduleDateForCsv(_parseLoanTradeDateMs(loan.maturity_date))
+          : "",
       "PORTFOLIO": loan.portfolio_id || "",
       "PORTFOLIO NAME": loan.portfolio_name || "",
       "ASSET": loan.principal_asset || "",
@@ -7255,7 +7271,7 @@ function Dashboard() {
     (async () => {
       setLoading(true);
       try {
-        const r = await api("/api/loan/recent?limit=200");
+        const r = await api("/api/loan/recent?limit=2000");
         const j = await r.json();
         if (!j || !j.ok) throw new Error((j && j.error) || "loan fetch failed");
         setRows(j.rows || []);
@@ -7645,7 +7661,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
     setLoading(true);
     setError(null);
     try {
-      const r = await api("/api/loan/recent?limit=200");
+      const r = await api("/api/loan/recent?limit=2000");
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || "fetch failed");
       setRows(j.rows || []);
@@ -9518,7 +9534,7 @@ export default function TradeBookingForm() {
   const [liveLoans, setLiveLoans] = useState([]);
   const refreshLiveLoans = useCallback(async () => {
     try {
-      const r = await api("/api/loan/recent?limit=200", { cache: "no-cache" });
+      const r = await api("/api/loan/recent?limit=2000", { cache: "no-cache" });
       const j = await r.json();
       if (j.ok && Array.isArray(j.rows)) setLiveLoans(j.rows);
     } catch { /* server might be down — picker just shows empty */ }
