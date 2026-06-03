@@ -473,7 +473,7 @@
     {
       "name": "TK810@BINANCE",
       "venue": "BINANCE",
-      "portfolio": "TOKKA LABS - CLOB - DBS DDEX MM"
+      "portfolio": "TOKKA LABS - TREASURY"
     },
     {
       "name": "TK811@BINANCE",
@@ -1733,6 +1733,11 @@
       "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
     },
     {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_38",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
       "name": "WALLET_PMMCROSSCHAIN_OWNER_01",
       "venue": "METAMASK",
       "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
@@ -1946,6 +1951,11 @@
       "name": "WALLET_TEST_ORDERLY_01",
       "venue": "METAMASK",
       "portfolio": "TOKKA LABS - INNOVATION LAB - TESTING"
+    },
+    {
+      "name": "WALLET_TREASURY_AXELAR_01",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - TREASURY"
     },
     {
       "name": "WALLET_TREASURY_B2C2_INTERMEDIATE_ETH",
@@ -2254,6 +2264,11 @@
       "owner": "BEBOP LTD"
     },
     {
+      "name": "BITGET_CDAALTS_BSC_01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "BITGET"
+    },
+    {
       "name": "BITGLOBAL WBTC ADDRESS",
       "venue": "ETHEREUM",
       "owner": "BITGO TRUST COMPANY INC"
@@ -2367,6 +2382,11 @@
       "name": "COINROUTES MONTHLY PAYMENT",
       "venue": "ETHEREUM",
       "owner": "COINROUTES INC"
+    },
+    {
+      "name": "COLB_COMPLIANCE_01",
+      "venue": "BINANCE SMART CHAIN",
+      "owner": "COLB ASSET SA"
     },
     {
       "name": "COW_TEST_ROHAN_01",
