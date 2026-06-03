@@ -3397,11 +3397,12 @@ function buildLoanScheduleRows(loan, accrualDate) {
     // close on a date with no interest cashflow.
     const netPaid = endMs != null ? (interestByMs.get(endMs) || 0) : 0;
 
-    // triggerType / triggerAmount describe the principal EVENT that opens
-    // this segment (the action), distinct from `notional` which is the
-    // running outstanding balance after it. Rendered as the schedule's
-    // Action + Action Amount columns; INTEREST never opens a segment so it
-    // only ever appears here as DISBURSE/REPAY.
+    // triggerType / triggerAmount describe the EVENT that opens this
+    // segment (the action), distinct from `notional` which is the running
+    // outstanding balance after it. Rendered as the schedule's Action +
+    // Action Amount columns. DISBURSE/REPAY move the principal; INTEREST
+    // payments also open a segment (notional unchanged) and are labelled
+    // "Interest Payment".
     periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef, triggerType: ev.type, triggerAmount: ev.amount });
   }
   return periods;
@@ -3887,8 +3888,15 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
               Principal · {principalAsset || "—"}
             </div>
             <div className="space-y-1.5">
+              {/* Loan Amount = the agreed/original principal (contract
+                  principal_amount), distinct from Total Drawn which sums
+                  every drawdown including later top-ups. */}
               <div className="flex items-baseline justify-between text-[12px] font-mono">
-                <span style={{ color: "#6a665c" }}>Disbursed</span>
+                <span style={{ color: "#6a665c" }}>Loan Amount</span>
+                <span>{fmt(principalAmount)}</span>
+              </div>
+              <div className="flex items-baseline justify-between text-[12px] font-mono">
+                <span style={{ color: "#6a665c" }}>Total Drawn</span>
                 <span>{fmt(disbursed)}</span>
               </div>
               <div className="flex items-baseline justify-between text-[12px] font-mono">
@@ -4098,20 +4106,24 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
                           <td className="px-2 py-1.5 whitespace-nowrap">{loan.portfolio_name || "—"}</td>
                           {/* Asset */}
                           <td className="px-2 py-1.5 whitespace-nowrap">{principalAsset || "—"}</td>
-                          {/* Action — the principal event that opens this segment.
-                              DISBURSE/REPAY only (interest never opens a segment). */}
+                          {/* Action — the event that opens this segment:
+                              DISBURSE / REPAY (principal) or INTEREST (payment). */}
                           <td className="px-2 py-1.5 whitespace-nowrap">
                             {p.triggerType === "DISBURSE" ? (
                               <span className="px-1.5 py-0.5 text-[10px]" style={{ background: "#eef5e9", border: "1px solid #7ea66a", color: "#1f4a1f" }}>Loan Drawn</span>
                             ) : p.triggerType === "REPAY" ? (
                               <span className="px-1.5 py-0.5 text-[10px]" style={{ background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00" }}>Loan Repayment</span>
+                            ) : p.triggerType === "INTEREST" ? (
+                              <span className="px-1.5 py-0.5 text-[10px]" style={{ background: "#eef0f6", border: "1px solid #c8cde0", color: "#1f63ea" }}>Interest Payment</span>
                             ) : dash}
                           </td>
-                          {/* Action Amount — the event's own signed amount (+draw / −repay),
-                              distinct from the running outstanding balance in Amount. */}
-                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: p.triggerType === "REPAY" ? "#7a1f00" : "#1f4a1f" }}>
+                          {/* Action Amount — the event's own signed amount (+draw /
+                              −repay / −interest), distinct from the running outstanding
+                              balance in Amount. Interest is shown in interest_asset. */}
+                          <td className="px-2 py-2 text-right whitespace-nowrap" style={{ color: p.triggerType === "REPAY" ? "#7a1f00" : p.triggerType === "INTEREST" ? "#1f63ea" : "#1f4a1f" }}>
                             {p.triggerType === "DISBURSE" ? `+${fmt(p.triggerAmount)}`
                               : p.triggerType === "REPAY" ? `−${fmt(p.triggerAmount)}`
+                              : p.triggerType === "INTEREST" ? `−${fmt(p.triggerAmount)}`
                               : dash}
                           </td>
                           {/* Amount — running outstanding balance after the action (the aggregate). */}
@@ -6943,13 +6955,14 @@ function loanToScheduleCsvRows(loan, accrualDate) {
       "PORTFOLIO": loan.portfolio_id || "",
       "PORTFOLIO NAME": loan.portfolio_name || "",
       "ASSET": loan.principal_asset || "",
-      // ACTION = the principal event opening this segment; ACTION AMOUNT =
-      // its own signed amount (+draw / -repay), distinct from AMOUNT which
-      // is the running outstanding balance after it. Mirrors the on-screen
-      // Action / Action Amount columns.
+      // ACTION = the event opening this segment; ACTION AMOUNT = its own
+      // signed amount (+draw / -repay / -interest), distinct from AMOUNT
+      // which is the running outstanding balance after it. Mirrors the
+      // on-screen Action / Action Amount columns.
       "ACTION": p.triggerType === "DISBURSE" ? "Loan Drawn"
-        : p.triggerType === "REPAY" ? "Loan Repayment" : "",
-      "ACTION AMOUNT": p.triggerType === "REPAY"
+        : p.triggerType === "REPAY" ? "Loan Repayment"
+        : p.triggerType === "INTEREST" ? "Interest Payment" : "",
+      "ACTION AMOUNT": (p.triggerType === "REPAY" || p.triggerType === "INTEREST")
         ? _fmtNumberForCsv(-(p.triggerAmount || 0))
         : _fmtNumberForCsv(p.triggerAmount || 0),
       "AMOUNT": _fmtNumberForCsv(p.notional),
