@@ -3354,7 +3354,29 @@ function buildLoanScheduleRows(loan, accrualDate) {
     const startMs = i === 0 ? ev.ms : ev.ms + _LOAN_MS_PER_DAY;
     const next = collapsedEvents[i + 1];
     const endMs = next ? next.ms : null;
-    if (notional <= 0) continue;
+    // A repayment that brings the running balance to zero (or below)
+    // doesn't open a new outstanding period. But a bare `continue` here
+    // drops the closing repayment from the schedule entirely — a loan
+    // drawn then fully repaid would show only its "Loan Drawn" row. So
+    // emit a terminal zero-balance row recording the repayment action on
+    // its own date, then skip the normal period-span computation below.
+    if (notional <= 0) {
+      if (ev.type === "REPAY") {
+        periods.push({
+          startMs: ev.ms,
+          endMs: ev.ms,
+          notional: 0,
+          calcEndMs: null,
+          days: 0,
+          accrued: 0,
+          netPaid: interestByMs.get(ev.ms) || 0,
+          triggerDealRef: ev.dealRef,
+          triggerType: ev.type,
+          triggerAmount: ev.amount,
+        });
+      }
+      continue;
+    }
     // Drop the zero-length artifact a same-day event pair produces:
     // when `next` falls on the same date as `ev`, startMs (ev + 1 day)
     // overshoots endMs. The interest on that date is already credited
@@ -9064,6 +9086,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-3 py-2 text-left whitespace-nowrap">Portfolio</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Counterparty</th>
               <th className="px-3 py-2 text-right whitespace-nowrap">Principal</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">Balance</th>
               <th className="px-3 py-2 text-right whitespace-nowrap">Rate</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Start Date</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Maturity</th>
@@ -9077,7 +9100,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           <tbody>
             {filteredRows.length === 0 && !loading && (
               <tr>
-                <td colSpan={17} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
+                <td colSpan={18} className="px-3 py-6 text-center" style={{ color: BB?.mute || "#666" }}>
                   {rows.length === 0 ? "No loans booked yet." : "No rows match the current filters."}
                 </td>
               </tr>
@@ -9087,6 +9110,17 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               const principalFmt = principalNum.toLocaleString("en-US", { maximumFractionDigits: 5 });
               const mapCount = (r.mappings || []).length;
               const mapTotal = (r.mappings || []).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+              // Outstanding drawn = disbursed − repaid (net principal still
+              // owed), mirroring the detail panel's Outstanding line. Sums
+              // PRINCIPAL_DISBURSE (+) and PRINCIPAL_REPAY (−) legs by abs
+              // amount; interest/fee legs are ignored.
+              const disbursedTotal = (r.mappings || []).reduce((s, x) => {
+                const mag = Math.abs(parseFloat(x.amount) || 0);
+                if (x.mapping_type === "PRINCIPAL_DISBURSE") return s + mag;
+                if (x.mapping_type === "PRINCIPAL_REPAY") return s - mag;
+                return s;
+              }, 0);
+              const disbursedFmt = disbursedTotal.toLocaleString("en-US", { maximumFractionDigits: 5 });
               const altBg = idx % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
               return (
                 <tr
@@ -9158,6 +9192,19 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {principalFmt} <span style={{ opacity: 0.7 }}>{r.principal_asset || ""}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {disbursedTotal !== 0 ? (
+                      // Net drawn = disbursed − repaid. Negative means repayments
+                      // with no (or insufficient) matching PRINCIPAL_DISBURSE — a
+                      // missing-drawdown anomaly; surface it in red rather than
+                      // blanking to "—" (which now means only "no principal legs").
+                      <span style={disbursedTotal < 0 ? { color: "var(--signal-sell)" } : undefined}>
+                        {disbursedFmt} <span style={{ opacity: 0.7 }}>{r.principal_asset || ""}</span>
+                      </span>
+                    ) : (
+                      <span style={{ opacity: 0.4 }}>—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {r.interest_rate_pa_pct ?? "—"}% <span style={{ opacity: 0.65 }}>{r.interest_type || ""}</span>
