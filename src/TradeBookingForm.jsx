@@ -3332,6 +3332,19 @@ function buildLoanScheduleRows(loan, accrualDate) {
     return (order[a.type] ?? 99) - (order[b.type] ?? 99);
   });
 
+  // Interest paid, summed per UTC day. A period's interest is whatever
+  // was booked on its closing date (its endMs) — the payment that
+  // settles the tranche that just ended. Keying by ms is what lets a
+  // REPAY and an INTEREST booked on the SAME date land on the period
+  // the repayment closes, rather than the repayment spawning a
+  // zero-day artifact row that carries the interest on its own.
+  const interestByMs = new Map();
+  for (const ev of collapsedEvents) {
+    if (ev.type === "INTEREST") {
+      interestByMs.set(ev.ms, (interestByMs.get(ev.ms) || 0) + ev.amount);
+    }
+  }
+
   const periods = [];
   let notional = 0;
   for (let i = 0; i < collapsedEvents.length; i++) {
@@ -3342,6 +3355,12 @@ function buildLoanScheduleRows(loan, accrualDate) {
     const next = collapsedEvents[i + 1];
     const endMs = next ? next.ms : null;
     if (notional <= 0) continue;
+    // Drop the zero-length artifact a same-day event pair produces:
+    // when `next` falls on the same date as `ev`, startMs (ev + 1 day)
+    // overshoots endMs. The interest on that date is already credited
+    // to the period that ends on it (interestByMs[endMs] below), so
+    // emitting this backwards row would only double-count it.
+    if (endMs != null && endMs < startMs) continue;
 
     const cutoffMs = endMs != null ? endMs : accrualEndMs;
     let days = 0;
@@ -3351,7 +3370,10 @@ function buildLoanScheduleRows(loan, accrualDate) {
       calcEndMs = cutoffMs;
     }
     const accrued = notional * rate * days / dayBasis;
-    const netPaid = next && next.type === "INTEREST" ? next.amount : 0;
+    // Interest settling THIS period = interest booked on its closing
+    // date. 0 for the live tranche (endMs null) and for periods that
+    // close on a date with no interest cashflow.
+    const netPaid = endMs != null ? (interestByMs.get(endMs) || 0) : 0;
 
     periods.push({ startMs, endMs, notional, calcEndMs, days, accrued, netPaid, triggerDealRef: ev.dealRef });
   }
@@ -6789,6 +6811,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
 // through buildLoanScheduleRows, flattens to 20-column CSV, downloads.
 const LOAN_SCHEDULE_COLUMNS = [
   "DEAL REFERENCE",
+  "BORROW AND LOAN",
   "START DATE",
   "MATURITY DATE",
   "PORTFOLIO",
@@ -6862,6 +6885,7 @@ function loanToScheduleCsvRows(loan, accrualDate) {
     const comment = (p.triggerDealRef && commentsByTrigger[p.triggerDealRef]) || "";
     return {
       "DEAL REFERENCE": loan.deal_ref || "",
+      "BORROW AND LOAN": loan.direction || "",
       "START DATE": _fmtScheduleDateForCsv(p.startMs),
       // Per-period end date (next principal event), mirroring the on-screen
       // schedule's Maturity Date column (p.endMs). The last/live tranche has
