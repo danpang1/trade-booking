@@ -3608,57 +3608,18 @@ function LoanScheduleModal({ open, dealRef, state, currentUser, onClose, onAmend
   const hedgeProceedsAmount = parseFloat(loan?.hedge_proceeds_amount) || 0;
   const hedgeMatchesInterestAsset = isHedged && loan?.hedged_asset === loan?.interest_asset;
 
-  const dailyAccrualInterest = (() => {
-    if (rate <= 0 || principalAmount <= 0) return 0;
-    return principalAmount * rate / dayBasis; // interest_asset per day @ full draw
-  })();
-
-  // coverageDays: days the hedge buffer will cover, accounting for
-  // interest already accrued on matured tranches and projecting the
-  // remaining balance against the LIVE tranche's outstanding notional.
-  //
-  //   remainingHedge = hedgedQty − Σ(matured-tranche accrued)
-  //   liveDaily      = liveNotional × rate / dayBasis
-  //   coverageDays   = remainingHedge / liveDaily   (from live-tranche start)
-  //
-  // Null when we can't compute (asset mismatch or no live tranche).
-  // Infinity when rate is 0 (no accrual → buffer never depletes).
-  let coverageDays = null;
-  let coverageEndDate = null;
-  let maturedAccrued = 0;
-  let coverageNotional = principalAmount;
-  let remainingHedge = hedgedQty;
-  if (isHedged && hedgeMatchesInterestAsset) {
-    const lastRow = scheduleRows[scheduleRows.length - 1];
-    const hasLiveTranche = !!lastRow && lastRow.endMs == null;
-    if (hasLiveTranche) {
-      maturedAccrued = scheduleRows
-        .slice(0, -1)
-        .reduce((s, p) => s + (p.accrued || 0), 0);
-      coverageNotional = lastRow.notional;
-      remainingHedge = hedgedQty - maturedAccrued;
-      const liveDaily = coverageNotional * rate / dayBasis;
-      if (liveDaily <= 0) {
-        coverageDays = Infinity;
-      } else if (remainingHedge <= 0) {
-        coverageDays = 0;
-      } else {
-        coverageDays = remainingHedge / liveDaily;
-        if (lastRow.startMs != null && Number.isFinite(coverageDays)) {
-          coverageEndDate = new Date(lastRow.startMs + coverageDays * MS_PER_DAY);
-        }
-      }
-    } else if (dailyAccrualInterest > 0) {
-      // No live tranche (no schedule yet, or fully repaid). Fall back to
-      // the booked-principal projection from the loan's trade_date.
-      coverageDays = hedgedQty / dailyAccrualInterest;
-      if (tradeStartMs != null && Number.isFinite(coverageDays)) {
-        coverageEndDate = new Date(tradeStartMs + coverageDays * MS_PER_DAY);
-      }
-    } else {
-      coverageDays = Infinity;
-    }
-  }
+  // Hedge coverage projection — delegated to the shared
+  // projectHedgeCoverage helper so this panel and the LoanEnquiry grid
+  // compute the identical date and buffer breakdown. Schedule-aware: it
+  // drains the buffer across matured tranches and projects the remainder
+  // against the live tranche's outstanding notional. The accrual date only
+  // sizes the live schedule row; the coverage date is independent of it.
+  const hedgeCoverage = projectHedgeCoverage(loan, accrualDate);
+  const coverageDays = hedgeCoverage.coverageDays;
+  const coverageEndDate = hedgeCoverage.endDate;
+  const maturedAccrued = hedgeCoverage.maturedAccrued;
+  const coverageNotional = hedgeCoverage.coverageNotional;
+  const remainingHedge = hedgeCoverage.remainingHedge;
 
   // Accrued interest converted into the hedge_proceeds_asset using the
   // locked-in hedged_price. Useful when interest accrues in (say) ETH
@@ -4939,33 +4900,106 @@ function fmtTs(iso, len = 16) {
 }
 
 // Forward-looking projection of the interest-hedge coverage end date.
-// Same formula as the LoanScheduleModal hedge panel — shared so the modal
-// and the LoanEnquiry grid can't drift.
+// Schedule-aware: walks the loan's actual disburse/repay schedule (via
+// buildLoanScheduleRows), drains the hedge buffer across matured tranches,
+// and projects the remaining buffer against the LIVE tranche's current
+// outstanding notional from the live-tranche start. This is the single
+// source of truth for hedge coverage — the LoanScheduleModal hedge panel
+// AND the LoanEnquiry grid both call it, so the two can't drift. (They used
+// to: this helper carried a simpler original-principal-from-trade_date
+// formula while the modal had been upgraded to be schedule-aware.)
+//
+// `accrualDate` (optional "YYYY-MM-DD") only sizes the live row inside
+// buildLoanScheduleRows; the coverage end date is independent of it (matured
+// tranches accrue against their own end dates, and the live tranche
+// contributes only its notional + start), so callers may omit it.
 //
 // Inputs are read off a trades_loan row (snake_case fields straight from the
-// API). Returns one of:
+// API, including `mappings`). Returns:
 //   { status: "NONE"     }   – not hedged / no data / asset mismatch
-//   { status: "INFINITE" }   – hedged but rate is 0 (buffer never depletes)
+//   { status: "INFINITE" }   – hedged but accrual is 0 (buffer never depletes)
 //   { status: "PROJECTED", endDate: Date } – endDate computed
-function projectHedgeCoverage(row) {
-  if (!row?.is_hedged) return { status: "NONE" };
-  if (row.hedged_asset && row.interest_asset && row.hedged_asset !== row.interest_asset) {
-    return { status: "NONE" }; // legacy mismatch — can't project
+// and always also { coverageDays, maturedAccrued, coverageNotional,
+// remainingHedge } so the modal can render its buffer breakdown.
+function projectHedgeCoverage(loan, accrualDate) {
+  const MS_PER_DAY = 86400000;
+  const principalAmount = parseFloat(loan?.principal_amount) || 0;
+  const hedgedQty = parseFloat(loan?.hedged_qty) || 0;
+  const none = {
+    status: "NONE",
+    endDate: null,
+    coverageDays: null,
+    maturedAccrued: 0,
+    coverageNotional: principalAmount,
+    remainingHedge: hedgedQty,
+  };
+  if (!loan?.is_hedged) return none;
+  // Mirror the modal's hedgeMatchesInterestAsset gate: only a same-asset
+  // hedge (e.g. ETH loan hedged with ETH) can project a buffer in interest
+  // units. Legacy cross-asset hedges can't.
+  if (loan.hedged_asset !== loan.interest_asset) return none;
+  if (hedgedQty <= 0) return none;
+
+  const dayBasis = parseInt(loan.day_count_basis, 10) || 365;
+  const rate = (parseFloat(loan.interest_rate_pa_pct) || 0) / 100;
+
+  const scheduleRows = buildLoanScheduleRows(loan, accrualDate || null);
+  const lastRow = scheduleRows[scheduleRows.length - 1];
+  const hasLiveTranche = !!lastRow && lastRow.endMs == null;
+
+  let coverageDays = null;
+  let coverageEndDate = null;
+  let maturedAccrued = 0;
+  let coverageNotional = principalAmount;
+  let remainingHedge = hedgedQty;
+
+  if (hasLiveTranche) {
+    maturedAccrued = scheduleRows
+      .slice(0, -1)
+      .reduce((s, p) => s + (p.accrued || 0), 0);
+    coverageNotional = lastRow.notional;
+    remainingHedge = hedgedQty - maturedAccrued;
+    const liveDaily = (coverageNotional * rate) / dayBasis;
+    if (liveDaily <= 0) {
+      coverageDays = Infinity;
+    } else if (remainingHedge <= 0) {
+      coverageDays = 0;
+    } else {
+      coverageDays = remainingHedge / liveDaily;
+      if (lastRow.startMs != null && Number.isFinite(coverageDays)) {
+        coverageEndDate = new Date(lastRow.startMs + coverageDays * MS_PER_DAY);
+      }
+    }
+  } else {
+    // No live tranche (no linked disbursement yet, or fully repaid). Fall
+    // back to the booked-principal projection from the loan's trade_date.
+    const tradeStartMs = loan.trade_date
+      ? Date.parse(String(loan.trade_date).slice(0, 10) + "T00:00:00Z")
+      : NaN;
+    const dailyAccrual = (principalAmount * rate) / dayBasis;
+    if (dailyAccrual <= 0) {
+      coverageDays = Infinity;
+    } else {
+      coverageDays = hedgedQty / dailyAccrual;
+      if (Number.isFinite(tradeStartMs) && Number.isFinite(coverageDays)) {
+        coverageEndDate = new Date(tradeStartMs + coverageDays * MS_PER_DAY);
+      }
+    }
   }
-  const principal = parseFloat(row.principal_amount) || 0;
-  const ratePct = parseFloat(row.interest_rate_pa_pct);
-  const rate = (isFinite(ratePct) ? ratePct : 0) / 100;
-  const dayBasis = parseInt(row.day_count_basis, 10) || 365;
-  const qty = parseFloat(row.hedged_qty) || 0;
-  const startMs = row.trade_date ? Date.parse(row.trade_date) : NaN;
-  if (!Number.isFinite(startMs) || qty <= 0 || principal <= 0) {
-    return { status: "NONE" };
-  }
-  if (rate <= 0) return { status: "INFINITE" };
-  const dailyAccrual = (principal * rate) / dayBasis;
-  if (dailyAccrual <= 0) return { status: "INFINITE" };
-  const days = qty / dailyAccrual;
-  return { status: "PROJECTED", endDate: new Date(startMs + days * 86400000) };
+
+  const status = coverageEndDate
+    ? "PROJECTED"
+    : coverageDays === Infinity
+    ? "INFINITE"
+    : "NONE";
+  return {
+    status,
+    endDate: coverageEndDate,
+    coverageDays,
+    maturedAccrued,
+    coverageNotional,
+    remainingHedge,
+  };
 }
 
 // Per-row summary of mapped counterparts (the other side of the join).
@@ -7528,6 +7562,544 @@ const LOAN_ENQUIRY_INITIAL_FILTERS = {
   dynamic: { deal_ref: "" },
 };
 
+// ─── Binance VIP collateral simulator ────────────────────────────────
+// Stablecoins are held flat in the trigger maths (mirrors the py
+// STABLE_ASSETS frozenset in binance_vip_loan_ltv.py). Kept in sync by
+// hand — if the backend set changes, change this too.
+const VIP_STABLE_ASSETS = new Set(["USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI"]);
+const VIP_MC_LTV = 0.77;
+const VIP_LIQ_LTV = 0.91;
+
+// Pure what-if maths for the VIP collateral basket. Given a simulated
+// loan + basket it returns the recomputed LTV, buffers and per-asset
+// margin-call / liquidation trigger prices. No I/O — unit-testable.
+//
+// Two anchors keep the simulator faithful to the LIVE panel at zero
+// edits, so every change reads as a pure delta:
+//   • LTV — Binance reports currentLTV directly; we never recompute it
+//     from scratch. We scale the reported baseline by the loan ratio and
+//     the inverse collateral-value ratio (LTV ∝ loan / collateral):
+//        simLTV = baseLtv · (loan / baseLoan) · (baseCollateral / collateral)
+//     With no edits loan==baseLoan and collateral==baseCollateral, so
+//     simLTV == baseLtv exactly. Collateral here is raw value (sum of
+//     qty·price) — the same basis the MC/Liq triggers use below.
+//   • MC/Liq px — replicate build_detail.trigger() verbatim on the raw
+//     stable/volatile split, so the baseline reproduces the px already
+//     shown in the panel.
+function simulateVipBasket({ loanUsd, baseLoanUsd, baseLtvPct, baseCollateral, rows }) {
+  let stableValue = 0;
+  let volatileValue = 0;
+  const out = rows.map((r) => {
+    const qty = Number(r.qty) || 0;
+    const price = Number(r.price) || 0;
+    const value = qty * price;
+    if (r.volatile) volatileValue += value;
+    else stableValue += value;
+    return { ...r, value };
+  });
+  const rawCollateral = stableValue + volatileValue;
+
+  // Volatile collateral must fall to multiplier x for LTV to reach the
+  // target; per-asset trigger price = price · x. Stablecoins held flat.
+  const trigger = (targetLtv) => {
+    const required = targetLtv ? loanUsd / targetLtv : 0;
+    const x = volatileValue > 0 ? (required - stableValue) / volatileValue : 1;
+    return { required_collateral: required, multiplier: x, pct_drop: (1 - x) * 100 };
+  };
+  const mc = trigger(VIP_MC_LTV);
+  const liq = trigger(VIP_LIQ_LTV);
+  for (const c of out) {
+    if (c.volatile) {
+      c.mc_price = c.price * mc.multiplier;
+      c.liq_price = c.price * liq.multiplier;
+    } else {
+      c.mc_price = null;
+      c.liq_price = null;
+    }
+  }
+
+  // simLTV anchored to the reported baseline (see header note). Null when
+  // we can't anchor (no baseline LTV, or collateral driven to zero).
+  let ltvPct = null;
+  if (baseLtvPct != null && baseLoanUsd > 0 && baseCollateral > 0 && rawCollateral > 0) {
+    ltvPct = baseLtvPct * (loanUsd / baseLoanUsd) * (baseCollateral / rawCollateral);
+  }
+  const bufMc = ltvPct != null ? VIP_MC_LTV * 100 - ltvPct : null;
+  const bufLiq = ltvPct != null ? VIP_LIQ_LTV * 100 - ltvPct : null;
+
+  return {
+    rows: out, stableValue, volatileValue, rawCollateral,
+    ltvPct, bufMc, bufLiq, marginCall: mc, liquidation: liq,
+  };
+}
+
+// Status accent for a simulated LTV %, mirroring the live tile/panel:
+// healthy → link, ≥71% warn → orange, ≥77% margin-call / ≥91% liq → sell.
+function vipLtvAccent(ltvPct) {
+  if (ltvPct == null) return "var(--ink-3)";
+  if (ltvPct >= VIP_MC_LTV * 100) return "var(--signal-sell)";
+  if (ltvPct >= 71) return "#e8730c";
+  return "var(--signal-link)";
+}
+
+// Thousands-grouped display for a raw numeric input string, kept typing-
+// friendly: preserves a lone leading "−", a trailing dot, and in-progress
+// decimals. Pair with vipStripNum on change so state stays a bare number
+// string (Number() ready) while the field shows e.g. 1,000,000.
+function vipGroupNum(raw) {
+  if (raw === "" || raw == null) return "";
+  let s = String(raw);
+  const neg = s.startsWith("-");
+  if (neg) s = s.slice(1);
+  const dot = s.indexOf(".");
+  let intPart = dot >= 0 ? s.slice(0, dot) : s;
+  const fracPart = dot >= 0 ? s.slice(dot + 1) : null;
+  intPart = intPart.replace(/^0+(?=\d)/, "");
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  let out = grouped === "" ? (fracPart != null ? "0" : "") : grouped;
+  if (fracPart != null) out += "." + fracPart;
+  return (neg ? "-" : "") + out;
+}
+// Strip grouping commas + stray chars from a typed value → bare numeric
+// string ("-1,234.5" → "-1234.5").
+function vipStripNum(v) {
+  return String(v).replace(/,/g, "").replace(/[^0-9.\-]/g, "");
+}
+
+// What-if collateral simulator. Seeds from the LIVE detail snapshot
+// (vipDetail) and lets the user adjust loan + collateral to see the
+// recomputed LTV, buffers and per-asset MC/Liq trigger prices. Purely
+// ephemeral: edits clone the snapshot and never write back; close (or
+// Reset) discards them.
+function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onClose }) {
+  const [loanDeltaStr, setLoanDeltaStr] = useState("");
+  const [simRows, setSimRows] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const rowIdRef = useRef(0);
+
+  // FROZEN baseline snapshot. The panel behind the modal keeps polling
+  // /vip-loan/detail every ~5s; each poll hands us a fresh `detail`
+  // object. If we seeded off that we'd wipe the user's adjustments mid-
+  // edit (qty jumps back to 0). So we snapshot the live detail + reported
+  // LTV ONCE on open (and on explicit Reset) and drive the whole modal
+  // from this frozen copy — background polls no longer touch it.
+  const [snap, setSnap] = useState(null);
+  const seedFrom = useCallback((d, ltvPct) => {
+    const det = d || {};
+    setSnap({ detail: det, ltvPct: ltvPct == null ? null : ltvPct });
+    setLoanDeltaStr("");
+    setSimRows((det.collateral || []).map((c) => ({
+      id: ++rowIdRef.current,
+      asset: c.asset,
+      baseQty: c.qty,        // live qty — read-only
+      deltaQty: "",          // planned add (+) / subtract (−)
+      price: c.price,
+      basePrice: c.price,
+      volatile: !!c.volatile,
+      added: false,
+    })));
+    setCopied(false);
+  }, []);
+
+  // Seed only on the closed→open transition — NOT on subsequent detail
+  // polls (guarded by wasOpenRef). Reset re-snapshots from current live.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) seedFrom(detail, baseLtvPct);
+    wasOpenRef.current = open;
+  }, [open, detail, baseLtvPct, seedFrom]);
+
+  const snapDetail = snap ? snap.detail : null;
+  const snapLtvPct = snap ? snap.ltvPct : null;
+
+  // Baseline raw collateral (the anchor) + baseline loan, both from the
+  // FROZEN snapshot. Prefer the summary's collateral_raw_value; fall back
+  // to summing qty·price so simLTV==baseLtv at rest either way.
+  const baseCollateral = useMemo(() => (
+    snapDetail && snapDetail.summary && snapDetail.summary.collateral_raw_value != null
+      ? snapDetail.summary.collateral_raw_value
+      : (snapDetail && snapDetail.collateral ? snapDetail.collateral : []).reduce(
+          (acc, c) => acc + (Number(c.qty) || 0) * (Number(c.price) || 0), 0,
+        )
+  ), [snapDetail]);
+  const baseLoanUsd = snapDetail && snapDetail.summary ? snapDetail.summary.total_loan_usd : 0;
+
+  // Loan, like each collateral row: frozen base + a signed adjustment,
+  // floored at 0. The Adjust box holds the delta; new loan is derived.
+  const loanDeltaNum = Number(vipStripNum(loanDeltaStr)) || 0;
+  const loanUsd = Math.max(0, baseLoanUsd + loanDeltaNum);
+  // Effective qty = live base + planned adjustment, floored at 0 (can't
+  // pledge negative collateral). sim.rows[i] lines up with simRows[i].
+  const sim = useMemo(() => simulateVipBasket({
+    loanUsd, baseLoanUsd, baseLtvPct: snapLtvPct, baseCollateral,
+    rows: simRows.map((r) => ({
+      asset: r.asset,
+      qty: Math.max(0, (Number(r.baseQty) || 0) + (Number(r.deltaQty) || 0)),
+      price: r.price,
+      volatile: r.volatile,
+    })),
+  }), [loanUsd, baseLoanUsd, snapLtvPct, baseCollateral, simRows]);
+
+  // Has anything diverged from the frozen baseline? Drives the dirty hint
+  // and whether deltas render.
+  const baseRowCount = snapDetail && snapDetail.collateral ? snapDetail.collateral.length : 0;
+  const dirty = loanUsd !== baseLoanUsd
+    || simRows.length !== baseRowCount
+    || simRows.some((r) => (
+      r.added
+      || (Number(r.deltaQty) || 0) !== 0
+      || (Number(r.price) || 0) !== (Number(r.basePrice) || 0)
+    ));
+
+  const updateRow = (id, patch) => setSimRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const removeRow = (id) => setSimRows((rs) => rs.filter((r) => r.id !== id));
+  const addRow = () => setSimRows((rs) => [...rs, {
+    id: ++rowIdRef.current, asset: "", baseQty: 0, deltaQty: "",
+    price: "", basePrice: 0, volatile: true, added: true,
+  }]);
+  // Asset symbol edit (added rows only): re-derive the stable/volatile
+  // flag so a typed "USDC" is held flat in the trigger maths.
+  const setAsset = (id, raw) => {
+    const asset = raw.toUpperCase();
+    updateRow(id, { asset, volatile: !VIP_STABLE_ASSETS.has(asset) });
+  };
+  // onChange wrapper for comma-grouped numeric inputs: strips grouping
+  // before storing so state stays Number()-ready.
+  const onNum = (cb) => (e) => cb(vipStripNum(e.target.value));
+
+  const fmtUsd = (n, dp = 2) => (n == null || Number.isNaN(n))
+    ? "—"
+    : "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const fmtPx = (n) => (n == null || Number.isNaN(n))
+    ? "—"
+    : "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: n < 100 ? 4 : 2 });
+  const fmtPp = (n) => (n == null || Number.isNaN(n)) ? "—" : `${n.toFixed(2)}pp`;
+  const fmtQty = (n) => (n == null || Number.isNaN(n))
+    ? "—"
+    : Number(n).toLocaleString("en-US", { maximumFractionDigits: 6 });
+  const fmtDelta = (n, suffix = "pp") => {
+    if (n == null || Number.isNaN(n) || Math.abs(n) < 0.005) return null;
+    const sign = n > 0 ? "+" : "−";
+    return `${sign}${Math.abs(n).toFixed(2)}${suffix} vs live`;
+  };
+
+  const baseBufMc = snapLtvPct != null ? VIP_MC_LTV * 100 - snapLtvPct : null;
+  const baseBufLiq = snapLtvPct != null ? VIP_LIQ_LTV * 100 - snapLtvPct : null;
+
+  const inputStyle = {
+    width: "100%", textAlign: "right", fontFamily: "var(--font-mono)",
+    fontSize: 12, fontVariantNumeric: "tabular-nums",
+    background: "var(--paper)", border: "1px solid var(--rule)",
+    borderRadius: 3, padding: "4px 8px", color: "var(--ink)",
+  };
+
+  // Shareable plain-text scenario (mirrors the panel's copy format).
+  const onCopy = async () => {
+    const money = (n) => (n == null) ? "—"
+      : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pxf = (n) => (n == null) ? "—"
+      : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: n < 100 ? 4 : 2 });
+    const vol = sim.rows.filter((c) => c.volatile && c.value > 1000);
+    const out = [];
+    out.push("VIP loan — SIMULATED scenario (indicative)");
+    out.push(`Loan amount:    ${money(loanUsd)}`);
+    out.push(`Collateral (raw):    ${money(sim.rawCollateral)}`);
+    out.push("");
+    out.push(`Simulated LTV    ${sim.ltvPct != null ? sim.ltvPct.toFixed(2) : "—"}%`);
+    out.push("");
+    out.push("Margin call LTV    77%");
+    vol.forEach((c) => out.push(`${c.asset}: ${pxf(c.mc_price)} PX`));
+    out.push("");
+    out.push("Liquidation LTV    91%");
+    vol.forEach((c) => out.push(`${c.asset}: ${pxf(c.liq_price)} PX`));
+    try {
+      await navigator.clipboard.writeText(out.join("\n"));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) { setCopied(false); }
+  };
+
+  const headStat = (label, valNode, deltaText, color) => (
+    <div style={{ padding: "10px 14px", borderRight: "1px solid var(--rule)" }}>
+      <div style={{
+        fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+        letterSpacing: "0.06em", marginBottom: 4,
+      }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>{valNode}</div>
+      <div style={{ fontSize: 10, color: "var(--ink-4)", marginTop: 2, minHeight: 13 }}>{deltaText || ""}</div>
+    </div>
+  );
+
+  return (
+    <ModalShell open={open} onClose={onClose}>
+      <div style={{ fontFamily: "var(--font-mono)" }}>
+        {/* ─── Header ─── */}
+        <div style={{
+          padding: "14px 18px", borderBottom: "1px solid var(--rule)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        }}>
+          <div>
+            <div style={{
+              fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+              letterSpacing: "0.18em",
+            }}>Binance VIP loan</div>
+            <div style={{ fontSize: 19, fontFamily: "var(--font-serif)", marginTop: 2 }}>
+              Collateral simulator
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 36 }}>
+            <span style={{ fontSize: 10, color: "var(--ink-4)" }}>
+              baseline LTV {snapLtvPct != null ? snapLtvPct.toFixed(2) : "—"}% · frozen snapshot
+            </span>
+            <button
+              type="button"
+              onClick={() => seedFrom(detail, baseLtvPct)}
+              disabled={!dirty}
+              title="Reset to current live baseline"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "4px 9px", cursor: dirty ? "pointer" : "default",
+                border: "1px solid var(--rule)", borderRadius: 3,
+                background: "var(--paper)", color: dirty ? "var(--ink-2)" : "var(--ink-4)",
+                fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em",
+              }}
+            >
+              <RotateCcw size={11} /> Reset
+            </button>
+            <button
+              type="button"
+              onClick={onCopy}
+              title="Copy scenario to clipboard"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "4px 9px", cursor: "pointer",
+                border: "1px solid var(--rule)", borderRadius: 3,
+                background: copied ? "var(--signal-buy-bg)" : "var(--paper)",
+                color: copied ? "var(--signal-buy)" : "var(--ink-3)",
+                fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em",
+              }}
+            >
+              {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Headline readouts — loan input + simulated LTV / buffers ─── */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          borderBottom: "1px solid var(--rule)", background: "var(--paper-2)",
+        }}>
+          <div style={{ padding: "10px 14px", borderRight: "1px solid var(--rule)" }}>
+            <div style={{
+              fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+              letterSpacing: "0.06em", marginBottom: 4,
+            }}>Loan amount (USD)</div>
+            {/* Current loan — frozen, read-only */}
+            <div style={{ fontSize: 11, color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
+              current {fmtUsd(baseLoanUsd, 0)}
+            </div>
+            {/* Adjust — signed drawdown (+) / repayment (−) */}
+            <input
+              type="text"
+              inputMode="decimal"
+              value={vipGroupNum(loanDeltaStr)}
+              placeholder="adjust ±"
+              onChange={onNum(setLoanDeltaStr)}
+              style={{
+                ...inputStyle, textAlign: "left", marginTop: 4,
+                color: loanDeltaNum > 0 ? "var(--signal-buy)" : loanDeltaNum < 0 ? "var(--signal-sell)" : "var(--ink)",
+                fontWeight: loanDeltaNum !== 0 ? 600 : 400,
+              }}
+            />
+            {/* New loan — base + adjust, floored at 0 */}
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", fontVariantNumeric: "tabular-nums", marginTop: 4 }}>
+              {fmtUsd(loanUsd, 0)} <span style={{ fontSize: 10, color: "var(--ink-4)", fontWeight: 400 }}>new</span>
+            </div>
+          </div>
+          {headStat(
+            "Simulated LTV",
+            sim.ltvPct != null ? `${sim.ltvPct.toFixed(2)}%` : "—",
+            fmtDelta(sim.ltvPct != null && snapLtvPct != null ? sim.ltvPct - snapLtvPct : null),
+            vipLtvAccent(sim.ltvPct),
+          )}
+          {headStat(
+            "Buffer to margin call · 77%",
+            fmtPp(sim.bufMc),
+            fmtDelta(sim.bufMc != null && baseBufMc != null ? sim.bufMc - baseBufMc : null),
+            "#e8730c",
+          )}
+          <div style={{ padding: "10px 14px" }}>
+            <div style={{
+              fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
+              letterSpacing: "0.06em", marginBottom: 4,
+            }}>Buffer to liquidation · 91%</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>
+              {fmtPp(sim.bufLiq)}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--ink-4)", marginTop: 2, minHeight: 13 }}>
+              {fmtDelta(sim.bufLiq != null && baseBufLiq != null ? sim.bufLiq - baseBufLiq : null) || ""}
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Editable collateral basket ─── */}
+        <div style={{ maxHeight: "48vh", overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{
+                background: "var(--paper-2)", color: "var(--ink-3)",
+                fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 500,
+                borderBottom: "1px solid var(--rule)",
+                position: "sticky", top: 0, zIndex: 1,
+              }}>
+                <th style={{ textAlign: "left", padding: "7px 12px" }}>Asset</th>
+                <th style={{ textAlign: "right", padding: "7px 12px", width: 130 }}>Current qty</th>
+                <th style={{ textAlign: "right", padding: "7px 12px", width: 140 }}>Adjust (+/−)</th>
+                <th style={{ textAlign: "right", padding: "7px 12px", width: 130 }}>New qty</th>
+                <th style={{ textAlign: "right", padding: "7px 12px", width: 120 }}>Price</th>
+                <th style={{ textAlign: "right", padding: "7px 12px" }}>Value</th>
+                <th style={{ textAlign: "right", padding: "7px 12px" }}>MC px</th>
+                <th style={{ textAlign: "right", padding: "7px 12px" }}>Liq px</th>
+                <th style={{ width: 34 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {simRows.map((r, i) => {
+                const c = sim.rows[i] || {};
+                const focused = focusAsset && r.asset === focusAsset;
+                const delta = Number(r.deltaQty) || 0;
+                const deltaColor = delta > 0 ? "var(--signal-buy)" : delta < 0 ? "var(--signal-sell)" : "var(--ink-2)";
+                return (
+                  <tr key={r.id} style={{
+                    background: focused ? "var(--signal-link-bg, rgba(31,99,234,0.06))" : (i % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)"),
+                    borderTop: "1px solid var(--rule)",
+                    borderLeft: focused ? "3px solid var(--signal-link)" : "3px solid transparent",
+                  }}>
+                    <td style={{ padding: "5px 12px", color: "var(--ink)", fontWeight: 500 }}>
+                      {r.added ? (
+                        <input
+                          value={r.asset}
+                          placeholder="SYMBOL"
+                          onChange={(e) => setAsset(r.id, e.target.value)}
+                          style={{ ...inputStyle, textAlign: "left", textTransform: "uppercase", width: 100 }}
+                        />
+                      ) : (
+                        <>
+                          {r.asset}
+                          {!r.volatile && (
+                            <span style={{ color: "var(--ink-4)", marginLeft: 6, fontSize: 10 }}>stable</span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    {/* Current qty — live, read-only */}
+                    <td style={{ padding: "5px 12px", textAlign: "right", color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
+                      {r.added ? "—" : fmtQty(r.baseQty)}
+                    </td>
+                    {/* Adjust — planned add (+) / subtract (−). The only qty input. */}
+                    <td style={{ padding: "5px 12px" }}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={vipGroupNum(r.deltaQty)}
+                        placeholder="0"
+                        onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
+                        style={{ ...inputStyle, color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
+                      />
+                    </td>
+                    {/* New qty — base + adjust (floored at 0), read-only */}
+                    <td style={{ padding: "5px 12px", textAlign: "right", color: "var(--ink)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+                      {fmtQty(c.qty)}
+                    </td>
+                    {/* Price fixed at the live price for existing collateral;
+                        only added assets (no live price) take an input. */}
+                    <td style={{ padding: "5px 12px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
+                      {r.added ? (
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={vipGroupNum(r.price)}
+                          placeholder="price"
+                          onChange={onNum((v) => updateRow(r.id, { price: v }))}
+                          style={inputStyle}
+                        />
+                      ) : fmtPx(r.price)}
+                    </td>
+                    <td style={{ padding: "5px 12px", textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.value, 0)}</td>
+                    <td style={{ padding: "5px 12px", textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtPx(c.mc_price)}</td>
+                    <td style={{ padding: "5px 12px", textAlign: "right", color: c.liq_price == null ? "var(--ink-4)" : "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>{c.liq_price == null ? "—" : fmtPx(c.liq_price)}</td>
+                    <td style={{ padding: "5px 6px", textAlign: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => removeRow(r.id)}
+                        title="Remove from scenario"
+                        style={{
+                          border: "none", background: "transparent", cursor: "pointer",
+                          color: "var(--ink-4)", lineHeight: 1, padding: 2,
+                          display: "inline-flex", alignItems: "center",
+                        }}
+                      ><X size={13} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: "2px solid var(--rule)", background: "var(--paper-2)", fontWeight: 600 }}>
+                <td style={{ padding: "7px 12px", color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10 }}>
+                  Total collateral {fmtUsd(sim.rawCollateral, 0)}
+                </td>
+                <td colSpan={4} style={{ padding: "7px 12px" }}>
+                  <button
+                    type="button"
+                    onClick={addRow}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      padding: "3px 9px", cursor: "pointer",
+                      border: "1px dashed var(--rule-2)", borderRadius: 3,
+                      background: "var(--paper)", color: "var(--ink-2)",
+                      fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em",
+                    }}
+                  >+ Add asset</button>
+                </td>
+                <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(sim.rawCollateral, 0)}</td>
+                <td colSpan={3} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* ─── Trigger detail + disclaimer ─── */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          borderTop: "1px solid var(--rule)",
+        }}>
+          {[
+            { label: "At margin call · 77%", t: sim.marginCall, col: "#e8730c" },
+            { label: "At liquidation · 91%", t: sim.liquidation, col: "var(--signal-sell)" },
+          ].map((cell, i) => (
+            <div key={cell.label} style={{ padding: "9px 14px", borderRight: i === 0 ? "1px solid var(--rule)" : "none" }}>
+              <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{cell.label}</div>
+              <div style={{ fontSize: 11, color: cell.col, fontVariantNumeric: "tabular-nums" }}>
+                uniform drop −{Number(cell.t.pct_drop).toFixed(2)}% · req. collateral {fmtUsd(cell.t.required_collateral, 0)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "9px 14px", fontSize: 10, color: "var(--ink-4)", borderTop: "1px solid var(--rule)", display: "flex", gap: 6, alignItems: "flex-start" }}>
+          <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>
+            Indicative what-if only — not booked. Simulated LTV is anchored to Binance's reported
+            baseline and scaled by loan ÷ total collateral value (raw, ignoring per-asset collateral
+            ratios). MC/Liq trigger prices assume a uniform % move across non-stablecoin collateral,
+            stablecoins held flat. At zero edits the figures reproduce the live panel exactly.
+          </span>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -7561,6 +8133,11 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const [vipDetailError, setVipDetailError] = useState(null);
   const [vipDetailLoading, setVipDetailLoading] = useState(false);
   const [vipCopied, setVipCopied] = useState(false);
+  // Collateral simulator (what-if) — open flag + which asset row to
+  // highlight on open (set when a Qty cell is clicked).
+  const [vipSimOpen, setVipSimOpen] = useState(false);
+  const [vipSimFocus, setVipSimFocus] = useState(null);
+  const openVipSim = useCallback((asset) => { setVipSimFocus(asset || null); setVipSimOpen(true); }, []);
   const [filters, setFilters] = useState(LOAN_ENQUIRY_INITIAL_FILTERS);
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
   const clearFilters = () => setFilters(LOAN_ENQUIRY_INITIAL_FILTERS);
@@ -8145,6 +8722,23 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   {ltvPct != null ? `current LTV ${ltvPct.toFixed(2)}%` : ""}
                   {vipLtv && vipLtv.as_of ? ` · as of ${String(vipLtv.as_of).slice(11, 19)} UTC` : ""}
                 </span>
+                {d && (
+                  <button
+                    type="button"
+                    onClick={() => openVipSim(null)}
+                    title="Open the what-if collateral simulator"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "3px 8px", cursor: "pointer",
+                      border: "1px solid var(--rule)", borderRadius: 3,
+                      background: "var(--paper)", color: "var(--ink-3)",
+                      fontFamily: "var(--font-mono)", fontSize: 10,
+                      textTransform: "uppercase", letterSpacing: "0.06em",
+                    }}
+                  >
+                    Simulate
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={refreshVip}
@@ -8323,7 +8917,23 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                         borderTop: "1px solid var(--rule)",
                       }}>
                         <td style={{ padding: "6px 12px", color: "var(--ink)", fontWeight: 500 }}>{c.asset}</td>
-                        <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.qty, 6)}</td>
+                        <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
+                          {/* Click a qty to open the what-if simulator focused
+                              on this asset. */}
+                          <button
+                            type="button"
+                            onClick={() => openVipSim(c.asset)}
+                            title={`Simulate — adjust ${c.asset} qty`}
+                            className="vip-qty-sim"
+                            style={{
+                              border: "none", background: "transparent", cursor: "pointer",
+                              color: "var(--ink-2)", font: "inherit", padding: 0,
+                              fontVariantNumeric: "tabular-nums",
+                              textDecoration: "underline", textDecorationStyle: "dotted",
+                              textUnderlineOffset: 3, textDecorationColor: "var(--ink-4)",
+                            }}
+                          >{fmtNum(c.qty, 6)}</button>
+                        </td>
                         <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.price, c.price >= 100 ? 2 : 4)}</td>
                         <td style={{ padding: "6px 12px", textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.value, 0)}</td>
                         <td style={{ padding: "6px 12px", textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtUsd(c.mc_price, c.mc_price >= 100 ? 2 : 4)}</td>
@@ -8361,6 +8971,16 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
           </div>
         );
       })()}
+
+      {/* What-if collateral simulator — seeded from the live vipDetail
+          snapshot, opened from the panel's Simulate button or a Qty cell. */}
+      <VipCollateralSimulatorModal
+        open={vipSimOpen}
+        detail={vipDetail}
+        baseLtvPct={vipLtv && vipLtv.ltv_pct != null ? vipLtv.ltv_pct : null}
+        focusAsset={vipSimFocus}
+        onClose={() => setVipSimOpen(false)}
+      />
 
       {/* ─── Upcoming expiry — LIVE loans whose maturity_date is in
           the next 30 days, soonest first. Hidden by default; opens
@@ -9263,7 +9883,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           {cov.status === "PROJECTED" ? (
                             <HoverTip
-                              text={`projected from hedged_qty ${r.hedged_qty} ${r.hedged_asset || r.interest_asset || ""} / daily accrual`}
+                              text={`schedule-aware: remaining hedge buffer (of ${r.hedged_qty} ${r.hedged_asset || r.interest_asset || ""}) projected against the live tranche's outstanding accrual`}
                             >
                               {fmtTs(cov.endDate.toISOString(), 10)}
                             </HoverTip>
