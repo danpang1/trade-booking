@@ -9985,6 +9985,28 @@ function useClock() {
   return now;
 }
 
+// Reactive viewport-width breakpoint. Mobile = phone portrait (<=640px).
+// matchMedia only re-renders when crossing the breakpoint (not on every
+// resize pixel). Hoisted function decl so components defined earlier in
+// the file (e.g. ModalShell) can call it.
+function useIsMobile(maxWidth = 640) {
+  const query = `(max-width: ${maxWidth}px)`;
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(query).matches
+      : false
+  ));
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const onChange = (e) => setIsMobile(e.matches);
+    setIsMobile(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return isMobile;
+}
+
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
   const [appView, setAppView] = useState("booking"); // "booking" | "dashboard" | "users" | "tokens" | "pending"
@@ -10129,6 +10151,7 @@ export default function TradeBookingForm() {
 
   const fileInputRef = useRef(null);
   const clock = useClock();
+  const isMobile = useIsMobile();
 
   // Fetch the live token list from server.js (refreshed hourly). On failure
   // we silently keep the bundled TOKENS seed so the form still works offline.
