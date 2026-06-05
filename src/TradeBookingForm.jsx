@@ -2746,7 +2746,8 @@ function SubmitFeedback({ feedback, onDismiss }) {
 //                              §"Create Deal — right-side drawer". Used by
 //                              the booking form so the blotter stays
 //                              visible underneath.
-function ModalShell({ open, onClose, children, variant = "modal" }) {
+function ModalShell({ open, onClose, children, variant = "modal", mobileFullScreen = false }) {
+  const isMobile = useIsMobile();
   // Two-frame mount → triggers the CSS transition (opacity + slight
   // scale on the inner panel). Without this, the element renders at
   // its final state and the transition has nothing to animate from.
@@ -2775,6 +2776,7 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
   if (!open) return null;
 
   const isDrawer = variant === "drawer";
+  const fullScreen = isMobile && mobileFullScreen && !isDrawer;
   // Scrim — drawer uses the lighter rgba(13,12,10,0.18) so the blotter
   // stays visually present at ~55% beneath it. Modal uses the warmer
   // dark scrim because it's covering more of the canvas.
@@ -2787,7 +2789,7 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
   // (~80px) so the UTC clock + system-status dots in the header stay
   // legible while the modal is open. The drawer covers the full canvas
   // since its right-anchored panel naturally clears the left side.
-  const wrapperTop = isDrawer ? 0 : 80;
+  const wrapperTop = (isDrawer || fullScreen) ? 0 : 80;
 
   const wrapperStyle = {
     position: "fixed",
@@ -2799,7 +2801,7 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
     transition: isDrawer ? "background 180ms ease-out" : "background 160ms ease-out",
     zIndex: 40,
     overflow: isDrawer ? "hidden" : "auto",
-    padding: isDrawer ? 0 : 16,
+    padding: (isDrawer || fullScreen) ? 0 : 16,
   };
 
   const panelStyle = isDrawer
@@ -2813,6 +2815,18 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
         opacity: mounted ? 1 : 0,
         transform: mounted ? "translateX(0)" : "translateX(40px)",
         transition: `opacity 180ms ease-out, transform 180ms ${drawerEase}`,
+        overflow: "auto",
+      }
+    : fullScreen
+    ? {
+        width: "100vw",
+        height: "100dvh",
+        maxWidth: "none",
+        background: "var(--paper-2)",
+        border: "none",
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateY(0)" : "translateY(12px)",
+        transition: "opacity 160ms ease-out, transform 160ms ease-out",
         overflow: "auto",
       }
     : {
@@ -7673,6 +7687,7 @@ function vipStripNum(v) {
 // ephemeral: edits clone the snapshot and never write back; close (or
 // Reset) discards them.
 function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onClose }) {
+  const isMobile = useIsMobile();
   const [loanDeltaStr, setLoanDeltaStr] = useState("");
   const [simRows, setSimRows] = useState([]);
   const [copied, setCopied] = useState(false);
@@ -7832,12 +7847,13 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
   );
 
   return (
-    <ModalShell open={open} onClose={onClose}>
+    <ModalShell open={open} onClose={onClose} mobileFullScreen>
       <div style={{ fontFamily: "var(--font-mono)" }}>
         {/* ─── Header ─── */}
         <div style={{
           padding: "14px 18px", borderBottom: "1px solid var(--rule)",
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          flexWrap: "wrap", rowGap: 8,
         }}>
           <div>
             <div style={{
@@ -7887,7 +7903,8 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
 
         {/* ─── Headline readouts — loan input + simulated LTV / buffers ─── */}
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
           borderBottom: "1px solid var(--rule)", background: "var(--paper-2)",
         }}>
           <div style={{ padding: "10px 14px", borderRight: "1px solid var(--rule)" }}>
@@ -8072,14 +8089,17 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
 
         {/* ─── Trigger detail + disclaimer ─── */}
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
           borderTop: "1px solid var(--rule)",
         }}>
           {[
             { label: "At margin call · 77%", t: sim.marginCall, col: "#e8730c" },
             { label: "At liquidation · 91%", t: sim.liquidation, col: "var(--signal-sell)" },
           ].map((cell, i) => (
-            <div key={cell.label} style={{ padding: "9px 14px", borderRight: i === 0 ? "1px solid var(--rule)" : "none" }}>
+            <div key={cell.label} style={{ padding: "9px 14px",
+              borderRight: !isMobile && i === 0 ? "1px solid var(--rule)" : "none",
+              borderBottom: isMobile && i === 0 ? "1px solid var(--rule)" : "none" }}>
               <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{cell.label}</div>
               <div style={{ fontSize: 11, color: cell.col, fontVariantNumeric: "tabular-nums" }}>
                 uniform drop −{Number(cell.t.pct_drop).toFixed(2)}% · req. collateral {fmtUsd(cell.t.required_collateral, 0)}
