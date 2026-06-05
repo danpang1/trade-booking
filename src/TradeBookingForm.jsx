@@ -10154,6 +10154,11 @@ export default function TradeBookingForm() {
   const fileInputRef = useRef(null);
   const clock = useClock();
   const isMobile = useIsMobile();
+  // Collapse the mobile drawer whenever we cross back to desktop so it
+  // can't reappear already-open if the viewport later shrinks again.
+  useEffect(() => {
+    if (!isMobile) setNavOpen(false);
+  }, [isMobile]);
 
   // Fetch the live token list from server.js (refreshed hourly). On failure
   // we silently keep the bundled TOKENS seed so the form still works offline.
@@ -11929,7 +11934,8 @@ export default function TradeBookingForm() {
             <button
               type="button"
               onClick={() => setNavOpen(true)}
-              aria-label="Open menu"
+              aria-label={navOpen ? "Close menu" : "Open menu"}
+              aria-expanded={navOpen}
               style={{
                 background: "transparent", border: "none", color: "#ece7dd",
                 padding: 6, marginRight: 2, cursor: "pointer",
@@ -12037,7 +12043,9 @@ export default function TradeBookingForm() {
 
       {/* ════ BODY — left sidebar + main panel ════ */}
       <div className="flex flex-1 min-h-0">
-        {/* Mobile drawer backdrop — taps close the nav. */}
+        {/* Mobile drawer backdrop — taps close the nav.
+            Backdrop z:45 sits below the drawer (z:50) but above the page;
+            ModalShell (z:40) is always opened after the drawer closes. */}
         {isMobile && navOpen && (
           <div
             aria-hidden
@@ -12060,6 +12068,9 @@ export default function TradeBookingForm() {
             } : {}),
           }}
         >
+            {/* Clicks bubble up from the nav buttons to here; React batches
+                each item's own onClick with this setNavOpen(false), so the
+                target view opens and the drawer closes in one render. */}
           <div className="flex-1 overflow-y-auto py-4" onClick={() => setNavOpen(false)}>
             {/* Primary action — opens the Create Deal modal */}
             <div className="px-5 pb-3">
