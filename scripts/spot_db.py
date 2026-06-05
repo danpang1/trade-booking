@@ -194,15 +194,17 @@ def _coerce_str_or_none(v):
     return v
 
 
-def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...], tuple]:
+def payload_to_columns(payload: dict, *, deal_ref: str | None = None) -> tuple[tuple[str, ...], tuple]:
     """Convert form JSON to (column_names, values) tuples for INSERT.
 
-    `deal_ref` is passed in (allocated from trade_seq_spot on insert,
-    preserved from the payload on amend) — it isn't trusted from the
-    frontend on insert.
+    `deal_ref`: None on insert — the column is OMITTED so the DB default
+    ('MFX' || lpad(nextval('trade_seq_spot'),8,'0')) assigns it; the existing
+    ref on amend (bitemporal: same ref, new version row). Never trusted from
+    the frontend on insert.
     """
+    cols = tuple(c for c in DATA_COLUMNS if not (c == "deal_ref" and deal_ref is None))
     vals = []
-    for col in DATA_COLUMNS:
+    for col in cols:
         if col == "deal_ref":
             vals.append(deal_ref)
         elif col == "txn_type":
@@ -219,7 +221,7 @@ def payload_to_columns(payload: dict, *, deal_ref: str) -> tuple[tuple[str, ...]
             vals.append("0" if v in (None, "") else v)
         else:
             vals.append(_coerce_str_or_none(payload.get(col)))
-    return DATA_COLUMNS, tuple(vals)
+    return cols, tuple(vals)
 
 
 def _json_safe(v):
