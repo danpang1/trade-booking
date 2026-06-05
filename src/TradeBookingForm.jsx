@@ -1561,7 +1561,7 @@ const Section = ({ title, children }) => (
       </span>
       <span className="flex-1" />
     </div>
-    <div className="grid grid-cols-12 gap-2.5">{children}</div>
+    <div className="grid grid-cols-12 max-[640px]:grid-cols-1 gap-2.5">{children}</div>
   </div>
 );
 
@@ -12106,7 +12106,7 @@ export default function TradeBookingForm() {
             src={tokkaLogo}
             alt="Tokka Labs"
             className="block"
-            style={{ height: 32, width: "auto", objectFit: "contain" }}
+            style={{ height: isMobile ? 26 : 32, width: "auto", objectFit: "contain" }}
           />
           {!isMobile && (
           <span
@@ -12123,7 +12123,7 @@ export default function TradeBookingForm() {
             HoverTip (instant, no browser title-attribute delay). Left dot =
             environment (PROD/UAT derived from hostname). Right dot = refdata
             sync state; click to re-sync. */}
-        <div className="flex items-center gap-3">
+        <div className={`flex items-center ${isMobile ? "gap-2" : "gap-3"}`}>
           {/* ENV dot */}
           <HoverTip text={`ENV: ${env}`} placement="bottom">
             <span
@@ -12180,20 +12180,34 @@ export default function TradeBookingForm() {
             </button>
           </HoverTip>
 
-          <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
+          {!isMobile && (
+            <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
+          )}
 
-          {/* UTC date · time */}
-          <div className="flex items-baseline gap-2 text-[10px] tracking-[0.22em] uppercase font-mono">
-            <span
-              className="tabular-nums"
-              style={{ color: "#ece7dd", letterSpacing: "0.1em" }}
-            >
-              {clock.toISOString().slice(0, 10)}
-              <span style={{ color: "#6a665c" }} className="mx-2">·</span>
-              {clock.toISOString().slice(11, 19)}
-            </span>
-            <span style={{ color: "#6a665c" }}>UTC</span>
-          </div>
+          {/* UTC date · time — stacked & compact on mobile, inline on desktop */}
+          {isMobile ? (
+            <div className="flex flex-col items-end font-mono tabular-nums leading-tight">
+              <span style={{ color: "#9a9488", fontSize: 9, letterSpacing: "0.08em" }}>
+                {clock.toISOString().slice(0, 10)}
+              </span>
+              <span style={{ color: "#ece7dd", fontSize: 11, letterSpacing: "0.06em" }}>
+                {clock.toISOString().slice(11, 19)}
+                <span style={{ color: "#6a665c" }}> UTC</span>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-2 text-[10px] tracking-[0.22em] uppercase font-mono">
+              <span
+                className="tabular-nums"
+                style={{ color: "#ece7dd", letterSpacing: "0.1em" }}
+              >
+                {clock.toISOString().slice(0, 10)}
+                <span style={{ color: "#6a665c" }} className="mx-2">·</span>
+                {clock.toISOString().slice(11, 19)}
+              </span>
+              <span style={{ color: "#6a665c" }}>UTC</span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -12658,7 +12672,7 @@ export default function TradeBookingForm() {
               </>
             )}
             <Field label="Created By" required span={4}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
                 <span style={{ fontSize: 11, color: "#7d7d7d", letterSpacing: 1 }}>BOOKED BY</span>
                 <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "var(--font-mono)" }}>{form.created_by || user?.username || "—"}</span>
               </div>
