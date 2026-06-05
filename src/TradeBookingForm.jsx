@@ -14,6 +14,7 @@ import {
   Calendar,
   History,
   Loader2,
+  Menu,
 } from "lucide-react";
 import tokkaLogo from "./assets/tokka-labs-logo.png";
 import { NETWORKS } from "./data/networks.js";
@@ -10010,6 +10011,7 @@ function useIsMobile(maxWidth = 640) {
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
   const [appView, setAppView] = useState("booking"); // "booking" | "dashboard" | "users" | "tokens" | "pending"
+  const [navOpen, setNavOpen] = useState(false);
   // Pending-drafts count for the sidebar badge. Polled every 60s while
   // the tab is focused; paused when the tab is hidden so background
   // tabs don't burn Python subprocess spawns. Failures are silent.
@@ -11914,25 +11916,45 @@ export default function TradeBookingForm() {
     >
       {/* ════ BANNER — one clean black strip ════ */}
       <header
-        className="flex items-center justify-between px-6 py-3 mb-4"
+        className="flex items-center justify-between py-3 mb-4"
         style={{
           background: "#0d0d0d",
+          paddingLeft: isMobile ? 14 : 24,
+          paddingRight: isMobile ? 14 : 24,
         }}
       >
-        {/* LEFT — logo + system name as one vertical lockup */}
-        <div className="flex flex-col items-start gap-1.5">
+        {/* LEFT — hamburger (mobile) + logo + system name lockup */}
+        <div className="flex items-center gap-2">
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setNavOpen(true)}
+              aria-label="Open menu"
+              style={{
+                background: "transparent", border: "none", color: "#ece7dd",
+                padding: 6, marginRight: 2, cursor: "pointer",
+                display: "inline-flex", alignItems: "center",
+              }}
+            >
+              <Menu size={22} strokeWidth={1.75} />
+            </button>
+          )}
+          <div className="flex flex-col items-start gap-1.5">
           <img
             src={tokkaLogo}
             alt="Tokka Labs"
             className="block"
             style={{ height: 32, width: "auto", objectFit: "contain" }}
           />
+          {!isMobile && (
           <span
             className="text-[9px] tracking-[0.34em] uppercase font-mono"
             style={{ color: "#9a9488", fontWeight: 400, paddingLeft: 1 }}
           >
             Trade Management System
           </span>
+          )}
+          </div>
         </div>
 
         {/* RIGHT — minimal indicator dots. Full status surfaces on hover via
@@ -12015,6 +12037,14 @@ export default function TradeBookingForm() {
 
       {/* ════ BODY — left sidebar + main panel ════ */}
       <div className="flex flex-1 min-h-0">
+        {/* Mobile drawer backdrop — taps close the nav. */}
+        {isMobile && navOpen && (
+          <div
+            aria-hidden
+            onClick={() => setNavOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 45, background: "rgba(13,12,10,0.45)" }}
+          />
+        )}
         {/* ─── SIDEBAR ─── */}
         <aside
           className="shrink-0 flex flex-col"
@@ -12022,9 +12052,15 @@ export default function TradeBookingForm() {
             width: 208,
             borderRight: `1px solid ${BB.border}`,
             background: BB.bg,
+            ...(isMobile ? {
+              position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 50,
+              transform: navOpen ? "translateX(0)" : "translateX(-100%)",
+              transition: "transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1)",
+              boxShadow: navOpen ? "8px 0 32px rgba(0,0,0,0.35)" : "none",
+            } : {}),
           }}
         >
-          <div className="flex-1 overflow-y-auto py-4">
+          <div className="flex-1 overflow-y-auto py-4" onClick={() => setNavOpen(false)}>
             {/* Primary action — opens the Create Deal modal */}
             <div className="px-5 pb-3">
               <button
