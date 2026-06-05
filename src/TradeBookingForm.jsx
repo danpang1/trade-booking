@@ -8693,7 +8693,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 className="mb-2"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
                   gap: 8,
                   alignItems: "stretch",
                 }}
@@ -8704,7 +8704,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 className="mb-3"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
                   gap: 8,
                   alignItems: "stretch",
                 }}
