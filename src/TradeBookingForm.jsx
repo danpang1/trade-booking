@@ -7961,6 +7961,9 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
         </div>
 
         {/* ─── Editable collateral basket ─── */}
+          {/* On mobile the ModalShell (mobileFullScreen) owns the scroll
+              context, so release this inner container from clipping; desktop
+              keeps its own 48vh scroller. */}
         <div style={{ maxHeight: isMobile ? "none" : "48vh", overflow: isMobile ? "visible" : "auto" }}>
           {isMobile ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10 }}>
@@ -9013,6 +9016,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                         background: "var(--paper)", padding: "8px 10px",
                       }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          {/* Simulator trigger — desktop uses the qty cell. */}
                           <button
                             type="button"
                             onClick={() => openVipSim(c.asset)}
@@ -9040,7 +9044,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                         </div>
                       </div>
                     ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderTop: "1px solid var(--rule)", fontWeight: 600 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderTop: "1px solid var(--rule)", background: "var(--paper-2)", fontWeight: 600 }}>
                       <span style={{ color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10 }}>Total collateral</span>
                       <span style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(d.summary && d.summary.collateral_raw_value, 0)}</span>
                     </div>
