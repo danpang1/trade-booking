@@ -8102,6 +8102,7 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
 }
 
 function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -8706,6 +8707,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               borderBottom: "1px solid var(--rule)",
               background: "var(--paper-2)",
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              flexWrap: "wrap", rowGap: 6,
             }}>
               <span style={{
                 fontSize: 10, color: "var(--ink-3)",
@@ -8835,7 +8837,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     Same numbers the Copy button writes to the clipboard. */}
                 <div style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
                   borderBottom: "1px solid var(--rule)",
                 }}>
                   {[
@@ -8845,7 +8847,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   ].map((m, i) => (
                     <div key={m.label} style={{
                       padding: "10px 12px",
-                      borderRight: i < 2 ? "1px solid var(--rule)" : "none",
+                      borderRight: !isMobile && i < 2 ? "1px solid var(--rule)" : "none",
+                      borderBottom: isMobile && i < 2 ? "1px solid var(--rule)" : "none",
                     }}>
                       <div style={{
                         fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
@@ -8896,6 +8899,47 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 {/* Collateral basket — current price, trigger prices, and
                     USD value, with a grand total. MC/Liq px blank for
                     stablecoins (they're held flat in the trigger maths). */}
+                {isMobile ? (
+                  <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(d.collateral || []).map((c) => (
+                      <div key={c.asset} style={{
+                        border: "1px solid var(--rule)", borderRadius: 3,
+                        background: "var(--paper)", padding: "8px 10px",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => openVipSim(c.asset)}
+                            title={`Simulate — adjust ${c.asset} qty`}
+                            style={{
+                              border: "none", background: "transparent", padding: 0, cursor: "pointer",
+                              color: "var(--ink)", fontWeight: 600, fontSize: 13,
+                              textDecoration: "underline", textDecorationStyle: "dotted",
+                              textUnderlineOffset: 3, textDecorationColor: "var(--ink-4)",
+                            }}
+                          >{c.asset}</button>
+                          <span style={{ color: "var(--ink)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                            {fmtUsd(c.value, 0)}
+                          </span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 11 }}>
+                          <span style={{ color: "var(--ink-3)" }}>Qty</span>
+                          <span style={{ textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.qty, 6)}</span>
+                          <span style={{ color: "var(--ink-3)" }}>Current px</span>
+                          <span style={{ textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.price, c.price >= 100 ? 2 : 4)}</span>
+                          <span style={{ color: "var(--ink-3)" }}>MC px · 77%</span>
+                          <span style={{ textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtUsd(c.mc_price, c.mc_price >= 100 ? 2 : 4)}</span>
+                          <span style={{ color: "var(--ink-3)" }}>Liq px · 91%</span>
+                          <span style={{ textAlign: "right", color: c.liq_price == null ? "var(--ink-4)" : "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>{c.liq_price == null ? "—" : fmtUsd(c.liq_price, c.liq_price >= 100 ? 2 : 4)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderTop: "1px solid var(--rule)", fontWeight: 600 }}>
+                      <span style={{ color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10 }}>Total collateral</span>
+                      <span style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(d.summary && d.summary.collateral_raw_value, 0)}</span>
+                    </div>
+                  </div>
+                ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{
@@ -8958,6 +9002,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     </tr>
                   </tfoot>
                 </table>
+                )}
 
                 {d.detail_error && (
                   <div style={{ padding: "8px 12px", fontSize: 10, color: "var(--signal-warn)", borderTop: "1px solid var(--rule)" }}>
