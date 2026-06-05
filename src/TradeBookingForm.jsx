@@ -7961,7 +7961,92 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
         </div>
 
         {/* ─── Editable collateral basket ─── */}
-        <div style={{ maxHeight: "48vh", overflow: "auto" }}>
+        <div style={{ maxHeight: isMobile ? "none" : "48vh", overflow: isMobile ? "visible" : "auto" }}>
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10 }}>
+              {simRows.map((r, i) => {
+                const c = sim.rows[i] || {};
+                const focused = focusAsset && r.asset === focusAsset;
+                const delta = Number(r.deltaQty) || 0;
+                const deltaColor = delta > 0 ? "var(--signal-buy)" : delta < 0 ? "var(--signal-sell)" : "var(--ink-2)";
+                return (
+                  <div key={r.id} style={{
+                    border: focused ? "1px solid var(--signal-link)" : "1px solid var(--rule)",
+                    borderLeft: focused ? "3px solid var(--signal-link)" : "3px solid transparent",
+                    borderRadius: 3,
+                    background: focused ? "var(--signal-link-bg, rgba(31,99,234,0.06))" : "var(--paper)",
+                    padding: "8px 10px",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      {r.added ? (
+                        <input
+                          value={r.asset}
+                          placeholder="SYMBOL"
+                          onChange={(e) => setAsset(r.id, e.target.value)}
+                          style={{ ...inputStyle, textAlign: "left", textTransform: "uppercase", width: 120 }}
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 600, color: "var(--ink)" }}>
+                          {r.asset}
+                          {!r.volatile && <span style={{ color: "var(--ink-4)", marginLeft: 6, fontSize: 10 }}>stable</span>}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeRow(r.id)}
+                        title="Remove from scenario"
+                        style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-4)", padding: 2, display: "inline-flex", alignItems: "center" }}
+                      ><X size={15} /></button>
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Adjust (+/−)</div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={vipGroupNum(r.deltaQty)}
+                        placeholder="0"
+                        onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
+                        style={{ ...inputStyle, textAlign: "left", fontSize: 15, padding: "8px 10px", color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 12px", fontSize: 11 }}>
+                      <span style={{ color: "var(--ink-3)" }}>Current qty</span>
+                      <span style={{ textAlign: "right", color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>{r.added ? "—" : fmtQty(r.baseQty)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>New qty</span>
+                      <span style={{ textAlign: "right", color: "var(--ink)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtQty(c.qty)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>Price</span>
+                      <span style={{ textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
+                        {r.added ? (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={vipGroupNum(r.price)}
+                            placeholder="price"
+                            onChange={onNum((v) => updateRow(r.id, { price: v }))}
+                            style={inputStyle}
+                          />
+                        ) : fmtPx(r.price)}
+                      </span>
+                      <span style={{ color: "var(--ink-3)" }}>Value</span>
+                      <span style={{ textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.value, 0)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>MC px</span>
+                      <span style={{ textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtPx(c.mc_price)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>Liq px</span>
+                      <span style={{ textAlign: "right", color: c.liq_price == null ? "var(--ink-4)" : "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>{c.liq_price == null ? "—" : fmtPx(c.liq_price)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={addRow}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", cursor: "pointer", border: "1px dashed var(--rule-2)", borderRadius: 3, background: "var(--paper)", color: "var(--ink-2)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em" }}
+                >+ Add asset</button>
+                <span style={{ fontWeight: 600, color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>Total {fmtUsd(sim.rawCollateral, 0)}</span>
+              </div>
+            </div>
+          ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{
@@ -8085,6 +8170,7 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
               </tr>
             </tfoot>
           </table>
+          )}
         </div>
 
         {/* ─── Trigger detail + disclaimer ─── */}
