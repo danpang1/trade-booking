@@ -2800,7 +2800,7 @@ function ModalShell({ open, onClose, children, variant = "modal", mobileFullScre
     background: mounted ? scrim : "rgba(0,0,0,0)",
     transition: isDrawer ? "background 180ms ease-out" : "background 160ms ease-out",
     zIndex: 40,
-    overflow: isDrawer ? "hidden" : "auto",
+    overflow: (isDrawer || fullScreen) ? "hidden" : "auto",
     padding: (isDrawer || fullScreen) ? 0 : 16,
   };
 
