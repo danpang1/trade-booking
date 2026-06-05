@@ -14,6 +14,7 @@ import {
   Calendar,
   History,
   Loader2,
+  Menu,
 } from "lucide-react";
 import tokkaLogo from "./assets/tokka-labs-logo.png";
 import { NETWORKS } from "./data/networks.js";
@@ -1560,7 +1561,7 @@ const Section = ({ title, children }) => (
       </span>
       <span className="flex-1" />
     </div>
-    <div className="grid grid-cols-12 gap-2.5">{children}</div>
+    <div className="grid grid-cols-12 max-[640px]:grid-cols-1 gap-2.5">{children}</div>
   </div>
 );
 
@@ -2745,7 +2746,8 @@ function SubmitFeedback({ feedback, onDismiss }) {
 //                              §"Create Deal — right-side drawer". Used by
 //                              the booking form so the blotter stays
 //                              visible underneath.
-function ModalShell({ open, onClose, children, variant = "modal" }) {
+function ModalShell({ open, onClose, children, variant = "modal", mobileFullScreen = false }) {
+  const isMobile = useIsMobile();
   // Two-frame mount → triggers the CSS transition (opacity + slight
   // scale on the inner panel). Without this, the element renders at
   // its final state and the transition has nothing to animate from.
@@ -2774,6 +2776,7 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
   if (!open) return null;
 
   const isDrawer = variant === "drawer";
+  const fullScreen = isMobile && mobileFullScreen && !isDrawer;
   // Scrim — drawer uses the lighter rgba(13,12,10,0.18) so the blotter
   // stays visually present at ~55% beneath it. Modal uses the warmer
   // dark scrim because it's covering more of the canvas.
@@ -2786,7 +2789,7 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
   // (~80px) so the UTC clock + system-status dots in the header stay
   // legible while the modal is open. The drawer covers the full canvas
   // since its right-anchored panel naturally clears the left side.
-  const wrapperTop = isDrawer ? 0 : 80;
+  const wrapperTop = (isDrawer || fullScreen) ? 0 : 80;
 
   const wrapperStyle = {
     position: "fixed",
@@ -2797,8 +2800,8 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
     background: mounted ? scrim : "rgba(0,0,0,0)",
     transition: isDrawer ? "background 180ms ease-out" : "background 160ms ease-out",
     zIndex: 40,
-    overflow: isDrawer ? "hidden" : "auto",
-    padding: isDrawer ? 0 : 16,
+    overflow: (isDrawer || fullScreen) ? "hidden" : "auto",
+    padding: (isDrawer || fullScreen) ? 0 : 16,
   };
 
   const panelStyle = isDrawer
@@ -2812,6 +2815,18 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
         opacity: mounted ? 1 : 0,
         transform: mounted ? "translateX(0)" : "translateX(40px)",
         transition: `opacity 180ms ease-out, transform 180ms ${drawerEase}`,
+        overflow: "auto",
+      }
+    : fullScreen
+    ? {
+        width: "100vw",
+        height: "100dvh",
+        maxWidth: "none",
+        background: "var(--paper-2)",
+        border: "none",
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateY(0)" : "translateY(12px)",
+        transition: "opacity 160ms ease-out, transform 160ms ease-out",
         overflow: "auto",
       }
     : {
@@ -2829,7 +2844,7 @@ function ModalShell({ open, onClose, children, variant = "modal" }) {
       style={wrapperStyle}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={isDrawer ? "" : "relative mx-auto"} style={panelStyle}>
+      <div className={(isDrawer || fullScreen) ? "" : "relative mx-auto"} style={panelStyle}>
         <button
           type="button"
           onClick={onClose}
@@ -7672,6 +7687,7 @@ function vipStripNum(v) {
 // ephemeral: edits clone the snapshot and never write back; close (or
 // Reset) discards them.
 function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onClose }) {
+  const isMobile = useIsMobile();
   const [loanDeltaStr, setLoanDeltaStr] = useState("");
   const [simRows, setSimRows] = useState([]);
   const [copied, setCopied] = useState(false);
@@ -7819,8 +7835,8 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
     } catch (e) { setCopied(false); }
   };
 
-  const headStat = (label, valNode, deltaText, color) => (
-    <div style={{ padding: "10px 14px", borderRight: "1px solid var(--rule)" }}>
+  const headStat = (label, valNode, deltaText, color, noBorderRight = false) => (
+    <div style={{ padding: "10px 14px", borderRight: noBorderRight ? "none" : "1px solid var(--rule)" }}>
       <div style={{
         fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
         letterSpacing: "0.06em", marginBottom: 4,
@@ -7831,12 +7847,13 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
   );
 
   return (
-    <ModalShell open={open} onClose={onClose}>
+    <ModalShell open={open} onClose={onClose} mobileFullScreen>
       <div style={{ fontFamily: "var(--font-mono)" }}>
         {/* ─── Header ─── */}
         <div style={{
           padding: "14px 18px", borderBottom: "1px solid var(--rule)",
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          flexWrap: "wrap", rowGap: 8,
         }}>
           <div>
             <div style={{
@@ -7886,7 +7903,8 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
 
         {/* ─── Headline readouts — loan input + simulated LTV / buffers ─── */}
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
           borderBottom: "1px solid var(--rule)", background: "var(--paper-2)",
         }}>
           <div style={{ padding: "10px 14px", borderRight: "1px solid var(--rule)" }}>
@@ -7921,6 +7939,7 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
             sim.ltvPct != null ? `${sim.ltvPct.toFixed(2)}%` : "—",
             fmtDelta(sim.ltvPct != null && snapLtvPct != null ? sim.ltvPct - snapLtvPct : null),
             vipLtvAccent(sim.ltvPct),
+            isMobile,
           )}
           {headStat(
             "Buffer to margin call · 77%",
@@ -7943,7 +7962,95 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
         </div>
 
         {/* ─── Editable collateral basket ─── */}
-        <div style={{ maxHeight: "48vh", overflow: "auto" }}>
+          {/* On mobile the ModalShell (mobileFullScreen) owns the scroll
+              context, so release this inner container from clipping; desktop
+              keeps its own 48vh scroller. */}
+        <div style={{ maxHeight: isMobile ? "none" : "48vh", overflow: isMobile ? "visible" : "auto" }}>
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 10 }}>
+              {simRows.map((r, i) => {
+                const c = sim.rows[i] || {};
+                const focused = focusAsset && r.asset === focusAsset;
+                const delta = Number(r.deltaQty) || 0;
+                const deltaColor = delta > 0 ? "var(--signal-buy)" : delta < 0 ? "var(--signal-sell)" : "var(--ink-2)";
+                return (
+                  <div key={r.id} style={{
+                    border: focused ? "1px solid var(--signal-link)" : "1px solid var(--rule)",
+                    borderLeft: focused ? "3px solid var(--signal-link)" : "3px solid transparent",
+                    borderRadius: 3,
+                    background: focused ? "var(--signal-link-bg, rgba(31,99,234,0.06))" : "var(--paper)",
+                    padding: "8px 10px",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      {r.added ? (
+                        <input
+                          value={r.asset}
+                          placeholder="SYMBOL"
+                          onChange={(e) => setAsset(r.id, e.target.value)}
+                          style={{ ...inputStyle, textAlign: "left", textTransform: "uppercase", width: 120 }}
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 600, color: "var(--ink)" }}>
+                          {r.asset}
+                          {!r.volatile && <span style={{ color: "var(--ink-4)", marginLeft: 6, fontSize: 10 }}>stable</span>}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeRow(r.id)}
+                        title="Remove from scenario"
+                        style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-4)", padding: 2, display: "inline-flex", alignItems: "center" }}
+                      ><X size={15} /></button>
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Adjust (+/−)</div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={vipGroupNum(r.deltaQty)}
+                        placeholder="0"
+                        onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
+                        style={{ ...inputStyle, textAlign: "left", fontSize: 15, padding: "8px 10px", color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 12px", fontSize: 11 }}>
+                      <span style={{ color: "var(--ink-3)" }}>Current qty</span>
+                      <span style={{ textAlign: "right", color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>{r.added ? "—" : fmtQty(r.baseQty)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>New qty</span>
+                      <span style={{ textAlign: "right", color: "var(--ink)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{fmtQty(c.qty)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>Price</span>
+                      <span style={{ textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>
+                        {r.added ? (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={vipGroupNum(r.price)}
+                            placeholder="price"
+                            onChange={onNum((v) => updateRow(r.id, { price: v }))}
+                            style={inputStyle}
+                          />
+                        ) : fmtPx(r.price)}
+                      </span>
+                      <span style={{ color: "var(--ink-3)" }}>Value</span>
+                      <span style={{ textAlign: "right", color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.value, 0)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>MC px</span>
+                      <span style={{ textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtPx(c.mc_price)}</span>
+                      <span style={{ color: "var(--ink-3)" }}>Liq px</span>
+                      <span style={{ textAlign: "right", color: c.liq_price == null ? "var(--ink-4)" : "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>{c.liq_price == null ? "—" : fmtPx(c.liq_price)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={addRow}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", cursor: "pointer", border: "1px dashed var(--rule-2)", borderRadius: 3, background: "var(--paper)", color: "var(--ink-2)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em" }}
+                >+ Add asset</button>
+                <span style={{ fontWeight: 600, color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>Total {fmtUsd(sim.rawCollateral, 0)}</span>
+              </div>
+            </div>
+          ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{
@@ -8067,18 +8174,22 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
               </tr>
             </tfoot>
           </table>
+          )}
         </div>
 
         {/* ─── Trigger detail + disclaimer ─── */}
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
           borderTop: "1px solid var(--rule)",
         }}>
           {[
             { label: "At margin call · 77%", t: sim.marginCall, col: "#e8730c" },
             { label: "At liquidation · 91%", t: sim.liquidation, col: "var(--signal-sell)" },
           ].map((cell, i) => (
-            <div key={cell.label} style={{ padding: "9px 14px", borderRight: i === 0 ? "1px solid var(--rule)" : "none" }}>
+            <div key={cell.label} style={{ padding: "9px 14px",
+              borderRight: !isMobile && i === 0 ? "1px solid var(--rule)" : "none",
+              borderBottom: isMobile && i === 0 ? "1px solid var(--rule)" : "none" }}>
               <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{cell.label}</div>
               <div style={{ fontSize: 11, color: cell.col, fontVariantNumeric: "tabular-nums" }}>
                 uniform drop −{Number(cell.t.pct_drop).toFixed(2)}% · req. collateral {fmtUsd(cell.t.required_collateral, 0)}
@@ -8101,6 +8212,7 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
 }
 
 function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -8705,6 +8817,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               borderBottom: "1px solid var(--rule)",
               background: "var(--paper-2)",
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              flexWrap: "wrap", rowGap: 6,
             }}>
               <span style={{
                 fontSize: 10, color: "var(--ink-3)",
@@ -8834,7 +8947,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     Same numbers the Copy button writes to the clipboard. */}
                 <div style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
                   borderBottom: "1px solid var(--rule)",
                 }}>
                   {[
@@ -8844,7 +8957,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   ].map((m, i) => (
                     <div key={m.label} style={{
                       padding: "10px 12px",
-                      borderRight: i < 2 ? "1px solid var(--rule)" : "none",
+                      borderRight: !isMobile && i < 2 ? "1px solid var(--rule)" : "none",
+                      borderBottom: isMobile && i < 2 ? "1px solid var(--rule)" : "none",
                     }}>
                       <div style={{
                         fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
@@ -8895,6 +9009,48 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 {/* Collateral basket — current price, trigger prices, and
                     USD value, with a grand total. MC/Liq px blank for
                     stablecoins (they're held flat in the trigger maths). */}
+                {isMobile ? (
+                  <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(d.collateral || []).map((c) => (
+                      <div key={c.asset} style={{
+                        border: "1px solid var(--rule)", borderRadius: 3,
+                        background: "var(--paper)", padding: "8px 10px",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          {/* Simulator trigger — desktop uses the qty cell. */}
+                          <button
+                            type="button"
+                            onClick={() => openVipSim(c.asset)}
+                            title={`Simulate — adjust ${c.asset} qty`}
+                            style={{
+                              border: "none", background: "transparent", padding: 0, cursor: "pointer",
+                              color: "var(--ink)", fontWeight: 600, fontSize: 13,
+                              textDecoration: "underline", textDecorationStyle: "dotted",
+                              textUnderlineOffset: 3, textDecorationColor: "var(--ink-4)",
+                            }}
+                          >{c.asset}</button>
+                          <span style={{ color: "var(--ink)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                            {fmtUsd(c.value, 0)}
+                          </span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 11 }}>
+                          <span style={{ color: "var(--ink-3)" }}>Qty</span>
+                          <span style={{ textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtNum(c.qty, 6)}</span>
+                          <span style={{ color: "var(--ink-3)" }}>Current px</span>
+                          <span style={{ textAlign: "right", color: "var(--ink-2)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(c.price, c.price >= 100 ? 2 : 4)}</span>
+                          <span style={{ color: "var(--ink-3)" }}>MC px · 77%</span>
+                          <span style={{ textAlign: "right", color: c.mc_price == null ? "var(--ink-4)" : "#e8730c", fontVariantNumeric: "tabular-nums" }}>{c.mc_price == null ? "—" : fmtUsd(c.mc_price, c.mc_price >= 100 ? 2 : 4)}</span>
+                          <span style={{ color: "var(--ink-3)" }}>Liq px · 91%</span>
+                          <span style={{ textAlign: "right", color: c.liq_price == null ? "var(--ink-4)" : "var(--signal-sell)", fontVariantNumeric: "tabular-nums" }}>{c.liq_price == null ? "—" : fmtUsd(c.liq_price, c.liq_price >= 100 ? 2 : 4)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderTop: "1px solid var(--rule)", background: "var(--paper-2)", fontWeight: 600 }}>
+                      <span style={{ color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10 }}>Total collateral</span>
+                      <span style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fmtUsd(d.summary && d.summary.collateral_raw_value, 0)}</span>
+                    </div>
+                  </div>
+                ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{
@@ -8957,6 +9113,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     </tr>
                   </tfoot>
                 </table>
+                )}
 
                 {d.detail_error && (
                   <div style={{ padding: "8px 12px", fontSize: 10, color: "var(--signal-warn)", borderTop: "1px solid var(--rule)" }}>
@@ -9985,9 +10142,32 @@ function useClock() {
   return now;
 }
 
+// Reactive viewport-width breakpoint. Mobile = phone portrait (<=640px).
+// matchMedia only re-renders when crossing the breakpoint (not on every
+// resize pixel). Hoisted function decl so components defined earlier in
+// the file (e.g. ModalShell) can call it.
+function useIsMobile(maxWidth = 640) {
+  const query = `(max-width: ${maxWidth}px)`;
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(query).matches
+      : false
+  ));
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const onChange = (e) => setIsMobile(e.matches);
+    setIsMobile(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return isMobile;
+}
+
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
   const [appView, setAppView] = useState("booking"); // "booking" | "dashboard" | "users" | "tokens" | "pending"
+  const [navOpen, setNavOpen] = useState(false);
   // Pending-drafts count for the sidebar badge. Polled every 60s while
   // the tab is focused; paused when the tab is hidden so background
   // tabs don't burn Python subprocess spawns. Failures are silent.
@@ -10129,6 +10309,12 @@ export default function TradeBookingForm() {
 
   const fileInputRef = useRef(null);
   const clock = useClock();
+  const isMobile = useIsMobile();
+  // Collapse the mobile drawer whenever we cross back to desktop so it
+  // can't reappear already-open if the viewport later shrinks again.
+  useEffect(() => {
+    if (!isMobile) setNavOpen(false);
+  }, [isMobile]);
 
   // Fetch the live token list from server.js (refreshed hourly). On failure
   // we silently keep the bundled TOKENS seed so the form still works offline.
@@ -11891,32 +12077,53 @@ export default function TradeBookingForm() {
     >
       {/* ════ BANNER — one clean black strip ════ */}
       <header
-        className="flex items-center justify-between px-6 py-3 mb-4"
+        className="flex items-center justify-between py-3 mb-4"
         style={{
           background: "#0d0d0d",
+          paddingLeft: isMobile ? 14 : 24,
+          paddingRight: isMobile ? 14 : 24,
         }}
       >
-        {/* LEFT — logo + system name as one vertical lockup */}
-        <div className="flex flex-col items-start gap-1.5">
+        {/* LEFT — hamburger (mobile) + logo + system name lockup */}
+        <div className="flex items-center gap-2">
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setNavOpen((v) => !v)}
+              aria-label={navOpen ? "Close menu" : "Open menu"}
+              aria-expanded={navOpen}
+              style={{
+                background: "transparent", border: "none", color: "#ece7dd",
+                padding: 6, marginRight: 2, cursor: "pointer",
+                display: "inline-flex", alignItems: "center",
+              }}
+            >
+              <Menu size={22} strokeWidth={1.75} />
+            </button>
+          )}
+          <div className="flex flex-col items-start gap-1.5">
           <img
             src={tokkaLogo}
             alt="Tokka Labs"
             className="block"
-            style={{ height: 32, width: "auto", objectFit: "contain" }}
+            style={{ height: isMobile ? 26 : 32, width: "auto", objectFit: "contain" }}
           />
+          {!isMobile && (
           <span
             className="text-[9px] tracking-[0.34em] uppercase font-mono"
             style={{ color: "#9a9488", fontWeight: 400, paddingLeft: 1 }}
           >
             Trade Management System
           </span>
+          )}
+          </div>
         </div>
 
         {/* RIGHT — minimal indicator dots. Full status surfaces on hover via
             HoverTip (instant, no browser title-attribute delay). Left dot =
             environment (PROD/UAT derived from hostname). Right dot = refdata
             sync state; click to re-sync. */}
-        <div className="flex items-center gap-3">
+        <div className={`flex items-center ${isMobile ? "gap-2" : "gap-3"}`}>
           {/* ENV dot */}
           <HoverTip text={`ENV: ${env}`} placement="bottom">
             <span
@@ -11973,25 +12180,49 @@ export default function TradeBookingForm() {
             </button>
           </HoverTip>
 
-          <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
+          {!isMobile && (
+            <span aria-hidden className="h-4 w-px" style={{ background: "#3a3834" }} />
+          )}
 
-          {/* UTC date · time */}
-          <div className="flex items-baseline gap-2 text-[10px] tracking-[0.22em] uppercase font-mono">
-            <span
-              className="tabular-nums"
-              style={{ color: "#ece7dd", letterSpacing: "0.1em" }}
-            >
-              {clock.toISOString().slice(0, 10)}
-              <span style={{ color: "#6a665c" }} className="mx-2">·</span>
-              {clock.toISOString().slice(11, 19)}
-            </span>
-            <span style={{ color: "#6a665c" }}>UTC</span>
-          </div>
+          {/* UTC date · time — stacked & compact on mobile, inline on desktop */}
+          {isMobile ? (
+            <div className="flex flex-col items-end font-mono tabular-nums leading-tight">
+              <span style={{ color: "#9a9488", fontSize: 9, letterSpacing: "0.08em" }}>
+                {clock.toISOString().slice(0, 10)}
+              </span>
+              <span style={{ color: "#ece7dd", fontSize: 11, letterSpacing: "0.06em" }}>
+                {clock.toISOString().slice(11, 19)}
+                <span style={{ color: "#6a665c" }}> UTC</span>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-2 text-[10px] tracking-[0.22em] uppercase font-mono">
+              <span
+                className="tabular-nums"
+                style={{ color: "#ece7dd", letterSpacing: "0.1em" }}
+              >
+                {clock.toISOString().slice(0, 10)}
+                <span style={{ color: "#6a665c" }} className="mx-2">·</span>
+                {clock.toISOString().slice(11, 19)}
+              </span>
+              <span style={{ color: "#6a665c" }}>UTC</span>
+            </div>
+          )}
         </div>
       </header>
 
       {/* ════ BODY — left sidebar + main panel ════ */}
       <div className="flex flex-1 min-h-0">
+        {/* Mobile drawer backdrop — taps close the nav.
+            Backdrop z:45 sits below the drawer (z:50) but above the page;
+            ModalShell (z:40) is always opened after the drawer closes. */}
+        {isMobile && navOpen && (
+          <div
+            aria-hidden
+            onClick={() => setNavOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 45, background: "rgba(13,12,10,0.45)" }}
+          />
+        )}
         {/* ─── SIDEBAR ─── */}
         <aside
           className="shrink-0 flex flex-col"
@@ -11999,9 +12230,18 @@ export default function TradeBookingForm() {
             width: 208,
             borderRight: `1px solid ${BB.border}`,
             background: BB.bg,
+            ...(isMobile ? {
+              position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 50,
+              transform: navOpen ? "translateX(0)" : "translateX(-100%)",
+              transition: "transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1)",
+              boxShadow: navOpen ? "8px 0 32px rgba(0,0,0,0.35)" : "none",
+            } : {}),
           }}
         >
-          <div className="flex-1 overflow-y-auto py-4">
+            {/* Clicks bubble up from the nav buttons to here; React batches
+                each item's own onClick with this setNavOpen(false), so the
+                target view opens and the drawer closes in one render. */}
+          <div className="flex-1 overflow-y-auto py-4" onClick={() => setNavOpen(false)}>
             {/* Primary action — opens the Create Deal modal */}
             <div className="px-5 pb-3">
               <button
@@ -12432,7 +12672,7 @@ export default function TradeBookingForm() {
               </>
             )}
             <Field label="Created By" required span={4}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "8px 10px", background: "#0a0a0a", border: "1px solid #1f1f1f" }}>
                 <span style={{ fontSize: 11, color: "#7d7d7d", letterSpacing: 1 }}>BOOKED BY</span>
                 <span style={{ fontSize: 13, color: "#e5e5e5", fontFamily: "var(--font-mono)" }}>{form.created_by || user?.username || "—"}</span>
               </div>
