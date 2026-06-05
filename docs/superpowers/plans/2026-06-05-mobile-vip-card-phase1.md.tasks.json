@@ -4,34 +4,34 @@
     {
       "id": 0,
       "subject": "Task 0: useIsMobile hook + MO branch",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** MO feature branch, clean baseline build, add useIsMobile(<=640px) hook and consume it in TradeBookingForm.\n\n**Files:** MO src/TradeBookingForm.jsx (after useClock ~9986; consume ~10131); mirror to TB.\n\n```json:metadata\n{\"files\": [\"middle-office-tools/src/TradeBookingForm.jsx\", \"trade-booking/src/TradeBookingForm.jsx\"], \"verifyCommand\": \"cd middle-office-tools && npm run build\", \"acceptanceCriteria\": [\"MO on branch mobile-friendly-enquiry\", \"useIsMobile added + consumed\", \"build passes\", \"MO/TB identical\"]}\n```"
     },
     {
       "id": 1,
       "subject": "Task 1: Responsive sidebar drawer",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [0],
       "description": "**Goal:** Mobile sidebar -> hamburger slide-in drawer + backdrop; main full-width. Desktop unchanged.\n\n**Files:** MO src/TradeBookingForm.jsx — lucide import (Menu); navOpen state (~9990); header (~11893–11913); body/aside (~11994–12166). Mirror to TB.\n\n```json:metadata\n{\"files\": [\"middle-office-tools/src/TradeBookingForm.jsx\", \"trade-booking/src/TradeBookingForm.jsx\"], \"verifyCommand\": \"cd middle-office-tools && npm run build\", \"acceptanceCriteria\": [\"390px drawer works over backdrop\", \"main full-width on mobile\", \"desktop sidebar unchanged\", \"build passes; MO/TB identical\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: VIP live panel mobile layout",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Mobile VIP panel reflow (header wraps, headline stacks) + collateral as stacked per-asset cards; tap asset -> simulator. Desktop unchanged.\n\n**Files:** MO src/TradeBookingForm.jsx — LoanEnquiry isMobile (~8103); header (~8703); headline grid (~8835); collateral table -> cards (~8898–8959). Mirror to TB.\n\n```json:metadata\n{\"files\": [\"middle-office-tools/src/TradeBookingForm.jsx\", \"trade-booking/src/TradeBookingForm.jsx\"], \"verifyCommand\": \"cd middle-office-tools && npm run build\", \"acceptanceCriteria\": [\"header wraps; headline stacks; collateral as cards; tap opens simulator\", \"desktop table+3col unchanged\", \"build passes; MO/TB identical\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Full-screen simulator sheet + reflow",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Opt-in mobileFullScreen prop on ModalShell; pass from simulator; reflow headline 4->2, triggers 2->1, header wraps. Other modals unaffected.\n\n**Files:** MO src/TradeBookingForm.jsx — ModalShell (~2748–2825); VipCollateralSimulatorModal isMobile (~7674), header (~7837), headline (~7888), ModalShell call (~7834), triggers (~8073). Mirror to TB.\n\n```json:metadata\n{\"files\": [\"middle-office-tools/src/TradeBookingForm.jsx\", \"trade-booking/src/TradeBookingForm.jsx\"], \"verifyCommand\": \"cd middle-office-tools && npm run build\", \"acceptanceCriteria\": [\"simulator full-screen on mobile\", \"headline 2col, triggers 1col, header wraps\", \"other modals unchanged (prop off)\", \"desktop unchanged\", \"build passes; MO/TB identical\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Simulator editable collateral cards",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** Mobile simulator editable cards per asset — Adjust(+/-) input prominent — plus Add asset + Total; live LTV/buffer updates. Desktop table unchanged.\n\n**Files:** MO src/TradeBookingForm.jsx — simulator editable basket (~7946–8070): wrap scroller, mobile card branch, close ternary at </table>. Mirror to TB.\n\n```json:metadata\n{\"files\": [\"middle-office-tools/src/TradeBookingForm.jsx\", \"trade-booking/src/TradeBookingForm.jsx\"], \"verifyCommand\": \"cd middle-office-tools && npm run build\", \"acceptanceCriteria\": [\"editable cards w/ prominent Adjust input\", \"edits update New qty/Value/Sim LTV/buffers\", \"add/remove/focus-highlight work\", \"desktop table unchanged\", \"build passes; MO/TB identical\"]}\n```"
     },
