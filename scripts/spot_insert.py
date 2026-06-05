@@ -71,11 +71,10 @@ def main() -> int:
     try:
         with conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT nextval('trade_seq_spot')")
-                n = cur.fetchone()[0]
-                # Format: MFX + 8-digit zero-padded sequence (MFX00000001 → MFX99999999).
-                deal_ref = f"MFX{n:08d}"
-                cols, vals = spot_db.payload_to_columns(payload, deal_ref=deal_ref)
+                # deal_ref assigned by the DB default
+                # ('MFX' || lpad(nextval('trade_seq_spot'),8,'0')); omitted on
+                # insert and read back from RETURNING *.
+                cols, vals = spot_db.payload_to_columns(payload)
                 col_list = ", ".join(cols + ("effective_start", "effective_end"))
                 placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
                 cur.execute(
@@ -87,7 +86,7 @@ def main() -> int:
 
                 inserted_atts = attachments_db.insert_attachments(
                     cur,
-                    deal_ref=deal_ref,
+                    deal_ref=row["deal_ref"],
                     attachments=attachments,
                     user_id=payload.get("user_id") or "unknown",
                 )

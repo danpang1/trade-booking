@@ -45,11 +45,11 @@ import loan_cashflow_map_db
 
 
 def _insert_one(cur, payload: dict) -> dict:
-    cur.execute("SELECT nextval('trade_seq_cashflow')")
-    n = cur.fetchone()[0]
-    # Format: MCF + 8-digit zero-padded sequence (MCF00000001 → MCF99999999).
-    deal_ref = f"MCF{n:08d}"
-    cols, vals = cashflow_db.payload_to_columns(payload, deal_ref=deal_ref)
+    # deal_ref is assigned by the table's DB default
+    # ('MCF' || lpad(nextval('trade_seq_cashflow'),8,'0')) — we omit it on
+    # insert (payload_to_columns drops the column when deal_ref is None) and
+    # read the generated value back from RETURNING *.
+    cols, vals = cashflow_db.payload_to_columns(payload)
     # Build INSERT: data columns + effective_start (NOW()) + effective_end (NULL)
     col_list = ", ".join(cols + ("effective_start", "effective_end"))
     placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
@@ -59,6 +59,7 @@ def _insert_one(cur, payload: dict) -> dict:
     )
     out_cols = [d.name for d in cur.description]
     row = cashflow_db.row_to_payload(out_cols, cur.fetchone())
+    deal_ref = row["deal_ref"]  # DB-generated
 
     # Loan mappings (optional). The frontend stashes them in _meta so
     # they don't pollute the column-aligned cashflow payload. Mapping

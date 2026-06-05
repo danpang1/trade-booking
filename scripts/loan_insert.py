@@ -69,11 +69,10 @@ def main() -> int:
     try:
         with conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT nextval('trade_seq_loan')")
-                n = cur.fetchone()[0]
-                # Format: MLA + 8-digit zero-padded (Manual LoAn).
-                deal_ref = f"MLA{n:08d}"
-                cols, vals = loan_db.payload_to_columns(payload, deal_ref=deal_ref)
+                # deal_ref assigned by the DB default
+                # ('MLA' || lpad(nextval('trade_seq_loan'),8,'0')); omitted on
+                # insert and read back from RETURNING *.
+                cols, vals = loan_db.payload_to_columns(payload)
                 col_list = ", ".join(cols + ("effective_start", "effective_end"))
                 placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
                 cur.execute(
