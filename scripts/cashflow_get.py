@@ -31,7 +31,7 @@ def main() -> int:
                 "  FROM trades_cashflow t "
                 "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
                 " WHERE t.deal_ref = %s AND t.effective_end IS NULL "
-                " GROUP BY t.deal_ref, t.effective_start",
+                " GROUP BY t.id",
                 (deal_ref,),
             )
             row = cur.fetchone()
