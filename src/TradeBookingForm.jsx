@@ -2844,7 +2844,7 @@ function ModalShell({ open, onClose, children, variant = "modal", mobileFullScre
       style={wrapperStyle}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={isDrawer ? "" : "relative mx-auto"} style={panelStyle}>
+      <div className={(isDrawer || fullScreen) ? "" : "relative mx-auto"} style={panelStyle}>
         <button
           type="button"
           onClick={onClose}
@@ -7835,8 +7835,8 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
     } catch (e) { setCopied(false); }
   };
 
-  const headStat = (label, valNode, deltaText, color) => (
-    <div style={{ padding: "10px 14px", borderRight: "1px solid var(--rule)" }}>
+  const headStat = (label, valNode, deltaText, color, noBorderRight = false) => (
+    <div style={{ padding: "10px 14px", borderRight: noBorderRight ? "none" : "1px solid var(--rule)" }}>
       <div style={{
         fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
         letterSpacing: "0.06em", marginBottom: 4,
@@ -7939,6 +7939,7 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
             sim.ltvPct != null ? `${sim.ltvPct.toFixed(2)}%` : "—",
             fmtDelta(sim.ltvPct != null && snapLtvPct != null ? sim.ltvPct - snapLtvPct : null),
             vipLtvAccent(sim.ltvPct),
+            isMobile,
           )}
           {headStat(
             "Buffer to margin call · 77%",
@@ -12088,7 +12089,7 @@ export default function TradeBookingForm() {
           {isMobile && (
             <button
               type="button"
-              onClick={() => setNavOpen(true)}
+              onClick={() => setNavOpen((v) => !v)}
               aria-label={navOpen ? "Close menu" : "Open menu"}
               aria-expanded={navOpen}
               style={{
