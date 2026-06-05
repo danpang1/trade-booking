@@ -5092,9 +5092,14 @@ function summarizeDeal(r) {
       receiverId = r.portfolio_id;
       receiverShort = shortPtfName(r.portfolio_name);
     }
+    // Funds flowing INTO the treasury are a return of capital, not a fresh
+    // funding — so key the verb on the RECEIVER being the treasury portfolio.
+    // Destination-based (not direction-based) so it reads correctly no matter
+    // which side booked the cashflow.
+    const verb = receiverShort.toUpperCase() === "TREASURY" ? "RETURNED" : "FUNDS";
     return join([
       "PTF", senderId, senderShort,
-      "FUNDS",
+      verb,
       "PTF", receiverId, receiverShort,
       fmtAmt, asset,
     ]);
@@ -10971,10 +10976,15 @@ export default function TradeBookingForm() {
     const shortName = (n) => n.split(" - ").pop().trim();
     const bookerShort = shortName(booker.name);
     const cpShort = shortName(cp.name);
-    if (form.cf_direction === "OUTGOING") {
-      return `PTF ${booker.number} ${bookerShort} FUNDS PTF ${cp.number} ${cpShort} ${form.cf_amount} ${form.cf_asset}`;
-    }
-    return `PTF ${cp.number} ${cpShort} RETURNED PTF ${booker.number} ${bookerShort} ${form.cf_amount} ${form.cf_asset}`;
+    // Resolve sender/receiver from the booking direction (OUTGOING = funds
+    // leave the booker), then pick the verb from the RECEIVER: money flowing
+    // into the treasury is a return of capital, not a fresh funding.
+    const sender = form.cf_direction === "OUTGOING" ? booker : cp;
+    const senderShort = form.cf_direction === "OUTGOING" ? bookerShort : cpShort;
+    const receiver = form.cf_direction === "OUTGOING" ? cp : booker;
+    const receiverShort = form.cf_direction === "OUTGOING" ? cpShort : bookerShort;
+    const verb = receiverShort.toUpperCase() === "TREASURY" ? "RETURNED" : "FUNDS";
+    return `PTF ${sender.number} ${senderShort} ${verb} PTF ${receiver.number} ${receiverShort} ${form.cf_amount} ${form.cf_asset}`;
   }, [
     form.cf_type, form.cf_direction, form.portfolio, form.counterparty,
     form.cf_amount, form.cf_asset,
