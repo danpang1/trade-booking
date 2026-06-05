@@ -47,9 +47,12 @@ def _load_creds() -> dict[str, str]:
 DDL = """
 -- ════════════════════════════════════════════════════════════════
 -- trade_seq_cashflow — monotonic counter for MCF deal-refs.
+-- Standardized floor: new environments begin at 4578 so MCF refs align
+-- across UAT and PROD (set 2026-06-05). IF NOT EXISTS means this never
+-- resets an existing sequence — use scripts/set_cashflow_seq.py for that.
 -- ════════════════════════════════════════════════════════════════
 CREATE SEQUENCE IF NOT EXISTS trade_seq_cashflow
-  START WITH 1 INCREMENT BY 1 NO MAXVALUE CACHE 1;
+  START WITH 4578 INCREMENT BY 1 NO MAXVALUE CACHE 1;
 
 -- ════════════════════════════════════════════════════════════════
 -- trades_cashflow — bitemporal cashflow trades.
