@@ -5407,6 +5407,7 @@ function dynamicFilterMatch(row, dynamic, fields) {
 // "+ Add filter" menu of remaining columns. The parent owns the values
 // object — this component is purely controlled.
 const DynamicFilterRows = ({ fields, values, onChange }) => {
+  const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
   const wrapRef = useRef(null);
@@ -5466,7 +5467,10 @@ const DynamicFilterRows = ({ fields, values, onChange }) => {
                 value={values[k] ?? ""}
                 onChange={(e) => setOne(k, e.target.value)}
                 placeholder="free text · comma-separated"
-                autoFocus={values[k] === ""}
+                // Don't autofocus on mobile — an empty filter on mount (the
+                // default Deal Ref row) would pop the keyboard and jump the
+                // page. Desktop still focuses a freshly-added filter.
+                autoFocus={!isMobile && values[k] === ""}
               />
             </div>
             <button
