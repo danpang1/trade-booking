@@ -9345,10 +9345,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 collapses to the single asset's amount when a cpty holds
                 only one symbol — otherwise "—" since BTC + ETH won't
                 meaningfully sum. USD Notional and Loans always sum. */}
+            <div style={{ overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
             <table
               style={{
                 width: "100%", borderCollapse: "collapse", fontSize: 12,
-                tableLayout: "fixed",
+                tableLayout: isMobile ? "auto" : "fixed",
+                minWidth: isMobile ? 600 : undefined,
               }}
             >
               <colgroup>
@@ -9539,6 +9541,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 </tr>
               </tbody>
             </table>
+            </div>
             {/* Footnote — source and time of the rate snapshot used. */}
             <div style={{
               padding: "6px 12px",
