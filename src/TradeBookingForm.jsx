@@ -338,16 +338,17 @@ const LOAN_TYPE_PALETTE = {
 // panel cells, and the panel's header total.
 function fmtUsdShort(n) {
   if (n == null || !isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-  if (abs >= 1e9) return "$" + (n / 1e9).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "B";
-  if (abs >= 1e6) return "$" + (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
-  if (abs >= 1e3) return "$" + (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
-  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (abs >= 1e9) return sign + "$" + (abs / 1e9).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "B";
+  if (abs >= 1e6) return sign + "$" + (abs / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
+  if (abs >= 1e3) return sign + "$" + (abs / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K";
+  return sign + "$" + abs.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 function fmtUsdCell(n) {
-  return n == null
-    ? "—"
-    : "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  if (n == null) return "—";
+  const sign = n < 0 ? "-" : "";
+  return sign + "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 }
 
 // Sum the live USD exposure for one loan_type. `exposureRows` comes from
@@ -5406,6 +5407,7 @@ function dynamicFilterMatch(row, dynamic, fields) {
 // "+ Add filter" menu of remaining columns. The parent owns the values
 // object — this component is purely controlled.
 const DynamicFilterRows = ({ fields, values, onChange }) => {
+  const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
   const wrapRef = useRef(null);
@@ -5465,7 +5467,10 @@ const DynamicFilterRows = ({ fields, values, onChange }) => {
                 value={values[k] ?? ""}
                 onChange={(e) => setOne(k, e.target.value)}
                 placeholder="free text · comma-separated"
-                autoFocus={values[k] === ""}
+                // Don't autofocus on mobile — an empty filter on mount (the
+                // default Deal Ref row) would pop the keyboard and jump the
+                // page. Desktop still focuses a freshly-added filter.
+                autoFocus={!isMobile && values[k] === ""}
               />
             </div>
             <button
@@ -8537,7 +8542,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         if (r.loan_type !== t) continue;
         const cpty = r.counterparty || "—";
         const asset = r.principal_asset || "—";
-        const amt = parseFloat(r.principal_amount) || 0;
+        // Signed notional: money lent OUT (direction LEND) is negative,
+        // money BORROWED in is positive — so the exposure nets per cpty.
+        const amt = (parseFloat(r.principal_amount) || 0) * (r.direction === "LEND" ? -1 : 1);
         const key = `${cpty}||${asset}`;
         const prev = cellMap.get(key) || { cpty, asset, notional: 0, loans: 0 };
         prev.notional += amt;
@@ -8546,11 +8553,13 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         cptyTotal.set(cpty, (cptyTotal.get(cpty) || 0) + amt);
       }
       exposureByType[t] = [...cellMap.values()].sort((a, b) => {
-        const at = cptyTotal.get(a.cpty) || 0;
-        const bt = cptyTotal.get(b.cpty) || 0;
+        // Rank by absolute exposure so the biggest positions sort first
+        // regardless of lend/borrow sign.
+        const at = Math.abs(cptyTotal.get(a.cpty) || 0);
+        const bt = Math.abs(cptyTotal.get(b.cpty) || 0);
         if (at !== bt) return bt - at;             // counterparty rank
         if (a.cpty !== b.cpty) return a.cpty.localeCompare(b.cpty);
-        return b.notional - a.notional;            // within cpty, asset rank
+        return Math.abs(b.notional) - Math.abs(a.notional); // within cpty, asset rank
       });
       cptyCountByType[t] = cptyTotal.size;
     }
@@ -8664,7 +8673,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
             // Drops the "of active" suffix when USD is shown so the
             // sub line fits inside the tile at 4-col grid width.
             const typeUsd = sumExposureUsd(kpis.exposureByType[t], rates);
-            const haveUsd = typeUsd > 0;
+            const haveUsd = typeUsd !== 0;
             const pctPart = haveUsd ? `${pct}%` : `${pct}% of active`;
             const usdPart = haveUsd ? `${fmtUsdShort(typeUsd)} · ` : "";
             const sub = count === 0
@@ -9326,7 +9335,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 fontWeight: 600,
               }}>
                 {expLabel} · {expCptyCount} counterpart{expCptyCount === 1 ? "y" : "ies"} · {expLoanCount} loan{expLoanCount === 1 ? "" : "s"}
-                {totalUsd > 0 && (
+                {totalUsd !== 0 && (
                   <>
                     {" · "}
                     <span style={{ color: "var(--ink)" }}>{fmtUsdShort(totalUsd)} total</span>
@@ -9345,10 +9354,12 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 collapses to the single asset's amount when a cpty holds
                 only one symbol — otherwise "—" since BTC + ETH won't
                 meaningfully sum. USD Notional and Loans always sum. */}
+            <div style={{ overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" }}>
             <table
               style={{
                 width: "100%", borderCollapse: "collapse", fontSize: 12,
-                tableLayout: "fixed",
+                tableLayout: isMobile ? "auto" : "fixed",
+                minWidth: isMobile ? 600 : undefined,
               }}
             >
               <colgroup>
@@ -9483,7 +9494,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                               fontVariantNumeric: "tabular-nums",
                               color: "var(--ink)", fontWeight: 600,
                             }}>
-                              {cpyTot.usd > 0 ? fmtUsdCell(cpyTot.usd) : "—"}
+                              {cpyTot.usd !== 0 ? fmtUsdCell(cpyTot.usd) : "—"}
                             </td>
                             <td style={{
                               padding: "6px 12px", textAlign: "right",
@@ -9527,7 +9538,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     fontVariantNumeric: "tabular-nums",
                     color: "var(--ink)", fontWeight: 700,
                   }}>
-                    {totalUsd > 0 ? fmtUsdCell(totalUsd) : "—"}
+                    {totalUsd !== 0 ? fmtUsdCell(totalUsd) : "—"}
                   </td>
                   <td style={{
                     padding: "8px 12px", textAlign: "right",
@@ -9539,6 +9550,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                 </tr>
               </tbody>
             </table>
+            </div>
             {/* Footnote — source and time of the rate snapshot used. */}
             <div style={{
               padding: "6px 12px",
