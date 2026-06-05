@@ -50,7 +50,7 @@ def main() -> int:
                 "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
                 "  LEFT JOIN bookings_draft d ON d.approved_deal_ref = t.deal_ref "
                 " WHERE t.deal_ref = %s "
-                " GROUP BY t.deal_ref, t.effective_start, d.id "
+                " GROUP BY t.id, d.id "
                 " ORDER BY t.effective_start ASC",
                 (deal_ref,),
             )

@@ -41,7 +41,7 @@ def main() -> int:
                 "         ON cf.deal_ref = m.cashflow_deal_ref "
                 "        AND cf.effective_end IS NULL AND cf.status <> 'CANCELLED' "
                 " WHERE t.effective_end IS NULL "
-                " GROUP BY t.deal_ref, t.effective_start "
+                " GROUP BY t.id "
                 " ORDER BY t.trade_date DESC, t.deal_ref DESC "
                 " LIMIT %s",
                 (limit,),
