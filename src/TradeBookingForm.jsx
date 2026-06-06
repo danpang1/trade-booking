@@ -7690,6 +7690,15 @@ function vipGroupNum(raw) {
 function vipStripNum(v) {
   return String(v).replace(/,/g, "").replace(/[^0-9.\-]/g, "");
 }
+// Toggle the leading sign of a bare numeric string ("123"→"-123",
+// "-123"→"123"). Empty / lone-dot stay as-is. Backs the mobile sign-flip
+// button: phone decimal keypads have no minus key, so a tap is the only
+// way to make an adjustment negative.
+function vipFlipSign(v) {
+  const s = vipStripNum(v);
+  if (s === "" || s === ".") return s;
+  return s.startsWith("-") ? s.slice(1) : "-" + s;
+}
 
 // What-if collateral simulator. Seeds from the LIVE detail snapshot
 // (vipDetail) and lets the user adjust loan + collateral to see the
@@ -7792,6 +7801,29 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
   // onChange wrapper for comma-grouped numeric inputs: strips grouping
   // before storing so state stays Number()-ready.
   const onNum = (cb) => (e) => cb(vipStripNum(e.target.value));
+
+  // Tap-to-flip sign button. Sits beside a signed adjustment input so the
+  // value can be made negative without a minus key (phone keypads omit it).
+  // Glyph shows the CURRENT sign and tints green (+) / red (−) to match the
+  // input; tapping toggles it. Stretches to the input's height.
+  const SignFlip = ({ valueStr, onFlip, size = 38 }) => {
+    const neg = (Number(vipStripNum(valueStr)) || 0) < 0;
+    return (
+      <button
+        type="button"
+        onClick={onFlip}
+        title="Flip sign (+ / −)"
+        aria-label="Flip sign of adjustment"
+        style={{
+          flex: "0 0 auto", width: size, alignSelf: "stretch",
+          cursor: "pointer", borderRadius: 3,
+          border: "1px solid var(--rule)", background: "var(--paper)",
+          color: neg ? "var(--signal-sell)" : "var(--signal-buy)",
+          fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, lineHeight: 1,
+        }}
+      >{neg ? "−" : "+"}</button>
+    );
+  };
 
   const fmtUsd = (n, dp = 2) => (n == null || Number.isNaN(n))
     ? "—"
@@ -7926,19 +7958,23 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
             <div style={{ fontSize: 11, color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
               current {fmtUsd(baseLoanUsd, 0)}
             </div>
-            {/* Adjust — signed drawdown (+) / repayment (−) */}
-            <input
-              type="text"
-              inputMode="decimal"
-              value={vipGroupNum(loanDeltaStr)}
-              placeholder="adjust ±"
-              onChange={onNum(setLoanDeltaStr)}
-              style={{
-                ...inputStyle, textAlign: "left", marginTop: 4,
-                color: loanDeltaNum > 0 ? "var(--signal-buy)" : loanDeltaNum < 0 ? "var(--signal-sell)" : "var(--ink)",
-                fontWeight: loanDeltaNum !== 0 ? 600 : 400,
-              }}
-            />
+            {/* Adjust — signed drawdown (+) / repayment (−). Sign-flip button
+                lets phones type a negative (no minus key on decimal keypads). */}
+            <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={vipGroupNum(loanDeltaStr)}
+                placeholder="adjust ±"
+                onChange={onNum(setLoanDeltaStr)}
+                style={{
+                  ...inputStyle, textAlign: "left", flex: 1, minWidth: 0,
+                  color: loanDeltaNum > 0 ? "var(--signal-buy)" : loanDeltaNum < 0 ? "var(--signal-sell)" : "var(--ink)",
+                  fontWeight: loanDeltaNum !== 0 ? 600 : 400,
+                }}
+              />
+              <SignFlip valueStr={loanDeltaStr} onFlip={() => setLoanDeltaStr(vipFlipSign(loanDeltaStr))} />
+            </div>
             {/* New loan — base + adjust, floored at 0 */}
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", fontVariantNumeric: "tabular-nums", marginTop: 4 }}>
               {fmtUsd(loanUsd, 0)} <span style={{ fontSize: 10, color: "var(--ink-4)", fontWeight: 400 }}>new</span>
@@ -8014,14 +8050,17 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
                     </div>
                     <div style={{ marginBottom: 8 }}>
                       <div style={{ fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Adjust (+/−)</div>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={vipGroupNum(r.deltaQty)}
-                        placeholder="0"
-                        onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
-                        style={{ ...inputStyle, textAlign: "left", fontSize: 15, padding: "8px 10px", color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
-                      />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={vipGroupNum(r.deltaQty)}
+                          placeholder="0"
+                          onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
+                          style={{ ...inputStyle, textAlign: "left", fontSize: 15, padding: "8px 10px", flex: 1, minWidth: 0, color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
+                        />
+                        <SignFlip valueStr={r.deltaQty} onFlip={() => updateRow(r.id, { deltaQty: vipFlipSign(r.deltaQty) })} size={46} />
+                      </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 12px", fontSize: 11 }}>
                       <span style={{ color: "var(--ink-3)" }}>Current qty</span>
@@ -8115,14 +8154,17 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
                     </td>
                     {/* Adjust — planned add (+) / subtract (−). The only qty input. */}
                     <td style={{ padding: "5px 12px" }}>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={vipGroupNum(r.deltaQty)}
-                        placeholder="0"
-                        onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
-                        style={{ ...inputStyle, color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
-                      />
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={vipGroupNum(r.deltaQty)}
+                          placeholder="0"
+                          onChange={onNum((v) => updateRow(r.id, { deltaQty: v }))}
+                          style={{ ...inputStyle, flex: 1, minWidth: 0, color: deltaColor, fontWeight: delta !== 0 ? 600 : 400 }}
+                        />
+                        <SignFlip valueStr={r.deltaQty} onFlip={() => updateRow(r.id, { deltaQty: vipFlipSign(r.deltaQty) })} size={30} />
+                      </div>
                     </td>
                     {/* New qty — base + adjust (floored at 0), read-only */}
                     <td style={{ padding: "5px 12px", textAlign: "right", color: "var(--ink)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
