@@ -1,0 +1,21 @@
+---
+# Venue balance + position hourly snapshot.
+# Release: cron-venue-snapshots-<env>. Renders one CronJob, no Deployment.
+#
+# Runs the Native Core + Lighter + Phoenix balance & position collectors once
+# per UTC hour via scripts/snapshot_all.py, writing to
+# middle_office.tq_hist_balance_mo and tq_hist_position_mo. DB creds come from
+# the shared MO_DB_* env_secrets in helm_values/base.yaml (Secret trade-booking-mo-db).
+#
+# Public read-only venue APIs only — no extra Secret required. Bitget is
+# excluded until its API-key Secret is wired.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: venue-snapshots
+    enabled: true
+    schedule: "0 * * * *"   # top of every UTC hour
+    command: ["python", "/opt/app/scripts/snapshot_all.py"]
+    args: []
