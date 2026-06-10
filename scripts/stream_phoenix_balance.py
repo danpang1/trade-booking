@@ -11,7 +11,7 @@ Convention
 ----------
 - Public read-only API (no auth).
 - Wallet `EibQ2VYpzj18qSdEBkmxWVzde7FzamTxVG9rZyY689Yj` (8023 - CDA SOL desk).
-- Three trader sub-accounts (traderSubaccountIndex 0/1/2); MO account_ids 900000/01/02.
+- Three trader sub-accounts (traderSubaccountIndex 0/1/2) → account_id 216002, names TRADING01@PHOENIX-1/-2/-3.
 - Equity row total_qty = `portfolioValue.ui`  (collateral + uPnL, MTM, USDC).
 - Equity row avail_qty = `effectiveCollateralForWithdrawals.ui`.
 - Position rows total_qty = abs(positionSize.ui), side=long/short by sign,
@@ -50,9 +50,9 @@ EXCH = "PHOENIX_FUTURES"
 
 # traderSubaccountIndex → (MO account_id, account_name)
 ACCOUNT_MAP: dict[int, dict] = {
-    0: {"account_id": 900000, "name": "CDASOL_SUB0@PHOENIX_FUTURES"},
-    1: {"account_id": 900001, "name": "CDASOL_SUB1@PHOENIX_FUTURES"},
-    2: {"account_id": 900002, "name": "CDASOL_SUB2@PHOENIX_FUTURES"},
+    0: {"account_id": 216002, "name": "TRADING01@PHOENIX-1"},
+    1: {"account_id": 216002, "name": "TRADING01@PHOENIX-2"},
+    2: {"account_id": 216002, "name": "TRADING01@PHOENIX-3"},
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

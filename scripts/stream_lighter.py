@@ -7,7 +7,7 @@ Convention
 ----------
 - Public read-only API (no auth).
 - L1 address `0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB` (8023 - CDA SOL desk).
-- One Lighter sub-account (index 29911 today) → MO account_id 910000.
+- One Lighter sub-account (index 29911 today) → MO account_id 215002.
 - `last_trade_price` derived: |position_value| / |position|.
 - `margin`:
     cross  (margin_mode=0) → position_value × initial_margin_fraction / 100
@@ -50,7 +50,7 @@ EXCH = "LIGHTER_FUTURES"
 # Only one sub-account exists today (index 29911); if more get created the
 # collector logs a warning and skips so we don't write under a wrong id.
 ACCOUNT_MAP: dict[int, dict] = {
-    29911: {"account_id": 910000, "name": "CDASOL_EVM_04@LIGHTER_FUTURES"},
+    29911: {"account_id": 215002, "name": "TRADING01@LIGHTER"},
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

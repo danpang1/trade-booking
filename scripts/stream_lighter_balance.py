@@ -12,7 +12,7 @@ Convention
 ----------
 - Public read-only API (no auth).
 - L1 address `0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB` (8023 - CDA SOL desk).
-- One Lighter sub-account today (index 29911) → MO account_id 910000.
+- One Lighter sub-account today (index 29911) → MO account_id 215002.
 - Equity row total_qty = `total_asset_value` (MTM, USDC).
 - Equity row avail_qty = `available_balance`.
 - Position rows total_qty = abs(position), side=long/short by `sign`,
@@ -50,7 +50,7 @@ L1_ADDRESS = "0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB"
 EXCH = "LIGHTER_FUTURES"
 
 ACCOUNT_MAP: dict[int, dict] = {
-    29911: {"account_id": 910000, "name": "CDASOL_EVM_04@LIGHTER_FUTURES"},
+    29911: {"account_id": 215002, "name": "TRADING01@LIGHTER"},
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
