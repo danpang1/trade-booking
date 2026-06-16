@@ -21,6 +21,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 from engine import Position, apply_fill, unrealized, D, ZERO  # noqa: E402
+from account_recon import refdata_account, account_type, instrument_mo_map  # noqa: E402
 
 CH = ("https://jp-clickhouse-api.internal.tokkalabs.com:443/"
       "?user=prod_ro&password=scCtp%21Ez8%233h%23LK8")
@@ -220,25 +221,8 @@ legs = {
     "Hyperliquid SPCXD spot (LONG)": walk(hl_ev, marks, "hl"),
 }
 
-grand = ZERO
-for day in DAYS:
-    print(f"\n{'='*108}\nCOB {day} 23:59:59 UTC")
-    print(f"{'leg':32} {'eod_qty':>11} {'avg_cost':>10} {'mark':>9} {'realized':>10} "
-          f"{'dUnreal':>10} {'funding':>9} {'fees':>8} {'total':>10} {'trd':>4}")
-    day_tot = ZERO
-    for name, res in legs.items():
-        r = res[day]
-        fnd = fund.get(day, ZERO) if "Binance" in name else ZERO
-        leg_total = r["total"] + fnd
-        day_tot += leg_total
-        print(f"{name:32} {f(r['qty'],3):>11} {f(r['avg']):>10} {f(r['mark']):>9} "
-              f"{f(r['realized']):>10} {f(r['du']):>10} {f(fnd):>9} {f(r['fees']):>8} "
-              f"{f(leg_total):>10} {r['n']:>4}")
-    grand += day_tot
-    print(f"  -> SPCX book net PnL {day} = {f(day_tot)} USD")
-
-print(f"\n{'='*108}")
-print(f"SPCX-PAIR PnL ({INCEPTION[5:]}..{COB[5:]} Jun) = {f(grand)} USD  (delta-neutral book)")
+# Avg-cost replay (legs above) runs silently from inception; only the COB day
+# is reported, in the two tables below. No per-day warm-up output.
 
 # ── FULL-ACCOUNT PnL (ALL trades) for the COB day, then the recon ───────
 day = DAYS[-1]
@@ -260,26 +244,35 @@ b = legs["Binance SPCX perp (SHORT)"][day]
 bf = fund.get(day, ZERO)
 h = legs["Hyperliquid SPCXD spot (LONG)"][day]
 bin_inst = "SPCX-P/USDT@BINANCE_USDT_FUTURE"
-# (acct, instrument, SOD bal, EOD bal, realized, ΔUnreal, funding, fees, net PnL)
+bin_acct, bin_venue, _ = refdata_account("TK810@BINANCE_USDT_FUTURE")
+spot_acct, spot_venue, _ = refdata_account("TRADING_06@HYPERLIQUID_SPOT")
+fut_acct, fut_venue, _ = refdata_account("TRADING_06@HYPERLIQUID_FUTURES")
+bin_type = account_type("TK810@BINANCE_USDT_FUTURE")
+spot_type = account_type("TRADING_06@HYPERLIQUID_SPOT")
+fut_type = account_type("TRADING_06@HYPERLIQUID_FUTURES")
+_mo = instrument_mo_map()   # instrument | instrument_exch -> instrument_mo (standardized)
+# (account, venue, type, instrument, SOD bal, EOD bal, realized, ΔUnreal, funding, fees, net PnL, trd)
 pnl_rows = [
-    ("BINANCE", bin_inst,
+    (bin_acct, bin_venue, bin_type, _mo.get(bin_inst, bin_inst),
      _snapbal(sod_snap, "TK810@BINANCE_USDT_FUTURE", bin_inst),
      _snapbal(eod_snap, "TK810@BINANCE_USDT_FUTURE", bin_inst),
-     b["realized"], b["du"], bf, b["fees"], b["realized"] + b["du"] + bf - b["fees"]),
-    ("HL-SPOT", "SPCXD/USDC@HYPERLIQUID_SPOT",
+     b["realized"], b["du"], bf, b["fees"], b["realized"] + b["du"] + bf - b["fees"], b["n"]),
+    (spot_acct, spot_venue, spot_type, _mo.get("SPCXD", "SPCXD"),
      _snapbal(sod_snap, "TRADING_06@HYPERLIQUID_SPOT", "SPCXD"),
      _snapbal(eod_snap, "TRADING_06@HYPERLIQUID_SPOT", "SPCXD"),
-     h["realized"], h["du"], ZERO, h["fees"], h["total"]),
+     h["realized"], h["du"], ZERO, h["fees"], h["total"], h["n"]),
 ]
 for pl in perp_legs:
-    pnl_rows.append(("HL-FUT", pl["coin"], pl["sod_bal"], pl["eod_bal"],
-                     pl["realized"], pl["du"], pl["funding"], pl["fees"], pl["total"]))
-pnl_total = sum((r[8] for r in pnl_rows), ZERO)
+    pnl_rows.append((fut_acct, fut_venue, fut_type, _mo.get(pl["coin"], pl["coin"]),
+                     pl["sod_bal"], pl["eod_bal"],
+                     pl["realized"], pl["du"], pl["funding"], pl["fees"], pl["total"], pl["n"]))
+pnl_rows.sort(key=lambda r: (r[1], r[3]))   # group by venue, then instrument
+pnl_total = sum((r[10] for r in pnl_rows), ZERO)
 
-pcols = ["acct", "instrument", "SOD bal", "EOD bal", "realized", "ΔUnreal", "funding", "fees", "net PnL"]
-pdata = [[r[0], r[1][:34], f(r[2], 4), f(r[3], 4), f(r[4]), f(r[5]), f(r[6]), f(r[7]), f(r[8])]
+pcols = ["venue", "account", "type", "instrument", "trd", "SOD bal", "EOD bal", "realized", "ΔUnreal", "funding", "fees", "net PnL"]
+pdata = [[r[1], r[0], r[2], r[3][:34], str(r[11]), f(r[4], 4), f(r[5], 4), f(r[6]), f(r[7]), f(r[8]), f(r[9]), f(r[10])]
          for r in pnl_rows]
-pdata.append(["TOTAL", "", "", "", "", "", "", "", f(pnl_total)])
+pdata.append(["TOTAL", "", "", "", "", "", "", "", "", "", "", f(pnl_total)])
 pw = [max(len(pcols[i]), *(len(r[i]) for r in pdata)) for i in range(len(pcols))]
 
 
@@ -289,11 +282,13 @@ def _pbar(a, m, c):
 
 def _pline(cs, center=False):
     return "│" + "│".join(" " + (cs[i].center(pw[i]) if center else
-           (cs[i].ljust(pw[i]) if i in (0, 1) else cs[i].rjust(pw[i]))) + " "
+           (cs[i].ljust(pw[i]) if i in (0, 1, 2, 3) else cs[i].rjust(pw[i]))) + " "
            for i in range(len(cs))) + "│"
 
 
+_portfolio = refdata_account("TK810@BINANCE_USDT_FUTURE")[2]
 print(f"\n{'='*108}\nPORTFOLIO 8041 — DAILY PnL (ALL TRADES) — COB {day} 23:59:59 UTC")
+print(f"Portfolio: {_portfolio} (8041)")
 print(_pbar("┌", "┬", "┐"))
 print(_pline(pcols, True))
 print(_pbar("├", "┼", "┤"))

@@ -45,6 +45,89 @@ def env(key):
     return ""
 
 
+_REFDATA = Path(__file__).resolve().parent.parent / "public" / "refdata" / "accounts.json"
+_REF_CACHE = None
+
+
+def refdata_account(internal_key):
+    """Map an internal account key (e.g. 'TK810@BINANCE_USDT_FUTURE') to its
+    refdata identity: (name, venue, portfolio) exactly as catalogued in
+    public/refdata/accounts.json. Falls back to a computed name/venue (and
+    empty portfolio) if the account isn't found in refdata."""
+    global _REF_CACHE
+    prefix, _, rest = internal_key.partition("@")
+    venue = rest.split("_")[0]
+    name = f"{prefix}@{venue}"
+    if _REF_CACHE is None:
+        try:
+            data = json.loads(_REFDATA.read_text(encoding="utf-8"))
+            _REF_CACHE = {a.get("name"): a for a in data.get("exchange", [])}
+        except Exception:
+            _REF_CACHE = {}
+    a = _REF_CACHE.get(name)
+    if a:
+        return a.get("name", name), a.get("venue", venue), a.get("portfolio", "")
+    return name, venue, ""
+
+
+# Internal-key segment -> human account/market type. Binance 810 is a papi
+# (Portfolio Margin) account, so its USD-M futures wallet is labelled PM.
+_TYPE_MAP = (
+    ("BINANCE_USDT_FUTURE", "Binance PM (USD-M)"),
+    ("BINANCE_COIN_FUTURE", "Binance PM (COIN-M)"),
+    ("BINANCE_SPOT", "Binance Spot"),
+    ("HYPERLIQUID_SPOT", "Hyperliquid Spot"),
+    ("HYPERLIQUID_FUTURES", "Hyperliquid Futures"),
+)
+
+
+def account_type(internal_key):
+    """Market/account type for an internal account key (e.g.
+    'TK810@BINANCE_USDT_FUTURE' -> 'Binance PM (USD-M)')."""
+    k = internal_key.upper()
+    for needle, label in _TYPE_MAP:
+        if needle in k:
+            return label
+    return k.split("@")[-1].replace("_", " ").title()
+
+
+_MO_CACHE = None
+
+
+def instrument_mo_map():
+    """{instrument | instrument_exch -> instrument_mo} from Postgres snapshots
+    for the 8041 accounts — the MO-standardized instrument naming. Both the
+    verbose `instrument` key and the raw `instrument_exch` resolve to the same
+    `instrument_mo`, so either form used in the tables maps through. Cached;
+    returns {} if Postgres is unavailable (callers fall back to the raw name)."""
+    global _MO_CACHE
+    if _MO_CACHE is not None:
+        return _MO_CACHE
+    m = {}
+    try:
+        pg = _pg()
+        try:
+            cur = pg.cursor()
+            for tbl in ("tq_hist_balance", "tq_hist_position"):
+                cur.execute(f"""
+                    SELECT DISTINCT instrument, instrument_exch, instrument_mo
+                    FROM {tbl}
+                    WHERE (account_name LIKE 'TK810@%%' OR account_name LIKE 'TRADING_06@%%')
+                      AND instrument_mo IS NOT NULL AND instrument_mo <> ''
+                """)
+                for inst, exch, mo in cur.fetchall():
+                    if inst:
+                        m[inst] = mo
+                    if exch:
+                        m.setdefault(exch, mo)
+        finally:
+            pg.close()
+    except Exception:
+        m = {}
+    _MO_CACHE = m
+    return m
+
+
 def to_ms(dt):
     return int((dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp() * 1000)
 
@@ -123,8 +206,9 @@ def bin_pos_net(symbol, w0, w1):
         if len(b) < 1000:
             break
         fid = max(int(f["id"]) for f in b) + 1
-    return sum((D(f["qty"]) * (D(1) if f["buyer"] else D(-1))
-                for f in fills if w0 <= int(f["time"]) < w1), ZERO)
+    win = [f for f in fills if w0 <= int(f["time"]) < w1]
+    net = sum((D(f["qty"]) * (D(1) if f["buyer"] else D(-1)) for f in win), ZERO)
+    return net, len(win)
 
 
 def bin_income(w0, w1):
@@ -266,11 +350,13 @@ def run_recon(date_iso):
     fills = hl_fills()
     net_qty, realized, usdc_fee, inkind = defaultdict(lambda: ZERO), defaultdict(lambda: ZERO), defaultdict(lambda: ZERO), defaultdict(lambda: ZERO)
     spot_usdc = defaultdict(lambda: ZERO)
+    cnt = defaultdict(int)
     for f in fills:
         if not (w0 <= int(f["time"]) < w1):
             continue
         c = f["coin"]
         sz, px = D(f["sz"]), D(f["px"])
+        cnt[c] += 1
         net_qty[c] += sz if f["side"] == "B" else -sz
         realized[c] += D(f.get("closedPnl", "0"))
         if f["feeToken"] == "USDC":
@@ -307,28 +393,32 @@ def run_recon(date_iso):
 
     # ── build rows ──
     rows = []
+    shown_perp = set()   # HL perp coins that got a balance-driven row
     keys = sorted(set(sod) | set(eod))
     for k in keys:
         acct, inst = k
         bal_d = eod.get(k, (ZERO, None))[0] - sod.get(k, (ZERO, None))[0]
         if abs(bal_d) < D("1e-6"):
             continue
-        unreal, transfers, td = None, ZERO, None
-        label = inst[:34]
+        unreal, transfers, td, trd = None, ZERO, None, None
+        label = instrument_mo_map().get(inst, inst)[:34]
         if acct == BIN_FUT and inst == "USDT":
             td, transfers = bin_income(w0, w1)
             unreal = unrealized_sum(BIN_FUT, "%SPCX%", eod_dt) - unrealized_sum(BIN_FUT, "%SPCX%", sod_dt)
         elif acct == BIN_FUT:  # SPCX perp position
-            td = bin_pos_net("SPCXUSDT", w0, w1)
+            td, trd = bin_pos_net("SPCXUSDT", w0, w1)
         elif acct == HL_SPOT and inst == "USDC":
+            label = "USDC (spot)"
             td = sum(spot_usdc.values(), ZERO) - sum(v for c, v in usdc_fee.items() if c.startswith("@"))
             transfers = tx.get(("USDC", "spot"), ZERO)
         elif acct == HL_SPOT:  # spot token (SPCXD/HYPE)
             coin = SPOT_COIN.get(inst, inst)
             td = net_qty.get(coin, ZERO)
+            trd = cnt.get(coin, 0)
             transfers = tx.get((inst.upper(), "spot"), ZERO)
         elif acct == HL_FUT and inst in ("USDC", "xyz:USDC"):
             pool = "xyz" if inst == "xyz:USDC" else "main"
+            label = "USDC (xyz)" if pool == "xyz" else "USDC (perp)"
             td = real_pool[pool] + fund_by_pool[pool] - fee_pool[pool]
             ilk = "xyz:%-P%" if pool == "xyz" else "HYPE"
             unreal = unrealized_sum(HL_FUT, ilk, eod_dt) - unrealized_sum(HL_FUT, ilk, sod_dt)
@@ -336,21 +426,40 @@ def run_recon(date_iso):
         elif acct == HL_FUT:  # xyz perp position
             base = inst.split("-P/")[0]    # 'xyz:CRCL'
             td = net_qty.get(base, ZERO)
+            trd = cnt.get(base, 0)
+            shown_perp.add(base)
         accounted = td + (unreal or ZERO) + transfers
         diff = bal_d - accounted
         status = "OK" if abs(diff) < D("0.05") else "CHECK"
-        short_acct = acct.replace("@BINANCE_USDT_FUTURE", "·BIN-FUT").replace(
-            "@HYPERLIQUID_SPOT", "·HL-SPOT").replace("@HYPERLIQUID_FUTURES", "·HL-FUT")
+        rd_name, rd_venue, _ = refdata_account(acct)
         s_bal = sod.get(k, (ZERO,))[0]
         e_bal = eod.get(k, (ZERO,))[0]
-        rows.append([short_acct.split("·")[1], label,
+        rows.append([rd_venue, rd_name, account_type(acct), label,
+                     (str(trd) if trd is not None else "—"),
                      f"{float(s_bal):,.4f}", f"{float(e_bal):,.4f}",
                      f"{float(bal_d):,.4f}", f"{float(td):,.4f}",
                      ("—" if unreal is None else f"{float(unreal):,.2f}"),
                      f"{float(transfers):,.2f}", f"{float(diff):,.4f}", status])
 
-    cols = ["acct", "instrument", "SOD bal", "EOD bal", "balance Δ", "trade/cash Δ",
-            "unreal", "transfers", "diff", "status"]
+    # surface perp coins that were TRADED but ended flat (no balance Δ → no
+    # snapshot row), e.g. HYPE round-trips to 0. The position nets to ~0 and its
+    # PnL already lands in the USDC (perp) cash row; we still show the activity.
+    rd_n, rd_v, _ = refdata_account(HL_FUT)
+    atype = account_type(HL_FUT)
+    for c in sorted(cnt):
+        if c.startswith("@") or c in shown_perp or not cnt[c]:
+            continue
+        net = net_qty.get(c, ZERO)
+        diff = ZERO - net          # balance Δ is 0 (instrument has no balance line)
+        status = "OK" if abs(diff) < D("0.05") else "CHECK"
+        rows.append([rd_v, rd_n, atype, instrument_mo_map().get(c, c)[:34], str(cnt[c]),
+                     "0.0000", "0.0000", "0.0000", f"{float(net):,.4f}",
+                     "—", "0.00", f"{float(diff):,.4f}", status])
+
+    rows.sort(key=lambda r: (r[0], r[3]))   # group by venue, then instrument
+
+    cols = ["venue", "account", "type", "instrument", "trd", "SOD bal", "EOD bal", "balance Δ",
+            "trade/cash Δ", "unreal", "transfers", "diff", "status"]
     w = [max(len(cols[i]), *(len(r[i]) for r in rows)) for i in range(len(cols))]
 
     def bar(a, b, c):
@@ -358,10 +467,12 @@ def run_recon(date_iso):
 
     def line(cs, center=False):
         return "│" + "│".join(" " + (cs[i].center(w[i]) if center else
-               (cs[i].ljust(w[i]) if i in (0, 1, 9) else cs[i].rjust(w[i]))) + " "
+               (cs[i].ljust(w[i]) if i in (0, 1, 2, 3, 12) else cs[i].rjust(w[i]))) + " "
                for i in range(len(cs))) + "│"
 
-    print(f"\nFULL-ACCOUNT RECON — COB {date_iso}  (snaps {sod[anyk][1]} → {eod[anyk][1]})")
+    _portfolio = refdata_account(BIN_FUT)[2]
+    print(f"\nPortfolio: {_portfolio} (8041)")
+    print(f"FULL-ACCOUNT RECON — COB {date_iso}  (snaps {sod[anyk][1]} → {eod[anyk][1]})")
     print(bar("┌", "┬", "┐"))
     print(line(cols, True))
     print(bar("├", "┼", "┤"))
