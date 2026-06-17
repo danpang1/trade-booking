@@ -5057,11 +5057,16 @@ function summarizeDeal(r) {
     const priceNum = Math.abs(parseFloat(r.price) || 0);
     const fmtPrice = priceNum.toLocaleString("en-US", { maximumFractionDigits: 5 });
     const quoteAsset = (r.quote_asset || "").toUpperCase();
+    // Proceeds = quote-asset notional (base × price). Prefer the stored
+    // quote_amount; fall back to base × price for older rows that predate it.
+    const quoteAmt = Math.abs(parseFloat(r.quote_amount) || 0) || baseAmt * priceNum;
+    const fmtQuote = quoteAmt.toLocaleString("en-US", { maximumFractionDigits: 5 });
     const join = (parts) => parts.filter((p) => p && String(p).trim()).join(" ");
+    const proceeds = quoteAmt > 0 && quoteAsset ? `PROCEEDS ${fmtQuote} ${quoteAsset}` : quoteAsset;
     const head = join([
       "PTF", r.portfolio_id, r.direction,
       fmtBase, baseAsset,
-      "@", fmtPrice, quoteAsset,
+      "@", fmtPrice, proceeds,
     ]);
     const feeAmt = parseFloat(r.fee_amount) || 0;
     const feeAsset = (r.fee_asset || "").toUpperCase();
