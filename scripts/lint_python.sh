@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+# The pipeline image (atlassian-default-image-5-latest) ships Python 3.12
+# without python3-venv, so `python3 -m venv` fails on ensurepip.
+apt-get update && apt-get install -y --no-install-recommends python3-venv
+
 python3 -m venv .venv-test
 
 . .venv-test/bin/activate
