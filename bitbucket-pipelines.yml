@@ -4,7 +4,7 @@ clone:
   depth: 10
 
 image:
-  name: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/platform/pipeline-images:atlassian-default-image-4-0.0.26
+  name: 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/platform/pipeline-images:atlassian-default-image-5-latest
   aws:
     access-key: $AWS_ACCESS_KEY_ID_CI
     secret-key: $AWS_SECRET_ACCESS_KEY_CI
@@ -83,7 +83,7 @@ definitions:
           - 'jp.k8'
         script:
           - source setup_env.sh
-          - bash ./scripts/package_and_publish_docker.sh
+          - bash /opt/scripts/package_and_publish_docker.sh
         services:
           - docker
         caches:
