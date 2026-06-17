@@ -183,7 +183,9 @@ def unrealized_sum(account, inst_like, boundary_dt):
 # ── binance ──
 def _bin(path, params):
     k, s = env("810.BINANCE_API_KEY"), env("810.BINANCE_API_SECRET")
-    p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+    p = dict(params)
+    p["timestamp"] = int(time.time() * 1000)
+    p["recvWindow"] = 60000
     qs = urllib.parse.urlencode(p)
     sig = hmac.new(s.encode(), qs.encode(), hashlib.sha256).hexdigest()
     return json.loads(urllib.request.urlopen(urllib.request.Request(
@@ -321,6 +323,7 @@ def hl_perp_pnl(date_iso):
     for r in hl_funding():
         if w0 <= int(r["time"]) < w1:
             fund[r["delta"]["coin"]] += D(str(r["delta"]["usdc"]))
+
     def _futbal(snap_dict, coin):
         for (a, i), (q, _) in snap_dict.items():
             if a == HL_FUT and i.startswith(coin):
@@ -466,9 +469,16 @@ def run_recon(date_iso):
         return a + b.join("─" * (w[i] + 2) for i in range(len(w))) + c
 
     def line(cs, center=False):
-        return "│" + "│".join(" " + (cs[i].center(w[i]) if center else
-               (cs[i].ljust(w[i]) if i in (0, 1, 2, 3, 12) else cs[i].rjust(w[i]))) + " "
-               for i in range(len(cs))) + "│"
+        cells = []
+        for i in range(len(cs)):
+            if center:
+                cell = cs[i].center(w[i])
+            elif i in (0, 1, 2, 3, 12):
+                cell = cs[i].ljust(w[i])
+            else:
+                cell = cs[i].rjust(w[i])
+            cells.append(" " + cell + " ")
+        return "│" + "│".join(cells) + "│"
 
     _portfolio = refdata_account(BIN_FUT)[2]
     print(f"\nPortfolio: {_portfolio} (8041)")

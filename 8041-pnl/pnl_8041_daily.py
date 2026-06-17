@@ -12,7 +12,14 @@ Avg-cost replay runs from book inception; only the --date COB is reported.
 EOD mark for --date is pinned via --mark (or PINNED_MARKS / the 24/7 feed).
 """
 from __future__ import annotations
-import argparse, hashlib, hmac, json, sys, time, urllib.parse, urllib.request
+import argparse
+import hashlib
+import hmac
+import json
+import sys
+import time
+import urllib.parse
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -49,8 +56,12 @@ DAYS = _drange(INCEPTION, COB)
 MARK_CUTOFFS = [(datetime.strptime(INCEPTION, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")] + DAYS
 
 
-def day_of(ms): return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%d")
-def ms_at(y, mo, d, h, mi): return int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp() * 1000)
+def day_of(ms):
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%d")
+
+
+def ms_at(y, mo, d, h, mi):
+    return int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def env(key):
@@ -66,7 +77,9 @@ def binance_spcx_events():
     H = {"X-MBX-APIKEY": key}
 
     def sget(path, params):
-        p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+        p = dict(params)
+        p["timestamp"] = int(time.time() * 1000)
+        p["recvWindow"] = 60000
         qs = urllib.parse.urlencode(p)
         sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
         r = urllib.request.urlopen(urllib.request.Request(
@@ -100,7 +113,9 @@ def binance_funding_by_day():
     H = {"X-MBX-APIKEY": key}
 
     def sget(params):
-        p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+        p = dict(params)
+        p["timestamp"] = int(time.time() * 1000)
+        p["recvWindow"] = 60000
         qs = urllib.parse.urlencode(p)
         sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
         r = urllib.request.urlopen(urllib.request.Request(
@@ -169,7 +184,8 @@ def ch_marks(codename):
            f"WHERE codename='{codename}' "
            f"AND ts_edge_first_seen <= toUnixTimestamp(toDateTime('2026-06-14 23:59:59'))*1000000\n"
            f"FORMAT TabSeparated")
-    r = urllib.request.urlopen(urllib.request.Request(CH, data=sql.encode(),
+    r = urllib.request.urlopen(urllib.request.Request(
+        CH, data=sql.encode(),
         headers={"Content-Type": "text/plain"}), timeout=60)
     vals = r.read().decode().strip().split("\t")
     return {c: (D(v) if v not in ("", "\\N") else None) for c, v in zip(MARK_CUTOFFS, vals)}
@@ -184,12 +200,16 @@ def walk(events, marks, label):
                 "2026-06-14": "2026-06-13", "2026-06-15": "2026-06-14"}
     for day in DAYS:
         sod = Position(pos.qty, pos.avg_cost)
-        realized = ZERO; fees = ZERO; n = 0
+        realized = ZERO
+        fees = ZERO
+        n = 0
         for t, qty, px, fee in events:
             if day_of(t) == day:
                 realized += apply_fill(pos, qty, px).realized
-                fees += fee; n += 1
-        sm = marks.get(sod_mark[day]); em = marks.get(day)
+                fees += fee
+                n += 1
+        sm = marks.get(sod_mark[day])
+        em = marks.get(day)
         su = unrealized(Position(sod.qty, sod.avg_cost), sm) if (sm and sod.qty != 0) else ZERO
         eu = unrealized(pos, em) if (em and pos.qty != 0) else ZERO
         du = eu - su
@@ -199,7 +219,8 @@ def walk(events, marks, label):
     return out
 
 
-def f(x, dp=2): return "—" if x is None else f"{float(x):,.{dp}f}"
+def f(x, dp=2):
+    return "—" if x is None else f"{float(x):,.{dp}f}"
 
 
 print("Pulling Binance SPCX userTrades, HL @465 fills, ClickHouse marks...")
@@ -281,9 +302,16 @@ def _pbar(a, m, c):
 
 
 def _pline(cs, center=False):
-    return "│" + "│".join(" " + (cs[i].center(pw[i]) if center else
-           (cs[i].ljust(pw[i]) if i in (0, 1, 2, 3) else cs[i].rjust(pw[i]))) + " "
-           for i in range(len(cs))) + "│"
+    cells = []
+    for i in range(len(cs)):
+        if center:
+            cell = cs[i].center(pw[i])
+        elif i in (0, 1, 2, 3):
+            cell = cs[i].ljust(pw[i])
+        else:
+            cell = cs[i].rjust(pw[i])
+        cells.append(" " + cell + " ")
+    return "│" + "│".join(cells) + "│"
 
 
 _portfolio = refdata_account("TK810@BINANCE_USDT_FUTURE")[2]
