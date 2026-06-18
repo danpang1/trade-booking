@@ -7474,16 +7474,18 @@ function Dashboard() {
     return out;
   }, [rows]);
 
-  // Funding & Deployment figures. Internal loan = LIVE internal loans the
-  // desk has BORROWED (funding in), USD-valued at the latest rates; LEND
-  // rows are deployment, not funding, so they're excluded. VIP loan is the
+  // Funding & Deployment figures. Internal loan = NET LIVE internal position,
+  // USD-valued at the latest rates: BORROW is funding in (+), LEND is funding
+  // out (−), so internal lends net against internal borrows. VIP loan is the
   // Binance principal; treated as 0 (with a note) when the feed is down so
   // the balance is never silently overstated.
   const internalLoanUsd = rows.reduce((s, r) => {
-    if (r.status !== "LIVE" || r.loan_type !== "INTERNAL"
-        || r.direction !== "BORROW") return s;
+    if (r.status !== "LIVE" || r.loan_type !== "INTERNAL") return s;
+    if (r.direction !== "BORROW" && r.direction !== "LEND") return s;
     const rate = rates[String(r.principal_asset || "").toUpperCase()];
-    return rate ? s + (parseFloat(r.principal_amount) || 0) * rate : s;
+    if (!rate) return s;
+    const usd = (parseFloat(r.principal_amount) || 0) * rate;
+    return r.direction === "LEND" ? s - usd : s + usd;
   }, 0);
   const vipLoanUsd = (vip && vip.summary && vip.summary.loan_principal_usd != null)
     ? vip.summary.loan_principal_usd
@@ -7642,7 +7644,7 @@ function Dashboard() {
           },
           {
             label: "Internal Loan", kind: "live",
-            value: internalLoanUsd, hint: "live · active internal borrow",
+            value: internalLoanUsd, hint: "live · internal borrow net of lend",
           },
           {
             label: "VIP Loan", kind: "live",
