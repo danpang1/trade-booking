@@ -39,6 +39,8 @@ const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 const EXPORT_BLOTTER_SCRIPT = resolve(__dirname, "scripts", "export_blotter.py");
 const LOAN_EXPORT_SCRIPT    = resolve(__dirname, "scripts", "loan_export.py");
 const BINANCE_VIP_LTV_SCRIPT = resolve(__dirname, "scripts", "binance_vip_loan_ltv.py");
+const FUNDING_SETTINGS_READ_SCRIPT   = resolve(__dirname, "scripts", "funding_settings_read.py");
+const FUNDING_SETTINGS_UPSERT_SCRIPT = resolve(__dirname, "scripts", "funding_settings_upsert.py");
 
 const AUTH_LOGIN_SCRIPT    = resolve(__dirname, "scripts", "auth_login.py");
 const AUTH_LOGOUT_SCRIPT   = resolve(__dirname, "scripts", "auth_logout.py");
@@ -928,6 +930,32 @@ const server = createServer(async (req, res) => {
     const ref = json && json.row && json.row.loan_deal_ref;
     console.log(`[loan] schedule-comment ${ref || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/funding/settings — Capital + ITD PnL for the Dashboard's
+  // Funding & Deployment band. Absent keys fall back to defaults.
+  if (req.url === "/api/funding/settings" && req.method === "GET") {
+    const { code, json } = await spawnPython(FUNDING_SETTINGS_READ_SCRIPT, "{}");
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // POST /api/funding/settings — upsert one setting {key, value}. user_id is
+  // stamped from the session so the frontend can't spoof who edited it.
+  if (req.url === "/api/funding/settings" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(FUNDING_SETTINGS_UPSERT_SCRIPT, stampedBody);
+    const key = json && json.row && json.row.key;
+    console.log(`[funding] settings ${key || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[funding:err] ${stderr.trim()}`);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(json));

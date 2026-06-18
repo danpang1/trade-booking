@@ -7331,6 +7331,16 @@ function Dashboard() {
   const [ratesMeta, setRatesMeta] = useState(null);
   const [ratesError, setRatesError] = useState(null);
 
+  // Funding & Deployment band ------------------------------------------------
+  // Editable settings (Capital, ITD PnL) persisted in funding_settings;
+  // VIP loan principal pulled live from the Binance VIP feed.
+  const [funding, setFunding]     = useState({ capital: 6600000, itd_pnl: 0 });
+  const [vip, setVip]             = useState(null);
+  const [vipErr, setVipErr]       = useState(null);
+  const [editKey, setEditKey]     = useState(null);   // 'capital' | 'itd_pnl'
+  const [editVal, setEditVal]     = useState("");
+  const [saveErr, setSaveErr]     = useState(null);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -7365,6 +7375,55 @@ function Dashboard() {
     })();
   }, []);
 
+  // Capital + ITD PnL from the shared store (defaults applied server-side).
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api("/api/funding/settings");
+        const j = await r.json();
+        if (j && j.ok && j.settings) setFunding(j.settings);
+      } catch {
+        /* keep defaults on failure — band stays usable */
+      }
+    })();
+  }, []);
+
+  // VIP loan principal — lightweight /ltv route carries summary.loan_principal_usd.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api("/api/binance/vip-loan/ltv");
+        const j = await r.json();
+        if (r.ok && j && j.ok) { setVip(j); setVipErr(null); }
+        else setVipErr((j && j.error) ? String(j.error) : `HTTP ${r.status}`);
+      } catch (e) {
+        setVipErr(String(e && e.message ? e.message : e));
+      }
+    })();
+  }, []);
+
+  // Persist one edited setting; optimistic update, server stamps user_id.
+  const saveSetting = async (key) => {
+    const num = parseFloat(editVal);
+    if (!isFinite(num)) { setSaveErr("not a number"); return; }
+    setFunding((prev) => ({ ...prev, [key]: num }));
+    setEditKey(null);
+    setSaveErr(null);
+    try {
+      const r = await api("/api/funding/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value: num }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j || !j.ok) {
+        setSaveErr((j && j.error) ? String(j.error) : `save failed (HTTP ${r.status})`);
+      }
+    } catch (e) {
+      setSaveErr(String(e && e.message ? e.message : e));
+    }
+  };
+
   // exposureByType — mirror the LoanEnquiry kpis aggregator, but only
   // for the live rows and only what the chart needs (per-cpty×asset
   // notional). Sort isn't strictly required for the donut but keeps the
@@ -7397,6 +7456,67 @@ function Dashboard() {
     }
     return out;
   }, [rows]);
+
+  // Funding & Deployment figures. Internal loan = LIVE internal loans the
+  // desk has BORROWED (funding in), USD-valued at the latest rates; LEND
+  // rows are deployment, not funding, so they're excluded. VIP loan is the
+  // Binance principal; treated as 0 (with a note) when the feed is down so
+  // the balance is never silently overstated.
+  const internalLoanUsd = rows.reduce((s, r) => {
+    if (r.status !== "LIVE" || r.loan_type !== "INTERNAL"
+        || r.direction !== "BORROW") return s;
+    const rate = rates[String(r.principal_asset || "").toUpperCase()];
+    return rate ? s + (parseFloat(r.principal_amount) || 0) * rate : s;
+  }, 0);
+  const vipLoanUsd = (vip && vip.summary && vip.summary.loan_principal_usd != null)
+    ? vip.summary.loan_principal_usd
+    : null;
+  const totalFunding = funding.capital + internalLoanUsd + (vipLoanUsd || 0);
+  const fundingBalance = totalFunding + funding.itd_pnl;
+
+  // Editable value cell: click to turn into a number input; Enter/blur saves,
+  // Escape cancels. `neg` lets negative figures (ITD PnL) render red.
+  const renderEditable = (key, neg) => {
+    if (editKey === key) {
+      return (
+        <input
+          autoFocus
+          type="number"
+          value={editVal}
+          onChange={(e) => setEditVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveSetting(key);
+            if (e.key === "Escape") { setEditKey(null); setSaveErr(null); }
+          }}
+          onBlur={() => saveSetting(key)}
+          style={{
+            width: 160, textAlign: "right", fontFamily: "var(--font-mono)",
+            fontSize: 15, fontVariantNumeric: "tabular-nums",
+            padding: "2px 6px", border: "1px solid var(--signal-link)",
+            borderRadius: 2, background: "var(--paper)", color: "var(--ink)",
+          }}
+        />
+      );
+    }
+    const val = funding[key];
+    return (
+      <button
+        type="button"
+        onClick={() => { setEditKey(key); setEditVal(String(val)); setSaveErr(null); }}
+        title="Click to edit"
+        style={{
+          background: "none", border: "none", cursor: "pointer",
+          padding: "2px 6px", borderRadius: 2,
+          fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 600,
+          fontVariantNumeric: "tabular-nums",
+          color: (neg && val < 0) ? "var(--signal-sell)" : "var(--ink)",
+          borderBottom: "1px dashed var(--ink-4)",
+        }}
+      >
+        {fmtUsdCell(val)}
+      </button>
+    );
+  };
 
   return (
     <div className="px-5 pt-4 pb-8">
@@ -7461,6 +7581,116 @@ function Dashboard() {
             ? `Rates: unavailable — ${ratesError}`
             : "Rates: loading…"}
       </div>
+
+      {/* ─── Funding & Deployment — how the book is funded (Capital +
+          internal loans + Binance VIP loan) and the running balance after
+          inception-to-date PnL. Capital and ITD PnL are operator-editable
+          (shared store); Internal + VIP loan are live. ─── */}
+      <div style={{
+        fontSize: 11, color: "var(--ink-3)",
+        letterSpacing: "0.06em", textTransform: "uppercase",
+        marginTop: 32, marginBottom: 12, fontFamily: "var(--font-mono)",
+      }}>
+        Funding &amp; Deployment · capital, loans &amp; ITD PnL
+      </div>
+      <div style={{
+        background: "var(--paper)",
+        border: "1px solid var(--rule)",
+        borderLeft: "3px solid var(--signal-link)",
+        borderRadius: 3,
+        fontFamily: "var(--font-mono)",
+        padding: "8px 20px",
+        maxWidth: 560,
+      }}>
+        {[
+          {
+            label: "Capital", kind: "edit", key: "capital",
+            hint: "editable",
+          },
+          {
+            label: "Internal Loan", kind: "live",
+            value: internalLoanUsd, hint: "live · active internal borrow",
+          },
+          {
+            label: "VIP Loan", kind: "live",
+            value: vipLoanUsd, hint: vipLoanUsd == null
+              ? "VIP feed unavailable — treated as $0"
+              : "live · Binance VIP principal",
+          },
+          { kind: "rule" },
+          {
+            label: "Total Funding", kind: "total",
+            value: totalFunding, hint: "Capital + Internal + VIP",
+          },
+          {
+            label: "ITD PnL", kind: "edit", key: "itd_pnl", neg: true,
+            hint: "editable · inception-to-date",
+          },
+          { kind: "rule" },
+          {
+            label: "Funding Balance", kind: "balance",
+            value: fundingBalance, hint: "Total Funding + ITD PnL",
+          },
+        ].map((row, i) => {
+          if (row.kind === "rule") {
+            return (
+              <div key={`rule-${i}`} style={{
+                borderTop: "1px solid var(--rule)", margin: "2px 0",
+              }} />
+            );
+          }
+          const emphasized = row.kind === "total" || row.kind === "balance";
+          const valColor = (row.neg && row.value < 0)
+            || (row.kind === "balance" && row.value < 0)
+            ? "var(--signal-sell)"
+            : "var(--ink)";
+          return (
+            <div key={row.label} style={{
+              display: "flex", alignItems: "baseline",
+              justifyContent: "space-between", gap: 12,
+              padding: "9px 0",
+            }}>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{
+                  fontSize: row.kind === "balance" ? 12 : 11,
+                  fontWeight: emphasized ? 700 : 500,
+                  color: "var(--ink)",
+                  letterSpacing: "0.04em", textTransform: "uppercase",
+                }}>
+                  {row.label}
+                </span>
+                <span style={{
+                  fontSize: 9, color: row.kind === "live" && row.value == null
+                    ? "var(--signal-sell)" : "var(--ink-4)",
+                  letterSpacing: "0.04em",
+                }}>
+                  {row.kind === "live" && row.value != null ? "● " : ""}{row.hint}
+                </span>
+              </span>
+              {row.kind === "edit" ? (
+                renderEditable(row.key, row.neg)
+              ) : (
+                <span style={{
+                  fontSize: row.kind === "balance" ? 20 : (emphasized ? 17 : 15),
+                  fontWeight: emphasized ? 700 : 600,
+                  color: row.value == null ? "var(--ink-4)" : valColor,
+                  fontVariantNumeric: "tabular-nums",
+                }}>
+                  {row.value == null ? "—" : fmtUsdCell(row.value)}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {saveErr && (
+        <div style={{
+          fontSize: 10, color: "var(--signal-sell)",
+          fontFamily: "var(--font-mono)", marginTop: 6,
+        }}>
+          Save failed: {saveErr}
+        </div>
+      )}
 
       {/* ─── Volume metrics — placeholder cards for Spot + Perps.
           Data source is the trades booked in Deal Enquiry (trades_spot
