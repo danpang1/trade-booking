@@ -8946,7 +8946,9 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     const vol = (d.collateral || []).filter((c) => c.volatile && c.value > 1000);
                     const out = [];
                     out.push(`Rates Timestamp:    ${tsStr}`);
-                    out.push(`Loan amount:    ${money(sm.total_loan_usd)}`);
+                    out.push(`Total Loan:    ${money(sm.total_loan_usd)}`);
+                    out.push(`Loan Amount:    ${money(sm.loan_principal_usd)}`);
+                    out.push(`Loan Interest:    ${money(sm.loan_interest_usd)}`);
                     out.push(`Collateral:    ${money(sm.collateral_post_haircut)}`);
                     out.push(`Borrowable USDT:    ${money(sm.borrowable_usdt)}`);
                     out.push("");
@@ -9004,22 +9006,28 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
 
             {d && (
               <>
-                {/* Headline figures — loan, collateral, borrowable USDT.
-                    Same numbers the Copy button writes to the clipboard. */}
+                {/* Headline figures — total loan, principal, accrued interest,
+                    borrowable USDT. total_loan = totalDebt; loan amount =
+                    principal (debt − residualInterest); loan interest =
+                    residualInterest. Same numbers the Copy button writes. */}
+                {(() => {
+                  const cards = [
+                    { label: "Total Loan", val: d.summary && d.summary.total_loan_usd },
+                    { label: "Loan Amount", val: d.summary && d.summary.loan_principal_usd },
+                    { label: "Loan Interest", val: d.summary && d.summary.loan_interest_usd },
+                    { label: "Borrowable USDT", val: d.summary && d.summary.borrowable_usdt },
+                  ];
+                  return (
                 <div style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                  gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
                   borderBottom: "1px solid var(--rule)",
                 }}>
-                  {[
-                    { label: "Loan amount", val: d.summary && d.summary.total_loan_usd },
-                    { label: "Collateral", val: d.summary && d.summary.collateral_post_haircut },
-                    { label: "Borrowable USDT", val: d.summary && d.summary.borrowable_usdt },
-                  ].map((m, i) => (
+                  {cards.map((m, i) => (
                     <div key={m.label} style={{
                       padding: "10px 12px",
-                      borderRight: !isMobile && i < 2 ? "1px solid var(--rule)" : "none",
-                      borderBottom: isMobile && i < 2 ? "1px solid var(--rule)" : "none",
+                      borderRight: (isMobile ? i % 2 === 0 : i < cards.length - 1) ? "1px solid var(--rule)" : "none",
+                      borderBottom: isMobile && i < cards.length - 2 ? "1px solid var(--rule)" : "none",
                     }}>
                       <div style={{
                         fontSize: 10, color: "var(--ink-3)", textTransform: "uppercase",
@@ -9031,6 +9039,8 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                     </div>
                   ))}
                 </div>
+                  );
+                })()}
 
                 {/* Buffer summary — two cells: margin call + liquidation.
                     Leads with the LTV buffer (pp) like the MO dashboard;

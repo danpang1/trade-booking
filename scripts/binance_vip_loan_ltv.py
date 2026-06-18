@@ -383,13 +383,20 @@ def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
     """
     loan_coins = [r.get("loanCoin", "") for r in rows if r.get("loanCoin")]
     loan_prices = get_prices(loan_coins)
+    # totalDebt = principal + residualInterest (Binance reports both per order).
+    # We split them in USD: total_loan = total debt, loan_interest = accrued
+    # unpaid interest, loan_principal = the rest (the original notional borrow).
     total_loan_usd = 0.0
+    loan_interest_usd = 0.0
     collateral_post_haircut = 0.0
     locked_collateral = 0.0
     for r in rows:
         coin = r.get("loanCoin", "").upper()
+        px = loan_prices.get(coin, 1.0)
         debt = _to_float(r.get("totalDebt")) or 0.0
-        total_loan_usd += debt * loan_prices.get(coin, 1.0)
+        interest = _to_float(r.get("residualInterest")) or 0.0
+        total_loan_usd += debt * px
+        loan_interest_usd += interest * px
         cph = _to_float(r.get("totalCollateralValueAfterHaircut")) or 0.0
         collateral_post_haircut = max(collateral_post_haircut, cph)
         locked = _to_float(r.get("lockedCollateralValue")) or 0.0
@@ -453,6 +460,8 @@ def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
     return {
         "summary": {
             "total_loan_usd": round(total_loan_usd, 2),
+            "loan_principal_usd": round(total_loan_usd - loan_interest_usd, 2),
+            "loan_interest_usd": round(loan_interest_usd, 2),
             "collateral_post_haircut": round(collateral_post_haircut, 2),
             "collateral_raw_value": round(stable_value + volatile_value, 2),
             "locked_collateral_value": round(locked_collateral, 2),
