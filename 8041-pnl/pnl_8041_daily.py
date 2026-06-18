@@ -315,7 +315,7 @@ def _pline(cs, center=False):
 
 
 _portfolio = refdata_account("TK810@BINANCE_USDT_FUTURE")[2]
-print(f"\n{'='*108}\nPORTFOLIO 8041 — DAILY PnL (ALL TRADES) — COB {day} 23:59:59 UTC")
+print(f"\n{'=' * 108}\nPORTFOLIO 8041 — DAILY PnL (ALL TRADES) — COB {day} 23:59:59 UTC")
 print(f"Portfolio: {_portfolio} (8041)")
 print(_pbar("┌", "┬", "┐"))
 print(_pline(pcols, True))
@@ -324,7 +324,7 @@ for r in pdata:
     print(_pline(r))
 print(_pbar("└", "┴", "┘"))
 print(f"ALL-TRADES NET PnL {day} = {f(pnl_total)} USD   "
-      f"(SPCX book {f(b['realized']+b['du']+bf-b['fees']+h['total'])} + HL perps)")
+      f"(SPCX book {f(b['realized'] + b['du'] + bf - b['fees'] + h['total'])} + HL perps)")
 
 try:
     ar.run_recon(day)

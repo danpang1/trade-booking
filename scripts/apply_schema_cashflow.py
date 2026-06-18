@@ -131,7 +131,7 @@ def main():
     cols = cur.fetchall()
     print(f"trades_cashflow columns: {len(cols)}")
     for col in cols:
-        print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2]=='YES' else 'NOT NULL':10s} {col[3] or ''}")
+        print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2] == 'YES' else 'NOT NULL':10s} {col[3] or ''}")
 
     cur.execute(
         "SELECT sequencename, start_value, last_value, increment_by "

@@ -163,7 +163,7 @@ def main():
     cols = cur.fetchall()
     print(f"loan_cashflow_map columns: {len(cols)}")
     for col in cols:
-        print(f"  {col[0]:24s} {col[1]:25s} {'NULL' if col[2]=='YES' else 'NOT NULL':10s} {col[3] or ''}")
+        print(f"  {col[0]:24s} {col[1]:25s} {'NULL' if col[2] == 'YES' else 'NOT NULL':10s} {col[3] or ''}")
 
     cur.execute("""
         SELECT indexname FROM pg_indexes

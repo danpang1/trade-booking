@@ -94,7 +94,7 @@ def main():
     cols = cur.fetchall()
     print(f"\ntrade_attachments columns: {len(cols)}")
     for col in cols:
-        print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2]=='YES' else 'NOT NULL':10s} {col[3] or ''}")
+        print(f"  {col[0]:20s} {col[1]:20s} {'NULL' if col[2] == 'YES' else 'NOT NULL':10s} {col[3] or ''}")
 
     cur.execute("""
         SELECT indexname FROM pg_indexes
