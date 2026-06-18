@@ -361,6 +361,22 @@ function fmtUsdMillions(n) {
   return sign + "$" + m.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + "m";
 }
 
+// Outstanding loan balance in native principal units: disbursed − repaid
+// from the mapped, live cashflows (PRINCIPAL_DISBURSE − PRINCIPAL_REPAY).
+// Mirrors the "Outstanding" figure on the loan detail card. A loan with no
+// mapped disbursement cashflow yet returns 0 (balance follows actual money
+// movement, not the booked principal_amount).
+function loanBalance(loan) {
+  let disbursed = 0;
+  let repaid = 0;
+  for (const m of (loan && loan.mappings) || []) {
+    const mag = Math.abs(parseFloat(m.amount) || 0);
+    if (m.mapping_type === "PRINCIPAL_DISBURSE") disbursed += mag;
+    else if (m.mapping_type === "PRINCIPAL_REPAY") repaid += mag;
+  }
+  return disbursed - repaid;
+}
+
 // Sum the live USD exposure for one loan_type. `exposureRows` comes from
 // kpis.exposureByType[t] — each row carries notional in its native asset.
 // Skips rows whose asset has no rate in the current snapshot.
@@ -7474,17 +7490,18 @@ function Dashboard() {
     return out;
   }, [rows]);
 
-  // Funding & Deployment figures. Internal loan = NET LIVE internal position,
-  // USD-valued at the latest rates: BORROW is funding in (+), LEND is funding
-  // out (−), so internal lends net against internal borrows. VIP loan is the
-  // Binance principal; treated as 0 (with a note) when the feed is down so
-  // the balance is never silently overstated.
+  // Funding & Deployment figures. Internal loan = NET LIVE internal position
+  // on a BALANCE basis (outstanding = disbursed − repaid, not booked
+  // principal), USD-valued at the latest rates: BORROW is funding in (+),
+  // LEND is funding out (−), so internal lends net against internal borrows.
+  // VIP loan is the Binance principal; treated as 0 (with a note) when the
+  // feed is down so the balance is never silently overstated.
   const internalLoanUsd = rows.reduce((s, r) => {
     if (r.status !== "LIVE" || r.loan_type !== "INTERNAL") return s;
     if (r.direction !== "BORROW" && r.direction !== "LEND") return s;
     const rate = rates[String(r.principal_asset || "").toUpperCase()];
     if (!rate) return s;
-    const usd = (parseFloat(r.principal_amount) || 0) * rate;
+    const usd = loanBalance(r) * rate;
     return r.direction === "LEND" ? s - usd : s + usd;
   }, 0);
   const vipLoanUsd = (vip && vip.summary && vip.summary.loan_principal_usd != null)
@@ -8869,9 +8886,15 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
         if (r.loan_type !== t) continue;
         const cpty = r.counterparty || "—";
         const asset = r.principal_asset || "—";
-        // Signed notional: money lent OUT (direction LEND) is negative,
-        // money BORROWED in is positive — so the exposure nets per cpty.
-        const amt = (parseFloat(r.principal_amount) || 0) * (r.direction === "LEND" ? -1 : 1);
+        // Internal loans follow the outstanding BALANCE (disbursed − repaid);
+        // other types stay on booked principal (they may carry no mapped
+        // cashflows, so balance would understate them). Signed: money lent
+        // OUT (LEND) is negative, money BORROWED in is positive, so exposure
+        // nets per cpty.
+        const native = t === "INTERNAL"
+          ? loanBalance(r)
+          : (parseFloat(r.principal_amount) || 0);
+        const amt = native * (r.direction === "LEND" ? -1 : 1);
         const key = `${cpty}||${asset}`;
         const prev = cellMap.get(key) || { cpty, asset, notional: 0, loans: 0 };
         prev.notional += amt;
