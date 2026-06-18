@@ -9,7 +9,14 @@ Writes one JSON object to stdout:
     {"ok": true, "ltv": 0.4230, "ltv_pct": 42.30,
      "status": "healthy|warn|danger|none",
      "warn_ltv": 0.71, "margin_call_ltv": 0.77, "liquidation_ltv": 0.91,
-     "order_count": 2, "as_of": "2026-05-29T08:00:00Z"}
+     "order_count": 2, "as_of": "2026-05-29T08:00:00Z",
+     "summary": {"total_loan_usd": ..., "loan_principal_usd": ...,
+                 "loan_interest_usd": ...}}
+
+`summary` carries the USD loan figures on every call (null only when there
+are no ongoing orders or the loan-coin price feed is briefly unavailable).
+The heavier /detail call (detail:true) overwrites `summary` with the full
+collateral-aware version and adds the collateral basket + trigger prices.
 
 `ltv` is the worst-case (max) currentLTV across all ongoing VIP loan
 orders on the account. Binance reports the same LTV on every order of a
@@ -373,6 +380,28 @@ def _haircut_for(tiers: dict, coin: str, usd_value: float) -> float:
     return coin_tiers[-1][2]
 
 
+def _loan_totals_from_rows(rows: list) -> tuple[float, float]:
+    """(total_debt_usd, accrued_interest_usd) across ongoing VIP loan orders.
+
+    Derived purely from the ongoing-orders response so the lightweight /ltv
+    route can carry the loan principal without the heavier collateral fetch.
+    Binance reports totalDebt = principal + residualInterest per order; we
+    value both in USD at the loan-coin price (principal = debt - interest).
+    """
+    loan_coins = [r.get("loanCoin", "") for r in rows if r.get("loanCoin")]
+    loan_prices = get_prices(loan_coins)
+    total_loan_usd = 0.0
+    loan_interest_usd = 0.0
+    for r in rows:
+        coin = r.get("loanCoin", "").upper()
+        px = loan_prices.get(coin, 1.0)
+        debt = _to_float(r.get("totalDebt")) or 0.0
+        interest = _to_float(r.get("residualInterest")) or 0.0
+        total_loan_usd += debt * px
+        loan_interest_usd += interest * px
+    return total_loan_usd, loan_interest_usd
+
+
 def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
     """Collateral basket + per-asset margin-call/liquidation trigger prices.
 
@@ -381,22 +410,12 @@ def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
         x = (totalLoanUSD / targetLTV - stableValue) / volatileValue
     to push LTV up to the target. Per-asset trigger price = price * x.
     """
-    loan_coins = [r.get("loanCoin", "") for r in rows if r.get("loanCoin")]
-    loan_prices = get_prices(loan_coins)
-    # totalDebt = principal + residualInterest (Binance reports both per order).
-    # We split them in USD: total_loan = total debt, loan_interest = accrued
-    # unpaid interest, loan_principal = the rest (the original notional borrow).
-    total_loan_usd = 0.0
-    loan_interest_usd = 0.0
+    # Principal/interest split reuses the shared rows-only helper so /ltv and
+    # /detail can never report different headline figures for the same orders.
+    total_loan_usd, loan_interest_usd = _loan_totals_from_rows(rows)
     collateral_post_haircut = 0.0
     locked_collateral = 0.0
     for r in rows:
-        coin = r.get("loanCoin", "").upper()
-        px = loan_prices.get(coin, 1.0)
-        debt = _to_float(r.get("totalDebt")) or 0.0
-        interest = _to_float(r.get("residualInterest")) or 0.0
-        total_loan_usd += debt * px
-        loan_interest_usd += interest * px
         cph = _to_float(r.get("totalCollateralValueAfterHaircut")) or 0.0
         collateral_post_haircut = max(collateral_post_haircut, cph)
         locked = _to_float(r.get("lockedCollateralValue")) or 0.0
@@ -527,6 +546,23 @@ def main() -> int:
     ltvs = [v for v in (_to_float(r.get("currentLTV")) for r in rows) if v is not None]
     ltv = max(ltvs) if ltvs else None
 
+    # Loan principal in USD — derived from the ongoing-orders rows so the
+    # lightweight /ltv route carries it too (the Funding & Deployment panel and
+    # any other summary consumer read summary.loan_principal_usd). A price-feed
+    # hiccup must not sink the whole LTV response, so this degrades to no
+    # summary rather than raising.
+    loan_summary = None
+    if rows:
+        try:
+            total_loan_usd, loan_interest_usd = _loan_totals_from_rows(rows)
+            loan_summary = {
+                "total_loan_usd": round(total_loan_usd, 2),
+                "loan_principal_usd": round(total_loan_usd - loan_interest_usd, 2),
+                "loan_interest_usd": round(loan_interest_usd, 2),
+            }
+        except Exception as e:
+            print(f"[vip-ltv] loan summary skipped: {e}", file=sys.stderr)
+
     as_of = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     payload = {
         "ok": True,
@@ -538,6 +574,7 @@ def main() -> int:
         "liquidation_ltv": LIQUIDATION_LTV,
         "order_count": len(rows),
         "as_of": as_of,
+        "summary": loan_summary,
     }
 
     if want_detail and rows:

@@ -351,6 +351,16 @@ function fmtUsdCell(n) {
   return sign + "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 }
 
+// Like fmtUsdCell but scaled to USD millions with an "m" suffix — used in the
+// Funding & Deployment panel where figures run to 7-8 digits and read clearer
+// in millions (e.g. $18,382,000 → $18.38m). Null/blank renders as "—".
+function fmtUsdMillions(n) {
+  if (n == null) return "—";
+  const sign = n < 0 ? "-" : "";
+  const m = Math.abs(n) / 1e6;
+  return sign + "$" + m.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + "m";
+}
+
 // Sum the live USD exposure for one loan_type. `exposureRows` comes from
 // kpis.exposureByType[t] — each row carries notional in its native asset.
 // Skips rows whose asset has no rate in the current snapshot.
@@ -7404,8 +7414,10 @@ function Dashboard() {
 
   // Persist one edited setting; optimistic update, server stamps user_id.
   const saveSetting = async (key) => {
-    const num = parseFloat(editVal);
-    if (!isFinite(num)) { setSaveErr("not a number"); return; }
+    // The panel edits in USD millions, but the store/server stay in raw USD.
+    const entered = parseFloat(editVal);
+    if (!isFinite(entered)) { setSaveErr("not a number"); return; }
+    const num = entered * 1e6;
     setFunding((prev) => ({ ...prev, [key]: num }));
     setEditKey(null);
     setSaveErr(null);
@@ -7479,30 +7491,36 @@ function Dashboard() {
   const renderEditable = (key, neg) => {
     if (editKey === key) {
       return (
-        <input
-          autoFocus
-          type="number"
-          value={editVal}
-          onChange={(e) => setEditVal(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") saveSetting(key);
-            if (e.key === "Escape") { setEditKey(null); setSaveErr(null); }
-          }}
-          onBlur={() => saveSetting(key)}
-          style={{
-            width: 160, textAlign: "right", fontFamily: "var(--font-mono)",
-            fontSize: 15, fontVariantNumeric: "tabular-nums",
-            padding: "2px 6px", border: "1px solid var(--signal-link)",
-            borderRadius: 2, background: "var(--paper)", color: "var(--ink)",
-          }}
-        />
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
+          <input
+            autoFocus
+            type="number"
+            step="0.01"
+            value={editVal}
+            onChange={(e) => setEditVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveSetting(key);
+              if (e.key === "Escape") { setEditKey(null); setSaveErr(null); }
+            }}
+            onBlur={() => saveSetting(key)}
+            style={{
+              width: 140, textAlign: "right", fontFamily: "var(--font-mono)",
+              fontSize: 15, fontVariantNumeric: "tabular-nums",
+              padding: "2px 6px", border: "1px solid var(--signal-link)",
+              borderRadius: 2, background: "var(--paper)", color: "var(--ink)",
+            }}
+          />
+          <span style={{
+            fontSize: 11, color: "var(--ink-4)", fontFamily: "var(--font-mono)",
+          }}>m</span>
+        </span>
       );
     }
     const val = funding[key];
     return (
       <button
         type="button"
-        onClick={() => { setEditKey(key); setEditVal(String(val)); setSaveErr(null); }}
+        onClick={() => { setEditKey(key); setEditVal(val == null ? "" : String(val / 1e6)); setSaveErr(null); }}
         title="Click to edit"
         style={{
           background: "none", border: "none", cursor: "pointer",
@@ -7513,7 +7531,7 @@ function Dashboard() {
           borderBottom: "1px dashed var(--ink-4)",
         }}
       >
-        {fmtUsdCell(val)}
+        {fmtUsdMillions(val)}
       </button>
     );
   };
@@ -7676,7 +7694,7 @@ function Dashboard() {
                   color: row.value == null ? "var(--ink-4)" : valColor,
                   fontVariantNumeric: "tabular-nums",
                 }}>
-                  {row.value == null ? "—" : fmtUsdCell(row.value)}
+                  {row.value == null ? "—" : fmtUsdMillions(row.value)}
                 </span>
               )}
             </div>
