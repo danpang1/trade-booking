@@ -18,6 +18,7 @@ class FundingSettingError(ValueError):
 DEFAULTS = {
     "capital": 6_600_000.0,
     "itd_pnl": 0.0,
+    "illiquid_assets": 0.0,
 }
 
 

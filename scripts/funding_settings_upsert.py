@@ -1,4 +1,4 @@
-"""Upsert one funding setting (capital or itd_pnl).
+"""Upsert one funding setting (capital, itd_pnl or illiquid_assets).
 
 Stdin JSON:
   {"key": "capital", "value": 6600000, "user_id": "danny.pang"}

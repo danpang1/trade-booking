@@ -7344,10 +7344,10 @@ function Dashboard() {
   // Funding & Deployment band ------------------------------------------------
   // Editable settings (Capital, ITD PnL) persisted in funding_settings;
   // VIP loan principal pulled live from the Binance VIP feed.
-  const [funding, setFunding]     = useState({ capital: 6600000, itd_pnl: 0 });
+  const [funding, setFunding]     = useState({ capital: 6600000, itd_pnl: 0, illiquid_assets: 0 });
   const [vip, setVip]             = useState(null);
   const [vipErr, setVipErr]       = useState(null);
-  const [editKey, setEditKey]     = useState(null);   // 'capital' | 'itd_pnl'
+  const [editKey, setEditKey]     = useState(null);   // 'capital' | 'itd_pnl' | 'illiquid_assets'
   const [editVal, setEditVal]     = useState("");
   const [saveErr, setSaveErr]     = useState(null);
 
@@ -7398,11 +7398,16 @@ function Dashboard() {
     })();
   }, []);
 
-  // VIP loan principal — lightweight /ltv route carries summary.loan_principal_usd.
+  // VIP loan figures — the /detail route's summary carries both
+  // loan_principal_usd and collateral_raw_value (the ~$24m collateral total
+  // shown on the Loan Enquiry VIP card). Fetched once on mount; the server
+  // caches /detail for 5s. If the heavier collateral fetch fails, the payload
+  // still carries the base summary (principal), so VIP Loan stays populated
+  // and only Collateral Balance blanks to "—".
   useEffect(() => {
     (async () => {
       try {
-        const r = await api("/api/binance/vip-loan/ltv");
+        const r = await api("/api/binance/vip-loan/detail");
         const j = await r.json();
         if (r.ok && j && j.ok) { setVip(j); setVipErr(null); }
         else setVipErr((j && j.error) ? String(j.error) : `HTTP ${r.status}`);
@@ -7485,6 +7490,16 @@ function Dashboard() {
     : null;
   const totalFunding = funding.capital + internalLoanUsd + (vipLoanUsd || 0);
   const fundingBalance = totalFunding + funding.itd_pnl;
+  // Collateral posted at Binance against the VIP loan — the raw (pre-haircut)
+  // basket value, matching the "Collateral value" total on the VIP card.
+  // Null when the /detail collateral fetch is unavailable.
+  const collateralUsd = (vip && vip.summary && vip.summary.collateral_raw_value != null)
+    ? vip.summary.collateral_raw_value
+    : null;
+  const illiquidUsd = funding.illiquid_assets || 0;
+  // Available Funds = Funding Balance less collateral locked at Binance and
+  // illiquid assets — i.e. only freely-deployable funds remain.
+  const availableFunds = fundingBalance - (collateralUsd || 0) - illiquidUsd;
 
   // Editable value cell: click to turn into a number input; Enter/blur saves,
   // Escape cancels. `neg` lets negative figures (ITD PnL) render red.
@@ -7648,6 +7663,21 @@ function Dashboard() {
           {
             label: "Funding Balance", kind: "balance",
             value: fundingBalance, hint: "Total Funding + ITD PnL",
+          },
+          {
+            label: "Collateral Balance", kind: "live",
+            value: collateralUsd, hint: collateralUsd == null
+              ? "collateral feed unavailable"
+              : "live · Binance VIP collateral",
+          },
+          {
+            label: "Illiquid Asset", kind: "edit", key: "illiquid_assets",
+            hint: "editable · illiquid holdings",
+          },
+          { kind: "rule" },
+          {
+            label: "Available Funds", kind: "balance",
+            value: availableFunds, hint: "Funding Balance − Collateral − Illiquid",
           },
         ].map((row, i) => {
           if (row.kind === "rule") {
