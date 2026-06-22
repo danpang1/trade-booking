@@ -10,7 +10,7 @@ Convention
 ----------
 - Signed v2 HMAC-SHA256 API. Host www.bitstamp.net. Bodyless POST → NO
   Content-Type header (Bitstamp rejects it otherwise, API0020).
-- account_name='MOON-TOKKA@BITSTAMP', exch='BITSTAMP', account_id=218001.
+- account_name='MOON-TOKKA@BITSTAMP_SPOT', exch='BITSTAMP_SPOT', account_id=218001.
 - pos_qty = total holding (positive → side 'long'). instrument='{CCY}@BITSTAMP'
   (currency upper-cased; raw kept in original_data).
 - Spot holdings carry no mark/entry/uPnL/margin/leverage/liq, so those columns
@@ -52,10 +52,10 @@ import mo_db
 # ── Constants ──────────────────────────────────────────────────────────
 BITSTAMP_HOST = "www.bitstamp.net"
 BALANCES_PATH = "/api/v2/account_balances/"
-EXCH = "BITSTAMP"
-INSTR_VENUE = "BITSTAMP"
+EXCH = "BITSTAMP_SPOT"
+INSTR_VENUE = "BITSTAMP_SPOT"
 ACCOUNT_ID = 218001
-ACCOUNT_NAME = "MOON-TOKKA@BITSTAMP"
+ACCOUNT_NAME = "MOON-TOKKA@BITSTAMP_SPOT"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENV = REPO_ROOT / ".env"
