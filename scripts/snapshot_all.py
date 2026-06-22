@@ -10,7 +10,10 @@ logged and the remaining venues still record. The process exits non-zero only
 if EVERY task fails, so a single-venue outage doesn't mark the whole CronJob
 failed.
 
-Venues: Native Core, Lighter, Phoenix (all public, read-only APIs). Bitget is
+Venues: Native Core, Lighter, Phoenix (all public, read-only APIs) and Bitstamp
+(signed spot CEX). Bitstamp self-skips with a warning until its API key is
+present (BITSTAMP_API_KEY/SECRET env from a k8s Secret, or MAIN.BITSTAMP_* in
+.env locally), so it never breaks the public-venue snapshots. Bitget remains
 intentionally excluded until its API-key Secret is wired.
 
 Run
@@ -25,6 +28,8 @@ import logging
 
 import mo_db
 
+import stream_bitstamp
+import stream_bitstamp_balance
 import stream_lighter
 import stream_lighter_balance
 import stream_native
@@ -43,6 +48,8 @@ TASKS = [
     ("lighter.position", stream_lighter),
     ("phoenix.balance", stream_phoenix_balance),
     ("phoenix.position", stream_phoenix),
+    ("bitstamp.balance", stream_bitstamp_balance),
+    ("bitstamp.position", stream_bitstamp),
 ]
 
 
