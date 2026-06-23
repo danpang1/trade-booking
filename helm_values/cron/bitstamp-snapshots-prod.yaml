@@ -22,7 +22,8 @@ vault:
   agentInjectDefaultTemplate: json
   agentInjectSecrets:
     paths:
-      # KV v2 engine: the read path needs the "/data/" segment, else the json
-      # template resolves to nothing and the injected file comes through empty.
-      # Logical path: trading/prod/gw/218001  (Bitstamp MOON-TOKKA@BITSTAMP_SPOT).
-      gw_218001.json: "trading/data/prod/gw/218001"
+      # KV v2 engine mounted at `kv`: the read path needs the "/data/" segment
+      # right after the mount, else the json template resolves to nothing and
+      # the injected file comes through empty.
+      # Logical path: kv/trading/prod/gw/218001 (Bitstamp MOON-TOKKA@BITSTAMP_SPOT).
+      gw_218001.json: "kv/data/trading/prod/gw/218001"

@@ -5,7 +5,7 @@ one-liner at the call site plus a Vault secret — no new parsing code. Mirrors
 the trade-booking / binance_vip_loan_ltv convention of preferring the Vault-
 agent-injected file in prod and falling back to env / .env for local dev.
 
-Each account maps to a Vault KV path  trading/prod/gw/<account_id>  holding a
+Each account maps to a Vault KV path  kv/trading/prod/gw/<account_id>  holding a
 single-account document:
 
     {

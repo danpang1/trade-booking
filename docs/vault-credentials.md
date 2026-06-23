@@ -11,8 +11,8 @@ values line — no new parsing code.
 One Vault KV path per account:
 
 ```
-trading/prod/gw/<account_id>          # logical path
-trading/data/prod/gw/<account_id>     # KV v2 read/API path (note the /data/)
+kv/trading/prod/gw/<account_id>       # logical path (KV v2 engine mounted at kv)
+kv/data/trading/prod/gw/<account_id>  # read/API path — /data/ goes after the mount
 ```
 
 Document shape (single account per path):
@@ -59,14 +59,14 @@ completes instead of hanging on a long-lived vault-agent sidecar.
 
 ## Adding a new account
 
-1. **Vault** — write the gw document to `trading/prod/gw/<new_id>`. The
+1. **Vault** — write the gw document to `kv/trading/prod/gw/<new_id>`. The
    `vault-main-trading-prod` role's policy must allow reading it.
 2. **helm** — add one line under `agentInjectSecrets.paths` in the relevant
    cron's prod overlay (e.g. `helm_values/cron/bitstamp-snapshots-prod.yaml`,
    or a new `<venue>-snapshots-prod.yaml` if it gets its own isolated cron):
 
    ```yaml
-   gw_<new_id>.json: "trading/data/prod/gw/<new_id>"
+   gw_<new_id>.json: "kv/data/trading/prod/gw/<new_id>"
    ```
 
 3. **Streamer** — load it:
@@ -91,4 +91,4 @@ No changes to `gw_creds.py`.
 
 | account_id | venue    | streamers                                          | env_prefix | Vault path                     |
 |-----------:|----------|----------------------------------------------------|------------|--------------------------------|
-| 218001     | Bitstamp | `stream_bitstamp.py`, `stream_bitstamp_balance.py` | `BITSTAMP` | `trading/data/prod/gw/218001`  |
+| 218001     | Bitstamp | `stream_bitstamp.py`, `stream_bitstamp_balance.py` | `BITSTAMP` | `kv/data/trading/prod/gw/218001` |
