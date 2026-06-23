@@ -10,11 +10,11 @@ logged and the remaining venues still record. The process exits non-zero only
 if EVERY task fails, so a single-venue outage doesn't mark the whole CronJob
 failed.
 
-Venues: Native Core, Lighter, Phoenix (all public, read-only APIs) and Bitstamp
-(signed spot CEX). Bitstamp self-skips with a warning until its API key is
-present (BITSTAMP_API_KEY/SECRET env from a k8s Secret, or MAIN.BITSTAMP_* in
-.env locally), so it never breaks the public-venue snapshots. Bitget remains
-intentionally excluded until its API-key Secret is wired.
+Venues: Native Core, Lighter, Phoenix — all public, read-only APIs, so this
+runner needs no venue credentials. Bitstamp (signed spot CEX, Vault-backed key)
+runs in its OWN CronJob via scripts/snapshot_bitstamp.py, so a credential / Vault
+issue can't break these public-venue snapshots. Bitget remains intentionally
+excluded until its API-key Secret is wired.
 
 Run
 ---
@@ -28,8 +28,6 @@ import logging
 
 import mo_db
 
-import stream_bitstamp
-import stream_bitstamp_balance
 import stream_lighter
 import stream_lighter_balance
 import stream_native
@@ -40,7 +38,8 @@ import stream_phoenix_balance
 log = logging.getLogger("snapshot_all")
 
 # (label, module). Each module exposes snap_once(conn, dry_run) -> int rows.
-# Balance task runs before its position task per venue.
+# Balance task runs before its position task per venue. Public venues only —
+# Bitstamp runs in its own CronJob (scripts/snapshot_bitstamp.py).
 TASKS = [
     ("native.balance", stream_native_balance),
     ("native.position", stream_native),
@@ -48,17 +47,20 @@ TASKS = [
     ("lighter.position", stream_lighter),
     ("phoenix.balance", stream_phoenix_balance),
     ("phoenix.position", stream_phoenix),
-    ("bitstamp.balance", stream_bitstamp_balance),
-    ("bitstamp.position", stream_bitstamp),
 ]
 
 
-def run(dry_run: bool) -> int:
-    """Run every task with per-task isolation. Returns the failed-task count."""
+def run(dry_run: bool, tasks=None) -> int:
+    """Run each task with per-task isolation. Returns the failed-task count.
+
+    tasks defaults to the public-venue TASKS; snapshot_bitstamp.py passes its
+    own list to reuse the shared connection + isolation + summary logging.
+    """
+    tasks = TASKS if tasks is None else tasks
     conn = None if dry_run else mo_db.connect()
     ok, failed, total_rows = 0, 0, 0
     try:
-        for label, mod in TASKS:
+        for label, mod in tasks:
             try:
                 n = mod.snap_once(conn, dry_run) or 0
                 total_rows += n

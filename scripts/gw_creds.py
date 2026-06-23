@@ -30,7 +30,7 @@ Resolution precedence per account (first hit wins):
      <account_id>.API_KEY / <account_id>.API_SECRET.
 
 See docs/vault-credentials.md for the add-an-account recipe and the k8s
-helm wiring (helm_values/cron/venue-snapshots-prod.yaml + cronjob template).
+helm wiring (helm_values/cron/bitstamp-snapshots-prod.yaml + cronjob template).
 """
 from __future__ import annotations
 

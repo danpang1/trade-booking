@@ -47,20 +47,23 @@ proceed without creds.
 
 ## How it's wired in k8s (prod)
 
-The `venue-snapshots` CronJob runs `scripts/snapshot_all.py` hourly. Vault is
-enabled **prod-only** via the overlay `helm_values/cron/venue-snapshots-prod.yaml`
-(UAT has no Vault role, so it stays on env/`.env`). The chart's
-`helm/templates/cronjob.yaml` renders the agent-inject annotations from
-`.Values.vault.*` (mirrors the deployment), including
-`agent-pre-populate-only: "true"` — init-only, so the Job's pod completes
-instead of hanging on a long-lived vault-agent sidecar.
+Authenticated venues run in their **own** CronJob, isolated from the public
+`venue-snapshots` cron (`scripts/snapshot_all.py`) so a Vault/credential failure
+can't break the public-venue snapshots. Bitstamp's is `bitstamp-snapshots`
+(`scripts/snapshot_bitstamp.py`). Vault is enabled **prod-only** via the overlay
+`helm_values/cron/bitstamp-snapshots-prod.yaml` (UAT has no Vault role, so it
+stays on env/`.env`). The chart's `helm/templates/cronjob.yaml` renders the
+agent-inject annotations from `.Values.vault.*` (mirrors the deployment),
+including `agent-pre-populate-only: "true"` — init-only, so the Job's pod
+completes instead of hanging on a long-lived vault-agent sidecar.
 
 ## Adding a new account
 
 1. **Vault** — write the gw document to `trading/prod/gw/<new_id>`. The
    `vault-main-trading-prod` role's policy must allow reading it.
-2. **helm** — add one line under `agentInjectSecrets.paths` in
-   `helm_values/cron/venue-snapshots-prod.yaml`:
+2. **helm** — add one line under `agentInjectSecrets.paths` in the relevant
+   cron's prod overlay (e.g. `helm_values/cron/bitstamp-snapshots-prod.yaml`,
+   or a new `<venue>-snapshots-prod.yaml` if it gets its own isolated cron):
 
    ```yaml
    gw_<new_id>.json: "trading/data/prod/gw/<new_id>"

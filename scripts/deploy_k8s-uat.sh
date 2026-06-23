@@ -45,5 +45,6 @@ log "Executing `basename "$0"`."
 ./scripts/run_helm.sh middle-office cron          tokens         $env $mode
 ./scripts/run_helm.sh middle-office cron          users          $env $mode
 ./scripts/run_helm.sh middle-office cron          venue-snapshots $env $mode
+./scripts/run_helm.sh middle-office cron          bitstamp-snapshots $env $mode
 
 log "Successfully finished."

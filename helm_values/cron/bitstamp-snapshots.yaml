@@ -1,0 +1,20 @@
+---
+# Bitstamp balance + position hourly snapshot.
+# Release: cron-bitstamp-snapshots-<env>. Renders one CronJob, no Deployment.
+#
+# Isolated from venue-snapshots ON PURPOSE: Bitstamp needs an API key (Vault-
+# injected in prod — see bitstamp-snapshots-prod.yaml), so giving it its own
+# CronJob means a credential / Vault-agent failure can never break the public-
+# venue snapshots. Runs scripts/snapshot_bitstamp.py once per UTC hour, writing
+# to middle_office.tq_hist_balance_mo and tq_hist_position_mo. DB creds come
+# from the shared MO_DB_* env_secrets in helm_values/base.yaml.
+
+deployment:
+  enabled: false
+
+cronjobs:
+  - name: bitstamp-snapshots
+    enabled: true
+    schedule: "0 * * * *"   # top of every UTC hour
+    command: ["python", "/opt/app/scripts/snapshot_bitstamp.py"]
+    args: []
