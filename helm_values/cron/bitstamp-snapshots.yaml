@@ -12,8 +12,12 @@
 deployment:
   enabled: false
 
+# NOTE: `name` is appended to the release name to form the CronJob resource
+# name (`<release>-<name>-cronjob`), which k8s caps at 52 chars. The release is
+# already `cron-bitstamp-snapshots-<env>`, so keep this short (`bitstamp`, not
+# `bitstamp-snapshots`) to avoid overflow.
 cronjobs:
-  - name: bitstamp-snapshots
+  - name: bitstamp
     enabled: true
     schedule: "0 * * * *"   # top of every UTC hour
     command: ["python", "/opt/app/scripts/snapshot_bitstamp.py"]
