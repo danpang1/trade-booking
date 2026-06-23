@@ -40,8 +40,43 @@ spec:
 
       template:
         metadata:
+          {{- if $.Values.vault.enabled }}
+          annotations:
+            vault.hashicorp.com/agent-inject: {{ $.Values.vault.agentInject | quote }}
+
+            {{- range $k, $vSecret := $.Values.vault.agentInjectSecrets.paths }}
+            vault.hashicorp.com/agent-inject-secret-{{ $k }}: {{ $vSecret | quote }}
+            {{- end }}
+
+            {{- range $k, $vSecret := $.Values.vault.agentInjectSecrets.templates }}
+            vault.hashicorp.com/agent-inject-template-{{ $k }}: |
+              {{- $vSecret | nindent 14 }}
+            {{- end }}
+
+            vault.hashicorp.com/agent-inject-default-template: {{ $.Values.vault.agentInjectDefaultTemplate }}
+
+            vault.hashicorp.com/role: {{ $.Values.vault.role }}
+            vault.hashicorp.com/auth-path: {{ $.Values.vault.authPath }}
+            vault.hashicorp.com/namespace: {{ $.Values.vault.namespace }}
+
+            vault.hashicorp.com/log-level: {{ $.Values.vault.logLevel }}
+
+            {{- if gt (len $.Values.vault.service) 0 }}
+            vault.hashicorp.com/service: {{ $.Values.vault.service }}
+            {{- end }}
+            vault.hashicorp.com/tls-secret: {{ $.Values.vault.tlsSecret }}
+            vault.hashicorp.com/agent-requests-cpu: {{ $.Values.vault.requestscpu }}
+            vault.hashicorp.com/agent-limits-cpu: {{ $.Values.vault.limitscpu }}
+            vault.hashicorp.com/tls-skip-verify: "{{ $.Values.vault.tlsSkipVerify }}"
+            # Init-only (no sidecar) so the CronJob's pod can actually complete
+            # instead of hanging on a long-lived vault-agent container.
+            vault.hashicorp.com/agent-pre-populate-only: "true"
+          {{- end }}
 
         spec:
+          {{- if and $.Values.vault.enabled (gt (len $.Values.vault.serviceAccountName) 0) }}
+          serviceAccountName: {{ $.Values.vault.serviceAccountName }}
+          {{- end }}
 
           {{- with $.Values.image.imagePullSecrets }}
           imagePullSecrets:

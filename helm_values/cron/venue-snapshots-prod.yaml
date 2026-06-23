@@ -1,0 +1,26 @@
+---
+# venue-snapshots — production overrides.
+#
+# Prod-only: enables the Vault agent-inject sidecar so the Bitstamp (and future
+# gateway-account) API keys are read from Vault instead of a k8s Secret / .env.
+# UAT has no Vault role, so this overlay is NOT applied there — the streamers
+# fall back to env / .env and Bitstamp self-skips if no key is present.
+#
+# Each gateway account renders its own file under /vault/secrets/, named
+# gw_<account_id>.json, which scripts/gw_creds.py reads. Adding a new account =
+# add one more line under agentInjectSecrets.paths (and a streamer call to
+# gw_creds.find_gw_creds(<id>, ...)). See docs/vault-credentials.md.
+
+vault:
+  enabled: true
+  authPath: "auth/kubernetes/sg-k8s"
+  role: "vault-main-trading-prod"
+  # `json` renders the secret's KV-v2 .Data.data as a flat JSON object, so the
+  # injected file is the unwrapped single-account doc gw_creds expects.
+  agentInjectDefaultTemplate: json
+  agentInjectSecrets:
+    paths:
+      # KV v2 engine: the read path needs the "/data/" segment, else the json
+      # template resolves to nothing and the injected file comes through empty.
+      # Logical path: trading/prod/gw/218001  (Bitstamp MOON-TOKKA@BITSTAMP_SPOT).
+      gw_218001.json: "trading/data/prod/gw/218001"

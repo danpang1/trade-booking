@@ -14,12 +14,13 @@ Convention
 - Bitstamp returns {currency, total, available, reserved}:
     total_qty=total, avail_qty=available, frozen_qty=reserved.
 
-Credentials (unlike the public venues, Bitstamp needs an API key):
-  1. Env vars BITSTAMP_API_KEY / BITSTAMP_API_SECRET — injected in-cluster from
-     a k8s Secret (see helm_values).
-  2. Fallback: MAIN.BITSTAMP_API_KEY / MAIN.BITSTAMP_API_SECRET in the repo-root
+Credentials (unlike the public venues, Bitstamp needs an API key) resolve by
+precedence via gw_creds:
+  1. Vault agent-injected file gw_218001.json (prod) — see docs/vault-credentials.md.
+  2. Env vars BITSTAMP_API_KEY / BITSTAMP_API_SECRET (k8s Secret).
+  3. Fallback: MAIN.BITSTAMP_API_KEY / MAIN.BITSTAMP_API_SECRET in the repo-root
      .env (local dev only).
-If neither is present, snap_once() logs a warning and skips (returns 0) so the
+If none is present, snap_once() logs a warning and skips (returns 0) so the
 shared venue-snapshots cron is never broken by a missing Bitstamp key.
 
 Run
@@ -35,19 +36,18 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import signal
 import time
 import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
 
 import mo_db
+import gw_creds
 
 
 # ── Constants ──────────────────────────────────────────────────────────
@@ -58,40 +58,20 @@ INSTR_VENUE = "BITSTAMP_SPOT"
 ACCOUNT_ID = 218001
 ACCOUNT_NAME = "MOON-TOKKA@BITSTAMP_SPOT"
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-ENV = REPO_ROOT / ".env"
-
 log = logging.getLogger("stream_bitstamp_balance")
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Credentials: env vars first (k8s Secret), .env fallback (local dev)
+# Credentials: Vault file → env (k8s Secret) → .env (local dev), via gw_creds
 # ─────────────────────────────────────────────────────────────────────
 
-def _env_kv() -> dict[str, str]:
-    if not ENV.exists():
-        return {}
-    out = {}
-    for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#") or "=" not in s:
-            continue
-        k, _, v = s.partition("=")
-        out[k.strip()] = v.strip()
-    return out
-
-
 def bitstamp_creds() -> tuple[str, str] | None:
-    key = os.environ.get("BITSTAMP_API_KEY")
-    secret = os.environ.get("BITSTAMP_API_SECRET")
-    if key and secret:
-        return key, secret
-    kv = _env_kv()
-    key = kv.get("MAIN.BITSTAMP_API_KEY")
-    secret = kv.get("MAIN.BITSTAMP_API_SECRET")
-    if key and secret:
-        return key, secret
-    return None
+    creds = gw_creds.find_gw_creds(
+        ACCOUNT_ID, env_prefix="BITSTAMP",
+        dotenv_key="MAIN.BITSTAMP_API_KEY",
+        dotenv_secret="MAIN.BITSTAMP_API_SECRET",
+    )
+    return (creds.key, creds.secret) if creds else None
 
 
 # ─────────────────────────────────────────────────────────────────────
