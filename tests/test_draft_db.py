@@ -217,12 +217,44 @@ def test_validate_payload_for_category_cashflow_missing_field_raises():
         draft_db.validate_payload_for_category("CASHFLOW", bad)
 
 
-def test_validate_payload_for_category_spot_not_implemented_in_phase_1a():
-    """Plan 1a is CASHFLOW-only. SPOT is accepted at DB level but the
-    endpoint must reject it cleanly. validate_payload_for_category
-    raises a clear error for SPOT until Phase 2 wires spot_db."""
-    with pytest.raises(draft_db.ValidationError, match="SPOT"):
-        draft_db.validate_payload_for_category("SPOT", {})
+VALID_SPOT_DRAFT_PAYLOAD = {
+    "direction": "LONG",
+    "entity": "TOKKA LABS PTE LTD",
+    "portfolio_id": 8041,
+    "portfolio_name": "TOKKA LABS - MM - CENTRAL RISK BOOK",
+    "base_asset": "USDG",
+    "base_amount": "1000000",
+    "quote_asset": "USDC",
+    "quote_amount": "1000000",
+    "price": "1.0",
+    "trade_date": "2026-06-30T12:00:00+00:00",
+    "value_date": "2026-06-30T12:00:00+00:00",
+    "user_id": "claude:danny.pang",
+    "status": "PENDING",
+}
+
+
+def test_validate_payload_for_category_spot_passes():
+    """SPOT now delegates to spot_db.validate_payload(mode='insert').
+    A structurally complete SPOT payload should not raise."""
+    draft_db.validate_payload_for_category("SPOT", VALID_SPOT_DRAFT_PAYLOAD)  # no raise
+
+
+def test_validate_payload_for_category_spot_same_asset_raises():
+    bad = {**VALID_SPOT_DRAFT_PAYLOAD, "quote_asset": "USDG"}
+    with pytest.raises(draft_db.ValidationError, match="differ"):
+        draft_db.validate_payload_for_category("SPOT", bad)
+
+
+def test_validate_payload_for_category_spot_missing_field_raises():
+    bad = {k: v for k, v in VALID_SPOT_DRAFT_PAYLOAD.items() if k != "price"}
+    with pytest.raises(draft_db.ValidationError, match="price"):
+        draft_db.validate_payload_for_category("SPOT", bad)
+
+
+def test_validate_payload_for_category_unknown_raises():
+    with pytest.raises(draft_db.ValidationError, match="unknown category"):
+        draft_db.validate_payload_for_category("FUTURES", {})
 
 
 # ── row_to_public ───────────────────────────────────────────────────

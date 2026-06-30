@@ -99,3 +99,88 @@ Batch a8b3-1234-... · 6 drafts created (#43, #44, #45, #46, #47, #48). Review a
    > - to whom? (counterparty)
    > - from which portfolio + account?
 3. After answers, proceed to validation + preview as in Example 1.
+
+## Example 4 — Single SPOT swap
+
+**User:** "Swap 1,000,000 USDC to 1,000,000 USDG on Paxos @ 1.00 for PTF 8888"
+
+**Skill behavior:**
+
+1. Parse with the swap rule (received = base, LONG): `base_asset=USDG`,
+   `base_amount=1000000`, `quote_asset=USDC`, `quote_amount=1000000`, `price=1.00`,
+   `direction=LONG`. Venue "Paxos" → account `MOON-TK@PAXOS` (EXCHANGE). Portfolio
+   8888 → `portfolio_name=TOKKA LABS - TREASURY`, entity auto-filled.
+2. Check `base × price == quote` (1,000,000 × 1.00 = 1,000,000 ✓).
+3. Preview:
+
+```
+SPOT · LONG · PTF 8888 (TOKKA LABS - TREASURY)
+  base:     1,000,000 USDG   (received)
+  quote:    1,000,000 USDC   (given)
+  price:    1.00 USDC/USDG
+  account:  MOON-TK@PAXOS (EXCHANGE)
+  value_date: 2026-06-30T12:00:00+00:00
+```
+
+4. "Submit? (y/N)"; on `y`:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/bin/tokka-mo book --category SPOT <<'JSON'
+{
+  "direction": "LONG",
+  "entity": "TOKKA LABS PTE LTD",
+  "portfolio_id": 8888,
+  "portfolio_name": "TOKKA LABS - TREASURY",
+  "base_asset": "USDG",
+  "base_amount": "1000000",
+  "quote_asset": "USDC",
+  "quote_amount": "1000000",
+  "price": "1.00",
+  "account": "MOON-TK@PAXOS",
+  "account_type": "EXCHANGE",
+  "trade_date": "2026-06-30T12:00:00+00:00",
+  "value_date": "2026-06-30T12:00:00+00:00",
+  "user_id": "danny.pang",
+  "status": "PENDING"
+}
+JSON
+```
+
+## Example 5 — Mixed CASHFLOW + SPOT batch
+
+**User pastes:**
+```
+PTF 8888 fund PTF 8041 2,000,000 USDT
+Swap 1,000,000 USDC to 1,000,000 USD on Paxos @ 1.00
+Swap 1,000,000 USDC to 1,000,000 USDG on Paxos @ 1.00
+```
+
+**Skill behavior:**
+
+1. Tag each row: row 1 = CASHFLOW (INTER PTF FUNDING — books two legs); rows 2-3 =
+   SPOT swaps. Resolve venues/portfolios; ask for any missing account/portfolio.
+2. Preview grouped:
+
+```
+CASHFLOW (2)
+  1. INTER PTF FUNDING · OUTGOING · 8888 → cp 8041 · 2,000,000 USDT
+  2. INTER PTF FUNDING · INCOMING · 8041 → cp 8888 · 2,000,000 USDT
+SPOT (2)
+  3. LONG · base 1,000,000 USD  / quote 1,000,000 USDC @ 1.00 · Paxos
+  4. LONG · base 1,000,000 USDG / quote 1,000,000 USDC @ 1.00 · Paxos
+```
+
+3. "Submit batch? (y/N)"; on `y`, each trade carries its own `category`:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/bin/tokka-mo book-batch <<'JSON'
+{"trades": [
+  {"category": "CASHFLOW", "payload": {...funding OUTGOING...}},
+  {"category": "CASHFLOW", "payload": {...funding INCOMING...}},
+  {"category": "SPOT",     "payload": {...USDC→USD swap...}},
+  {"category": "SPOT",     "payload": {...USDC→USDG swap...}}
+]}
+JSON
+```
+
+4. Report the single `batch_id` + all draft IDs + the review URL.

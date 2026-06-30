@@ -10,6 +10,7 @@ from decimal import Decimal
 import uuid as _uuid
 
 import cashflow_db
+import spot_db
 
 
 # ── Constants ──────────────────────────────────────────────────────
@@ -42,9 +43,7 @@ def validate_uuid(s) -> str:
 
 
 def validate_payload_for_category(category: str, payload) -> None:
-    """Delegate to the relevant *_db validator. Phase 1a wires CASHFLOW only;
-    SPOT is intentionally unimplemented and will raise here until Phase 2.
-    """
+    """Delegate to the relevant *_db validator (insert mode)."""
     if category == "CASHFLOW":
         try:
             cashflow_db.validate_payload(payload, mode="insert")
@@ -52,7 +51,11 @@ def validate_payload_for_category(category: str, payload) -> None:
             raise ValidationError(str(e)) from e
         return
     if category == "SPOT":
-        raise ValidationError("SPOT drafts not yet supported (Plan 1a is CASHFLOW only)")
+        try:
+            spot_db.validate_payload(payload, mode="insert")
+        except spot_db.ValidationError as e:
+            raise ValidationError(str(e)) from e
+        return
     raise ValidationError(f"unknown category: {category!r}")
 
 

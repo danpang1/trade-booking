@@ -15,6 +15,12 @@ import sys
 
 import draft_db
 from cashflow_insert import _insert_one as cashflow_insert_one
+from spot_insert import _insert_one as spot_insert_one
+
+_INSERTERS = {
+    "CASHFLOW": cashflow_insert_one,
+    "SPOT": spot_insert_one,
+}
 
 
 def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
@@ -51,10 +57,8 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                     return "conflict", None, None
 
                 _, category, payload = claim
-                if category != "CASHFLOW":
-                    # Plan 1a is CASHFLOW-only. SPOT drafts can be created
-                    # at the DB level (CHECK allows it) but approving one
-                    # would require spot_insert._insert_one, wired in Phase 2.
+                insert_one = _INSERTERS.get(category)
+                if insert_one is None:
                     raise draft_db.ValidationError(
                         f"approve not implemented for category {category}"
                     )
@@ -77,15 +81,12 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         patched["user_id"] = uid[len("claude:"):]
                     payload = patched
 
-                # IN-PROCESS insert into trades_cashflow on the SAME cursor.
-                # The human approver is preserved separately on
-                # bookings_draft.approved_by.
+                # IN-PROCESS insert into the live trade table on the SAME
+                # cursor, dispatched by the draft's category. The human
+                # approver is preserved separately on bookings_draft.approved_by.
                 # If this raises, the enclosing `with conn:` block rolls back
                 # both the UPDATE above AND any partial INSERT.
-                try:
-                    inserted = cashflow_insert_one(cur, payload)
-                except Exception:
-                    raise
+                inserted = insert_one(cur, payload)
 
                 deal_ref = inserted["deal_ref"]
                 cur.execute(

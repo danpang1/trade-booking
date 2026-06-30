@@ -2,7 +2,7 @@
 
 Submit Tokka Labs Middle Office **CASHFLOW** trade bookings as drafts directly from Claude Code. Approvals continue to happen in the web app at `sg-tms.internal.tokkalabs.com/pending`.
 
-**Status:** v0.1 — CASHFLOW only. SPOT support and rollout polish in Phase 2 / Phase 3.
+**Status:** v0.2 — CASHFLOW + SPOT (incl. FX-style swaps), single + mixed batches. Rollout polish ongoing.
 
 > **Not sure how to install?** Paste this whole README into Claude Code (or claude.ai) and ask: **"Walk me through installing this on my <macOS / Windows / Linux> laptop."** Claude will identify which prerequisites you're missing, pick the right install path for your OS, and explain each step. Get stuck? Send Claude the exact error message — most failures are in the Troubleshooting table at the bottom.
 

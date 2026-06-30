@@ -44,6 +44,25 @@ import attachments_db
 import spot_db
 
 
+def _insert_one(cur, payload: dict) -> dict:
+    """Insert one spot row on the given cursor and return the live row.
+
+    deal_ref is assigned by the table's DB default
+    ('MFX' || lpad(nextval('trade_seq_spot'),8,'0')); payload_to_columns drops
+    the column when deal_ref is absent, and the generated value is read back
+    from RETURNING *. Reusable inside another transaction (e.g. draft_approve).
+    """
+    cols, vals = spot_db.payload_to_columns(payload)
+    col_list = ", ".join(cols + ("effective_start", "effective_end"))
+    placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
+    cur.execute(
+        f"INSERT INTO trades_spot ({col_list}) VALUES ({placeholders}) RETURNING *",
+        vals,
+    )
+    out_cols = [d.name for d in cur.description]
+    return spot_db.row_to_payload(out_cols, cur.fetchone())
+
+
 def main() -> int:
     raw = sys.stdin.read()
     try:
@@ -71,18 +90,7 @@ def main() -> int:
     try:
         with conn:
             with conn.cursor() as cur:
-                # deal_ref assigned by the DB default
-                # ('MFX' || lpad(nextval('trade_seq_spot'),8,'0')); omitted on
-                # insert and read back from RETURNING *.
-                cols, vals = spot_db.payload_to_columns(payload)
-                col_list = ", ".join(cols + ("effective_start", "effective_end"))
-                placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
-                cur.execute(
-                    f"INSERT INTO trades_spot ({col_list}) VALUES ({placeholders}) RETURNING *",
-                    vals,
-                )
-                out_cols = [d.name for d in cur.description]
-                row = spot_db.row_to_payload(out_cols, cur.fetchone())
+                row = _insert_one(cur, payload)
 
                 inserted_atts = attachments_db.insert_attachments(
                     cur,

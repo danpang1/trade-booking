@@ -14,8 +14,8 @@ Commands:
   logout                revoke current token, clear local credentials
   whoami                show the authenticated user
   refdata refresh       pull /refdata/*.json + /tokens.json -> local cache
-  book < payload.json   POST one CASHFLOW draft
-  book-batch < batch.json  POST N CASHFLOW drafts atomically
+  book < payload.json   POST one CASHFLOW or SPOT draft
+  book-batch < batch.json  POST N CASHFLOW/SPOT drafts atomically
   drafts list [--status STATUS] [--batch BATCH_ID]  list your drafts
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ import json
 import os
 import sys
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -363,6 +363,162 @@ def validate_cashflow_payload(payload, refdata) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────
+# SPOT validation. Mirrors scripts/spot_db._validate_one (the server's
+# source of truth) and adds the refdata-membership checks the server
+# can't do from the cache. SPOT leaves account/account_type/counterparty
+# optional — they are validated only when present.
+# ─────────────────────────────────────────────────────────────────
+
+REQUIRED_SPOT_FIELDS = (
+    "direction", "entity", "portfolio_id", "portfolio_name",
+    "base_asset", "base_amount", "quote_asset", "quote_amount", "price",
+    "trade_date", "value_date", "user_id", "status",
+)
+VALID_SPOT_DIRECTIONS = {"LONG", "SHORT"}
+# Relative tolerance for the base x price == quote identity (float noise).
+SPOT_PRICE_TOLERANCE = 1e-6
+
+
+def _parse_numeric(value, field):
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        raise ValidationError(f"{field} must be numeric, got {value!r}")
+
+
+def validate_spot_payload(payload, refdata) -> None:
+    """Raise ValidationError on any rule break. Otherwise return None."""
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be an object")
+
+    for field in REQUIRED_SPOT_FIELDS:
+        v = payload.get(field)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValidationError(f"required field missing or empty: {field}")
+
+    if payload["direction"] not in VALID_SPOT_DIRECTIONS:
+        raise ValidationError(
+            f"direction must be one of {sorted(VALID_SPOT_DIRECTIONS)}, "
+            f"got {payload['direction']!r}"
+        )
+    if payload["status"] not in VALID_STATUSES:
+        raise ValidationError(
+            f"status must be one of {sorted(VALID_STATUSES)}, got {payload['status']!r}"
+        )
+
+    base_amount = _parse_numeric(payload["base_amount"], "base_amount")
+    quote_amount = _parse_numeric(payload["quote_amount"], "quote_amount")
+    price = _parse_numeric(payload["price"], "price")
+    fee_amount = payload.get("fee_amount")
+    if fee_amount not in (None, "", 0):
+        _parse_numeric(fee_amount, "fee_amount")
+
+    if payload["base_asset"] == payload["quote_asset"]:
+        raise ValidationError(
+            f"base_asset and quote_asset must differ, both = {payload['base_asset']!r}"
+        )
+
+    try:
+        pid = int(payload["portfolio_id"])
+    except (TypeError, ValueError):
+        raise ValidationError(
+            f"portfolio_id must be integer, got {payload['portfolio_id']!r}"
+        )
+
+    # base x price == quote identity
+    expected_quote = base_amount * price
+    if expected_quote == 0:
+        if quote_amount != 0:
+            raise ValidationError(
+                f"base x price ({base_amount} x {price} = 0) "
+                f"must equal quote_amount ({quote_amount})"
+            )
+    else:
+        rel = abs(expected_quote - quote_amount) / abs(expected_quote)
+        if rel > SPOT_PRICE_TOLERANCE:
+            raise ValidationError(
+                f"base x price ({base_amount} x {price} = {expected_quote}) "
+                f"must equal quote_amount ({quote_amount})"
+            )
+
+    # Refdata-bound fields
+    ports = _refdata_portfolio_ids(refdata)
+    if pid not in ports:
+        suggest = _suggest(pid, sorted(ports.keys()))
+        raise ValidationError(
+            f"portfolio_id {pid!r} not in refdata.{suggest} "
+            f"Run `tokka-mo refdata refresh` if your cache is stale."
+        )
+    expected_name = ports[pid]
+    if payload["portfolio_name"] != expected_name:
+        raise ValidationError(
+            f"portfolio_name {payload['portfolio_name']!r} doesn't match "
+            f"portfolio_id {pid} (expected {expected_name!r})"
+        )
+
+    tokens = _refdata_values(refdata, "tokens", name_field="symbol")
+    for fld in ("base_asset", "quote_asset"):
+        if payload[fld] not in tokens:
+            raise ValidationError(
+                f"{fld} {payload[fld]!r} not in refdata."
+                f"{_suggest(payload[fld], tokens)}"
+            )
+    fee_asset = payload.get("fee_asset")
+    if fee_asset and fee_asset not in tokens:
+        raise ValidationError(
+            f"fee_asset {fee_asset!r} not in refdata.{_suggest(fee_asset, tokens)}"
+        )
+
+    # account is optional for SPOT; validate it (and account_type) only when set.
+    account = payload.get("account")
+    if account:
+        accounts = _refdata_values(refdata, "accounts")
+        if account not in accounts:
+            raise ValidationError(
+                f"account {account!r} not in refdata.{_suggest(account, accounts)}"
+            )
+        acct_type = payload.get("account_type")
+        if acct_type not in VALID_ACCOUNT_TYPES:
+            raise ValidationError(
+                f"account_type must be one of {sorted(VALID_ACCOUNT_TYPES)}, "
+                f"got {acct_type!r}"
+            )
+
+    # counterparty is optional for SPOT; when set it's a NAMED counterparty
+    # (unlike INTER PTF FUNDING, which uses a portfolio-number string).
+    cp = payload.get("counterparty")
+    if cp:
+        counterparties = _refdata_values(refdata, "counterparties")
+        if cp not in counterparties:
+            raise ValidationError(
+                f"counterparty {cp!r} not in refdata.{_suggest(cp, counterparties)}"
+            )
+
+
+VALID_CATEGORIES = {"CASHFLOW", "SPOT"}
+
+
+def infer_category(payload):
+    """Best-effort category from payload shape when none is supplied."""
+    if isinstance(payload, dict):
+        if payload.get("cashflow_type"):
+            return "CASHFLOW"
+        if payload.get("base_asset") or payload.get("quote_asset"):
+            return "SPOT"
+    return "CASHFLOW"
+
+
+def validate(category, payload, refdata) -> None:
+    """Dispatch to the category-specific validator."""
+    if category == "CASHFLOW":
+        validate_cashflow_payload(payload, refdata)
+    elif category == "SPOT":
+        validate_spot_payload(payload, refdata)
+    else:
+        raise ValidationError(f"unknown category: {category!r}")
+
+
+# ─────────────────────────────────────────────────────────────────
 # HTTP helpers — stdlib urllib only.
 #
 # Two helpers:
@@ -569,6 +725,14 @@ def _read_stdin_json():
 def cmd_book(args) -> int:
     payload = _read_stdin_json()
 
+    category = getattr(args, "category", None) or infer_category(payload)
+    if category not in VALID_CATEGORIES:
+        print(
+            f"tokka-mo: --category must be one of {sorted(VALID_CATEGORIES)}",
+            file=sys.stderr,
+        )
+        return 3
+
     # Idempotency key
     crid = args.client_request_id or str(_uuid.uuid4())
     try:
@@ -584,7 +748,7 @@ def cmd_book(args) -> int:
         print("not logged in; run: tokka-mo login", file=sys.stderr)
         return 4
     try:
-        validate_cashflow_payload(payload, refdata)
+        validate(category, payload, refdata)
     except ValidationError as e:
         print(f"validation failed: {e}", file=sys.stderr)
         return 3
@@ -593,7 +757,7 @@ def cmd_book(args) -> int:
     status, body, _ = _authed_request(
         "POST", "/api/bookings/draft",
         body={
-            "category": "CASHFLOW",
+            "category": category,
             "payload": payload,
             "client_request_id": crid,
         },
@@ -643,7 +807,11 @@ def cmd_book_batch(args) -> int:
         if not isinstance(t, dict):
             print(f"trade {i}: not an object", file=sys.stderr)
             return 3
-        payload = t.get("payload") or t  # allow bare payloads, infer category
+        payload = t.get("payload") or t  # allow bare payloads
+        category = t.get("category") or infer_category(payload)
+        if category not in VALID_CATEGORIES:
+            print(f"trade {i}: invalid category {category!r}", file=sys.stderr)
+            return 3
         crid = t.get("client_request_id") or str(_uuid.uuid4())
         try:
             _uuid.UUID(crid)
@@ -655,12 +823,12 @@ def cmd_book_batch(args) -> int:
             return 3
         seen_crids.add(crid)
         try:
-            validate_cashflow_payload(payload, refdata)
+            validate(category, payload, refdata)
         except ValidationError as e:
             print(f"trade {i} validation failed: {e}", file=sys.stderr)
             return 3
         prepared.append({
-            "category": "CASHFLOW",
+            "category": category,
             "payload": payload,
             "client_request_id": crid,
         })
@@ -815,8 +983,10 @@ def build_parser() -> argparse.ArgumentParser:
     # book (single)
     sp = sub.add_parser(
         "book",
-        help="POST one CASHFLOW draft. JSON payload on stdin.",
+        help="POST one CASHFLOW or SPOT draft. JSON payload on stdin.",
     )
+    sp.add_argument("--category", choices=("CASHFLOW", "SPOT"), default=None,
+                    help="Booking category. Inferred from the payload if omitted.")
     sp.add_argument("--client-request-id", default=None,
                     help="Idempotency UUID. Auto-generated if omitted.")
     sp.set_defaults(func=cmd_book)
@@ -824,7 +994,10 @@ def build_parser() -> argparse.ArgumentParser:
     # book-batch (atomic N)
     sp = sub.add_parser(
         "book-batch",
-        help="POST N CASHFLOW drafts atomically. JSON on stdin: {trades: [...]}",
+        help=(
+            "POST N drafts atomically. JSON on stdin: {trades: [...]}. "
+            "Each trade may set its own category (CASHFLOW or SPOT)."
+        ),
     )
     sp.set_defaults(func=cmd_book_batch)
 

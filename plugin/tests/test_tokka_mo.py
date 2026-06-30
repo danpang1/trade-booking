@@ -229,3 +229,116 @@ def test_validate_asset_not_in_refdata():
     bad = {**VALID_PAYLOAD, "asset": "DOGECOIN"}
     with pytest.raises(tokka_mo.ValidationError, match="asset"):
         tokka_mo.validate_cashflow_payload(bad, REFDATA_FIXTURE)
+
+
+# ── SPOT payload validator ──────────────────────────────────────
+
+VALID_SPOT_PAYLOAD = {
+    "direction": "LONG",
+    "entity": "TOKKA LABS PTE LTD",
+    "portfolio_id": 8041,
+    "portfolio_name": "MARKET MAKING",
+    "base_asset": "USDT",
+    "base_amount": "1000000",
+    "quote_asset": "USDC",
+    "quote_amount": "1000000",
+    "price": "1.0",
+    "trade_date": "2026-06-30T12:00:00+00:00",
+    "value_date": "2026-06-30T12:00:00+00:00",
+    "user_id": "danny.pang",
+    "status": "PENDING",
+}
+
+
+def test_validate_spot_payload_happy_path():
+    tokka_mo.validate_spot_payload(VALID_SPOT_PAYLOAD, REFDATA_FIXTURE)
+
+
+def test_validate_spot_with_optional_account_and_fee():
+    p = {
+        **VALID_SPOT_PAYLOAD,
+        "account": "TK818@BINANCE",
+        "account_type": "EXCHANGE",
+        "fee_asset": "USDC",
+        "fee_amount": "1.5",
+    }
+    tokka_mo.validate_spot_payload(p, REFDATA_FIXTURE)
+
+
+def test_validate_spot_no_account_is_ok():
+    # account / account_type / counterparty are optional for SPOT.
+    tokka_mo.validate_spot_payload(VALID_SPOT_PAYLOAD, REFDATA_FIXTURE)
+
+
+@pytest.mark.parametrize("field", [
+    "direction", "entity", "portfolio_id", "portfolio_name",
+    "base_asset", "base_amount", "quote_asset", "quote_amount", "price",
+    "trade_date", "value_date", "user_id", "status",
+])
+def test_validate_spot_missing_required_field_raises(field):
+    bad = {k: v for k, v in VALID_SPOT_PAYLOAD.items() if k != field}
+    with pytest.raises(tokka_mo.ValidationError, match=field):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_bad_direction():
+    bad = {**VALID_SPOT_PAYLOAD, "direction": "BUY"}
+    with pytest.raises(tokka_mo.ValidationError, match="direction"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_same_base_and_quote():
+    bad = {**VALID_SPOT_PAYLOAD, "quote_asset": "USDT"}
+    with pytest.raises(tokka_mo.ValidationError, match="differ"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_base_price_quote_mismatch():
+    bad = {**VALID_SPOT_PAYLOAD, "price": "1.05"}
+    with pytest.raises(tokka_mo.ValidationError, match="quote_amount"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_base_asset_not_in_refdata():
+    bad = {**VALID_SPOT_PAYLOAD, "base_asset": "DOGE"}
+    with pytest.raises(tokka_mo.ValidationError, match="base_asset"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_bad_account_when_present():
+    bad = {**VALID_SPOT_PAYLOAD, "account": "NOPE@NOWHERE", "account_type": "EXCHANGE"}
+    with pytest.raises(tokka_mo.ValidationError, match="account"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_account_type_required_with_account():
+    bad = {**VALID_SPOT_PAYLOAD, "account": "TK818@BINANCE", "account_type": "POCKET"}
+    with pytest.raises(tokka_mo.ValidationError, match="account_type"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_portfolio_not_in_refdata():
+    bad = {**VALID_SPOT_PAYLOAD, "portfolio_id": 9999}
+    with pytest.raises(tokka_mo.ValidationError, match="portfolio_id"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+def test_validate_spot_portfolio_name_mismatch():
+    bad = {**VALID_SPOT_PAYLOAD, "portfolio_name": "WRONG NAME"}
+    with pytest.raises(tokka_mo.ValidationError, match="portfolio_name"):
+        tokka_mo.validate_spot_payload(bad, REFDATA_FIXTURE)
+
+
+# ── category inference + dispatch ───────────────────────────────
+
+def test_infer_category():
+    assert tokka_mo.infer_category(VALID_SPOT_PAYLOAD) == "SPOT"
+    assert tokka_mo.infer_category(VALID_PAYLOAD) == "CASHFLOW"
+    assert tokka_mo.infer_category({}) == "CASHFLOW"
+
+
+def test_validate_dispatch_routes_by_category():
+    tokka_mo.validate("SPOT", VALID_SPOT_PAYLOAD, REFDATA_FIXTURE)
+    tokka_mo.validate("CASHFLOW", VALID_PAYLOAD, REFDATA_FIXTURE)
+    with pytest.raises(tokka_mo.ValidationError, match="unknown category"):
+        tokka_mo.validate("FUTURES", VALID_SPOT_PAYLOAD, REFDATA_FIXTURE)

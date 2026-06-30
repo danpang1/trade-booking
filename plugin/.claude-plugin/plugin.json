@@ -1,7 +1,7 @@
 {
   "name": "tokka-mo",
-  "version": "0.1.0",
-  "description": "Submit Tokka Labs Middle Office trade bookings (CASHFLOW v0.1) as drafts from Claude Code. Approve in sg-tms.internal.tokkalabs.com (PROD) or test-jp-tms.internal.tokkalabs.com (UAT). VPN required.",
+  "version": "0.2.0",
+  "description": "Submit Tokka Labs Middle Office trade bookings (CASHFLOW + SPOT) as drafts from Claude Code. Approve in sg-tms.internal.tokkalabs.com (PROD) or test-jp-tms.internal.tokkalabs.com (UAT). VPN required.",
   "author": {
     "name": "Tokka Labs Middle Office"
   }
