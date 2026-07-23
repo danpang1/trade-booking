@@ -27,6 +27,9 @@ RUN apt-get update \
        python3 python3-venv python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade npm to get a bundled tar >= 7.5.19 (fixes CVE-2026-59873).
+RUN npm install -g npm@latest && npm cache clean --force
+
 COPY ./docker/pip.conf /etc/pip.conf
 COPY ./docker/docker-entrypoint.sh /opt/docker-entrypoint.sh
 RUN chmod +x /opt/docker-entrypoint.sh
