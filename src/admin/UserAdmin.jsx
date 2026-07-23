@@ -194,17 +194,17 @@ export default function UserAdmin({ onClose }) {
             }}>
               <thead>
                 <tr>
-                  {["ID", "Username", "Email", "Role", "Approved by", "Created", "Updated", ""].map((h) => (
+                  {["ID", "Username", "Email", "Role", "TMS", "Approved by", "Created", "Updated", ""].map((h) => (
                     <th key={h} style={th}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={8} style={{ ...td, color: "var(--ink-3)", padding: 16 }}>LOADING…</td></tr>
+                  <tr><td colSpan={9} style={{ ...td, color: "var(--ink-3)", padding: 16 }}>LOADING…</td></tr>
                 )}
                 {!loading && active.length === 0 && (
-                  <tr><td colSpan={8} style={{ ...td, color: "var(--ink-3)", padding: 16, fontStyle: "italic" }}>No active users.</td></tr>
+                  <tr><td colSpan={9} style={{ ...td, color: "var(--ink-3)", padding: 16, fontStyle: "italic" }}>No active users.</td></tr>
                 )}
                 {!loading && active.map((u, i) => {
                   const isLastAdmin = u.role === "admin" && adminCount <= 1;
@@ -226,6 +226,13 @@ export default function UserAdmin({ onClose }) {
                           fontSize: 10, fontWeight: 600,
                           letterSpacing: "0.06em", textTransform: "uppercase",
                         }}>{u.role}</span>
+                      </td>
+                      <td style={{
+                        ...td,
+                        color: u.access_tms === false ? "var(--signal-sell)" : "var(--ink-3)",
+                        fontWeight: u.access_tms === false ? 600 : 400,
+                      }}>
+                        {u.access_tms === false ? "OFF" : "✓"}
                       </td>
                       <td style={{ ...td, color: "var(--ink-3)" }}>{u.approved_by || "—"}</td>
                       <td style={{ ...td, color: "var(--ink-3)" }}>{fmtDate(u.created_at)}</td>

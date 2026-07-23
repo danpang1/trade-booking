@@ -43,11 +43,11 @@ def main() -> int:
                     print(json.dumps({"ok": False}))
                     return 6
                 cur.execute(
-                    "SELECT id, username, email, role FROM users WHERE id = %s",
+                    "SELECT id, username, email, role, access_tms FROM users WHERE id = %s",
                     (r[0],),
                 )
                 u = cur.fetchone()
-                if u is None:
+                if u is None or not u[4]:
                     print(json.dumps({"ok": False}))
                     return 6
         print(json.dumps({"ok": True, "user": {

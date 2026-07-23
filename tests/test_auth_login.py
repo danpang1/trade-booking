@@ -73,13 +73,18 @@ def _run(stdin_payload, user_row):
 
 def _pending_row():
     pw_hash = user_db.hash_password("CorrectHorse9!")
-    # (id, username, email, role, password_hash, status)
-    return (1, "pending_user", "p@x.z", None, pw_hash, "pending")
+    # (id, username, email, role, password_hash, status, access_tms)
+    return (1, "pending_user", "p@x.z", None, pw_hash, "pending", True)
 
 
 def _active_row():
     pw_hash = user_db.hash_password("CorrectHorse9!")
-    return (2, "active_user", "a@x.z", "user", pw_hash, "active")
+    return (2, "active_user", "a@x.z", "user", pw_hash, "active", True)
+
+
+def _no_tms_row():
+    pw_hash = user_db.hash_password("CorrectHorse9!")
+    return (3, "ace_only_user", "n@x.z", "user", pw_hash, "active", False)
 
 
 def test_pending_account_correct_password_returns_pending_message():
@@ -100,6 +105,16 @@ def test_pending_account_wrong_password_returns_invalid_credentials():
     )
     assert code == 6
     assert body == {"ok": False, "error": "invalid credentials"}
+
+
+def test_no_tms_access_correct_password_is_refused():
+    code, body, cur = _run(
+        {"username": "ace_only_user", "password": "CorrectHorse9!"},
+        _no_tms_row(),
+    )
+    assert code == 6
+    assert body == {"ok": False, "error": "Account has no TMS access — ask an admin"}
+    assert not any(verb == "INSERT" for verb, _ in cur.calls), cur.calls
 
 
 def test_active_account_correct_password_returns_session():

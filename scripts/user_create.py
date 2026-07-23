@@ -26,15 +26,20 @@ def _insert(payload: dict, acting_user: str | None) -> dict:
     role = user_db.validate_role(payload.get("role", ""))
     password = user_db.validate_password(payload.get("password", ""))
     pw_hash = user_db.hash_password(password)
+    access_tms = payload.get("access_tms", True)
+    if not isinstance(access_tms, bool):
+        raise user_db.ValidationError("access_tms must be a boolean")
+    if role == "admin" and not access_tms:
+        raise user_db.ValidationError("cannot remove TMS access from an admin")
 
     conn = user_db.connect()
     try:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO users (username, email, role, password_hash, created_by, updated_by) "
-                    "VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
-                    (username, email, role, pw_hash, acting_user, acting_user),
+                    "INSERT INTO users (username, email, role, password_hash, access_tms, created_by, updated_by) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *",
+                    (username, email, role, pw_hash, access_tms, acting_user, acting_user),
                 )
                 row = user_db.row_to_public(cur, cur.fetchone())
         return row

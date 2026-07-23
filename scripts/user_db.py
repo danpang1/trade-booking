@@ -70,7 +70,7 @@ def connect():
 # Columns returned to the API consumer. password_hash NEVER appears here.
 PUBLIC_COLUMNS = (
     "id", "username", "email", "role",
-    "status", "approved_at", "approved_by",
+    "status", "access_tms", "approved_at", "approved_by",
     "created_at", "updated_at",
 )
 

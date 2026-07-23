@@ -1,6 +1,7 @@
-"""Update a user. Any subset of {email, role, password} may be supplied.
+"""Update a user. Any subset of {email, role, password, access_tms} may be supplied.
 
-Stdin:  {"id": N, "email"?: "...", "role"?: "...", "password"?: "...", "_acting_user": "username"}
+Stdin:  {"id": N, "email"?: "...", "role"?: "...", "password"?: "...",
+         "access_tms"?: bool, "_acting_user": "username"}
 Stdout: {"ok": true, "user": {…}}  or  {"ok": false, "error": "..."}
 """
 from __future__ import annotations
@@ -37,6 +38,11 @@ def main() -> int:
         if "password" in payload:
             sets.append("password_hash = %s")
             vals.append(user_db.hash_password(user_db.validate_password(payload["password"])))
+        if "access_tms" in payload:
+            if not isinstance(payload["access_tms"], bool):
+                raise user_db.ValidationError("access_tms must be a boolean")
+            sets.append("access_tms = %s")
+            vals.append(payload["access_tms"])
     except user_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
@@ -52,6 +58,18 @@ def main() -> int:
     try:
         with conn:
             with conn.cursor() as cur:
+                # Admin-lockout guard: user management lives inside TMS, so an
+                # admin without TMS access could never be fixed from the UI.
+                if payload.get("access_tms") is False:
+                    cur.execute("SELECT role FROM users WHERE id=%s", (user_id,))
+                    r = cur.fetchone()
+                    if r is None:
+                        print(json.dumps({"ok": False, "code": "not_found", "error": "user not found"}))
+                        return 4
+                    if (payload.get("role") or r[0]) == "admin":
+                        print(json.dumps({"ok": False, "error": "cannot remove TMS access from an admin"}))
+                        return 3
+
                 # Last-admin guard
                 if payload.get("role") == "user":
                     cur.execute("SELECT role FROM users WHERE id=%s", (user_id,))

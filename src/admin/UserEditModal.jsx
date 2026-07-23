@@ -50,6 +50,7 @@ export default function UserEditModal({ mode, user, isLastAdmin, onClose, onSave
   const [username, setUsername] = useState(user?.username || "");
   const [email,    setEmail]    = useState(user?.email    || "");
   const [role,     setRole]     = useState(user?.role     || "user");
+  const [accessTms, setAccessTms] = useState(user ? user.access_tms !== false : true);
   const [password, setPassword] = useState("");
   const [showPw,   setShowPw]   = useState(false);
   const [error,    setError]    = useState("");
@@ -60,14 +61,16 @@ export default function UserEditModal({ mode, user, isLastAdmin, onClose, onSave
     setError("");
     setPending(true);
     let r;
+    // Admins always keep TMS access (user management lives inside TMS).
+    const tmsAccess = role === "admin" ? true : accessTms;
     if (isCreate) {
       r = await apiJson("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, role, password }),
+        body: JSON.stringify({ username, email, role, password, access_tms: tmsAccess }),
       });
     } else {
-      const body = { email, role };
+      const body = { email, role, access_tms: tmsAccess };
       if (password) body.password = password;
       r = await apiJson(`/api/users/${user.id}`, {
         method: "PATCH",
@@ -134,6 +137,28 @@ export default function UserEditModal({ mode, user, isLastAdmin, onClose, onSave
               Cannot demote the last admin.
             </div>
           )}
+        </Field>
+        <Field label="App access">
+          <label style={{
+            display: "flex", alignItems: "center", gap: 8,
+            fontSize: 12, color: "var(--ink)",
+            cursor: role === "admin" ? "not-allowed" : "pointer",
+            opacity: role === "admin" ? 0.6 : 1,
+          }}>
+            <input
+              type="checkbox"
+              checked={role === "admin" ? true : accessTms}
+              onChange={(e) => setAccessTms(e.target.checked)}
+              disabled={pending || role === "admin"}
+              style={{ width: "auto" }}
+            />
+            TMS access
+          </label>
+          <div style={{ color: "var(--ink-3)", fontSize: 10, marginTop: 4 }}>
+            {role === "admin"
+              ? "Admins always have TMS access."
+              : "Unchecked: login and existing sessions are refused in TMS. ACE access is unaffected."}
+          </div>
         </Field>
         <Field label={isCreate ? "Password" : "Password (blank = unchanged)"}>
           <div style={{ display: "flex", gap: 6 }}>
