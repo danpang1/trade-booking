@@ -15,7 +15,7 @@ def main() -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, username, email, role, status, approved_at, approved_by, "
+                "SELECT id, username, email, role, status, access_tms, approved_at, approved_by, "
                 "       created_at, updated_at "
                 "FROM users ORDER BY id"
             )
