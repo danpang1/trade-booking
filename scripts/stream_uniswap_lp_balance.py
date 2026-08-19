@@ -22,13 +22,19 @@ Convention
 - account_id = reference_data.account_wallet.id x 1000 + chain code
   (501 ETHEREUM, 502 BSC, 532 ROBINHOOD) — matches ClickHouse
   production.account_balance_snapshot, which is the authority for this id space.
-- sync_ts/update_ts = top of the current UTC hour MINUS 1 second. The board
-  buckets LP rows by hour, so the boundary stamp is required (this differs from
-  stream_native_balance.py, which stamps at fetch time).
-- INSERT ends with ON CONFLICT (account_name, sync_ts, instrument) DO NOTHING.
-  Mandatory, not defensive: the board SUMS rows sharing an hour bucket, so a
-  duplicate silently doubles the position and fabricates a break. It also makes
-  this collector safe to run alongside the 8041 rh_lp_positions.py.
+- sync_ts/update_ts = FETCH TIME, matching stream_native_balance.py and every
+  other collector here. An earlier revision stamped the hour boundary on the
+  belief that recon_dashboard.fetch_snaps SUMS rows sharing an hour bucket, so
+  a second row in the hour would double the position. That is not what it does:
+  it groups by exact sync_ts and takes `ts = max(by_ts)` per hour — the LATEST
+  snapshot in the hour wins and earlier ones are ignored (five call sites, e.g.
+  recon_dashboard.py:382-385). Summing happens only WITHIN one sync_ts, which
+  is the WETH-into-ETH fold. Boundary stamping made every run inside an hour
+  collide on one key, so an ad-hoc run silently wrote nothing.
+- INSERT still ends with ON CONFLICT (account_name, sync_ts, instrument)
+  DO NOTHING. Two rows at the SAME sync_ts for the same instrument would land
+  inside one `ts` group and genuinely double, so the guard stays — it is just
+  no longer the thing that forces the timestamp choice.
 - The Robinhood RPC keeps only ~9 minutes of archive state, so these are tip
   reads; read_block and read_ts go into original_data so the staleness is on
   the record. Amounts alone are uninterpretable without the price they were
@@ -364,8 +370,7 @@ ON CONFLICT (account_name, sync_ts, instrument) DO NOTHING
 
 def snap_once(conn, dry_run: bool) -> int:
     fetch_dt = datetime.now(timezone.utc).replace(tzinfo=None)
-    stamp = fetch_dt.replace(minute=0, second=0, microsecond=0) \
-        - timedelta(seconds=1)
+    stamp = fetch_dt          # see the sync_ts note in the module docstring
     block = int(_rpc("eth_blockNumber", []), 16)
     tokens = _tokens()
     rows: list[dict] = []
@@ -404,9 +409,8 @@ def snap_once(conn, dry_run: bool) -> int:
     if conn and rows:
         # Per-row rather than execute_batch so the ON CONFLICT skips are
         # COUNTED. Batching hides them, and a snap that silently wrote nothing
-        # (because another writer already owns the hour bucket) must not report
-        # itself as a success — that is exactly how a stalled feed goes
-        # unnoticed. Volume here is a handful of rows per hour.
+        # must not report itself as a success — that is how a stalled feed goes
+        # unnoticed. Volume here is a handful of rows per run.
         written = 0
         with conn.cursor() as cur:
             for r in rows:
@@ -415,12 +419,12 @@ def snap_once(conn, dry_run: bool) -> int:
         conn.commit()
         skipped = len(rows) - written
         log.info(f"tq_hist_balance_mo: {written} inserted, {skipped} skipped "
-                 f"(already present for this hour) of {len(rows)}")
+                 f"of {len(rows)} at sync_ts={stamp}")
         if written == 0 and rows:
             log.warning(
-                "every row was skipped — another writer already owns this "
-                "hour bucket for these instruments (the 8041 rh_lp_positions.py "
-                "snap writes the same rows under a different account_id)")
+                f"every row was skipped — something already wrote these "
+                f"instruments at exactly {stamp}. Expected only on a re-run "
+                f"within the same second; investigate otherwise.")
         return written
     return len(rows)
 

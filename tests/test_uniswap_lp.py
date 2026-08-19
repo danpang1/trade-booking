@@ -231,9 +231,25 @@ def test_rows_are_long_spot_with_no_borrow():
 
 
 def test_insert_is_idempotent_on_the_snapshot_key():
-    """The board SUMS an hour bucket, so a duplicate doubles the position."""
+    """Two rows at the SAME sync_ts land in one fetch_snaps `ts` group and
+    would be summed — that is the case the unique index guards. Rows at
+    DIFFERENT timestamps in the same hour are fine: the board takes
+    max(by_ts)."""
     assert ("ON CONFLICT (account_name, sync_ts, instrument) DO NOTHING"
             in lp.INSERT_SQL)
+
+
+def test_sync_ts_is_fetch_time_not_an_hour_boundary():
+    """Boundary stamping made every run inside an hour collide on one key, so
+    ad-hoc runs silently wrote nothing. Fetch time matches the other
+    collectors and keeps every run visible."""
+    import datetime as dt
+    stamp = dt.datetime(2026, 8, 19, 11, 17, 26)
+    wallet = {"account_id": 509532, "account_name": "A", "address": "0x"}
+    rows = lp.build_rows(wallet, _pos(), stamp, 1, "t")
+    assert all(r["sync_ts"] == stamp for r in rows)
+    assert all(r["sync_ts"] == r["update_ts"] for r in rows)
+    assert rows[0]["sync_ts"].second == 26
 
 
 # ── config ─────────────────────────────────────────────────────────────
