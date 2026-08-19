@@ -1,5 +1,5 @@
 # Pinned exact versions for reproducible Docker builds.
-# Regenerate with: pip freeze | grep -E '^(psycopg2|PyMySQL|bcrypt|requests|certifi|charset-normalizer|idna|urllib3)' > requirements-freeze.txt
+# Regenerate with: pip freeze | grep -E '^(psycopg2|PyMySQL|bcrypt|requests|certifi|charset-normalizer|idna|urllib3|pycryptodome)' > requirements-freeze.txt
 # (matches the developer's local Python 3.11 env on 2026-05-18.)
 psycopg2-binary==2.9.11
 PyMySQL==1.2.0
@@ -12,3 +12,6 @@ certifi==2023.7.22
 charset-normalizer==3.3.2
 idna==3.4
 urllib3==1.26.18
+# keccak-256 for stream_uniswap_lp_balance.py (v4 poolId + storage slots).
+# Pure C extension, no transitive deps.
+pycryptodome==3.20.0

@@ -1,0 +1,30 @@
+---
+# Uniswap v4 LP balance hourly snapshot.
+# Release: cron-uniswap-lp-snapshots-<env>. Renders one CronJob, no Deployment.
+#
+# In v4 the supplied tokens sit in the PoolManager singleton and the wallet
+# holds only a position NFT, so the official ERC-20 venue collector is blind to
+# the position (measured 2026-08-19: ~$8k seen vs ~$210k held). This cron is the
+# only source for that value. It writes both the liquidity-decomposed amounts
+# and the uncollected fees to middle_office.tq_hist_balance_mo. DB creds come
+# from the shared MO_DB_* env_secrets in helm_values/base.yaml.
+#
+# Isolated from venue-snapshots ON PURPOSE: that release deploys to BOTH envs,
+# and this collector is registered in deploy_k8s-uat.sh only — the 8041 recon
+# board that consumes the LP rows lives in UAT.
+#
+# Public read-only RPC + Blockscout, no API key, so no Vault overlay is needed.
+
+deployment:
+  enabled: false
+
+# NOTE: `name` is appended to the release name to form the CronJob resource
+# name (`<release>-<name>-cronjob`), which k8s caps at 52 chars. The release is
+# already `cron-uniswap-lp-snapshots-<env>` (29/30), so this must stay short:
+# 29 + len("-uniswap-lp") + len("-cronjob") = 48. Do not lengthen it.
+cronjobs:
+  - name: uniswap-lp
+    enabled: true
+    schedule: "0 * * * *"   # top of every UTC hour
+    command: ["python", "/opt/app/scripts/snapshot_uniswap_lp.py"]
+    args: []

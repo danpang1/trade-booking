@@ -46,5 +46,8 @@ log "Executing `basename "$0"`."
 ./scripts/run_helm.sh middle-office cron          users          $env $mode
 ./scripts/run_helm.sh middle-office cron          venue-snapshots $env $mode
 ./scripts/run_helm.sh middle-office cron          bitstamp-snapshots $env $mode
+# UAT only — the 8041 recon board that consumes the LP rows lives in UAT.
+# Deliberately absent from deploy_k8s-prod.sh.
+./scripts/run_helm.sh middle-office cron          uniswap-lp-snapshots $env $mode
 
 log "Successfully finished."
