@@ -1,3 +1,29 @@
 .env
 __pycache__/
 *.pyc
+
+# ── 8041-pnl local artefacts — real position data / one-off drivers ──
+# Venue data dumps: fills, EOD price pins, recon extracts. Regenerable
+# from the venue APIs; contain live position data. Never commit.
+hl_s3_fills_*.json
+hl_s3_audit.json
+eod_pins_*.csv
+native_trades.csv
+rfq_recon_*.csv
+tk810_*.csv
+8041_pnl_*.csv
+paxos_conversions_swapgui.tsv
+dinari_batch.json
+s3_cost_ledger.json
+*.xlsm
+binance810_recon.html
+
+# Scratch day-lists and COB scratch output.
+*_days.txt
+*_cob*.txt
+
+# One-off drivers and diagnostics. The `_` prefix marks throwaway;
+# durable runners are named without it (run_8041_pnl.bat etc).
+_*.py
+_*.bat
+_*.sh
