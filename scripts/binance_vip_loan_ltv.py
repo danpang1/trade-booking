@@ -82,6 +82,14 @@ WARN_LTV = 0.71
 MARGIN_CALL_LTV = 0.77
 LIQUIDATION_LTV = 0.91
 
+# Initial LTV a NEW loan order is struck at — the ratio that turns free
+# collateral into borrowable USDT. Deliberately separate from WARN_LTV:
+# that one is our own alert line and happens to share the value today.
+# Binance locks collateral per order at that order's own initial LTV, so
+# an account whose existing orders were struck elsewhere needs this
+# overridden rather than the warning line moved.
+INITIAL_LTV = float(os.environ.get("BINANCE_INITIAL_LTV", "0.71"))
+
 # Collateral assets pegged to USD — their price doesn't move, so they don't
 # participate in the volatile-drop trigger maths (mirrors the MO dashboard).
 STABLE_ASSETS = frozenset({"USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI"})
@@ -402,6 +410,20 @@ def _loan_totals_from_rows(rows: list) -> tuple[float, float]:
     return total_loan_usd, loan_interest_usd
 
 
+def _borrowable_usdt(collateral_post_haircut: float,
+                     locked_collateral: float,
+                     initial_ltv: float) -> float:
+    """USDT still drawable against unlocked collateral. Floored at 0.
+
+    Free collateral is a COLLATERAL value, not a loan amount — lending
+    against it at `initial_ltv` is what makes it borrowable. Returning the
+    free collateral itself (as this did until 2026-08-21) overstated the
+    figure by 1/initial_ltv, roughly 1.4x.
+    """
+    free = collateral_post_haircut - locked_collateral
+    return max(0.0, free * initial_ltv)
+
+
 def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
     """Collateral basket + per-asset margin-call/liquidation trigger prices.
 
@@ -421,9 +443,9 @@ def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
         locked = _to_float(r.get("lockedCollateralValue")) or 0.0
         locked_collateral = max(locked_collateral, locked)
 
-    # Borrowable USDT = post-haircut collateral not yet locked against a loan
-    # (mirrors the MO dashboard's borrowableUSDT). Floored at 0.
-    borrowable_usdt = max(0.0, collateral_post_haircut - locked_collateral)
+    borrowable_usdt = _borrowable_usdt(
+        collateral_post_haircut, locked_collateral, INITIAL_LTV
+    )
 
     balances = _get_spot_balances(api_key, api_secret)
     prices = get_prices([b["asset"] for b in balances])
@@ -485,6 +507,7 @@ def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
             "collateral_raw_value": round(stable_value + volatile_value, 2),
             "locked_collateral_value": round(locked_collateral, 2),
             "borrowable_usdt": round(borrowable_usdt, 2),
+            "initial_ltv": INITIAL_LTV,
             "stable_value": round(stable_value, 2),
             "volatile_value": round(volatile_value, 2),
         },
