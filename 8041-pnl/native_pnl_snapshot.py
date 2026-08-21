@@ -223,7 +223,7 @@ def run(date_iso):
                                      (cs[i].ljust(w[i]) if i == 0 else cs[i].rjust(w[i]))) + " "
                               for i in range(len(cs))) + "│"
 
-    print(f"\n{'='*100}")
+    print(f"\n{'=' * 100}")
     print(f"NATIVE CORE ({ACCOUNT_NAME}) — SNAPSHOT MARK-TO-MARKET — COB {date_iso}")
     print("marks: matching HL xyz: perp index price (tq_hist_position); USDT@1.00")
     print(bar("┌", "┬", "┐"))

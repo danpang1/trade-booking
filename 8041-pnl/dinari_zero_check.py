@@ -103,9 +103,9 @@ def main():
     print(f"   chain: sent TO Hyperliquid    {to_hl:>14,.4f}")
     print(f"   chain: received FROM HL       {from_hl:>14,.4f}")
     print(f"   chain: NET delivered          {to_hl - from_hl:>14,.4f}")
-    print(f"   books: LONG  ({sum(1 for b in books if str(b['dir']).upper()=='LONG'):>2} trades) "
+    print(f"   books: LONG  ({sum(1 for b in books if str(b['dir']).upper() == 'LONG'):>2} trades) "
           f"{lng:>14,.4f}")
-    print(f"   books: SHORT ({sum(1 for b in books if str(b['dir']).upper()!='LONG'):>2} trades) "
+    print(f"   books: SHORT ({sum(1 for b in books if str(b['dir']).upper() != 'LONG'):>2} trades) "
           f"{sht:>14,.4f}")
     print(f"   books: NET                    {lng - sht:>14,.4f}")
     print(f"\n   BOOK - CHAIN gap              {(lng - sht) - (to_hl - from_hl):>14,.4f}")

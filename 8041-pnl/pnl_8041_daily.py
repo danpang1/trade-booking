@@ -1427,7 +1427,7 @@ def _pline(cs, center=False):
                           for i in range(len(cs))) + "│"
 
 
-print(f"\n{'='*108}\nPORTFOLIO 8041 — DAILY PnL (ALL TRADES) — COB {day} 23:59:59 UTC")
+print(f"\n{'=' * 108}\nPORTFOLIO 8041 — DAILY PnL (ALL TRADES) — COB {day} 23:59:59 UTC")
 print(_pbar("┌", "┬", "┐"))
 print(_pline(pcols, True))
 print(_pbar("├", "┼", "┤"))

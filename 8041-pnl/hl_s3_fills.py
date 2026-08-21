@@ -71,8 +71,8 @@ def _ledger_add(key, nbytes):
     cost = led["total_bytes"] / 1e9 * GB_PRICE + led["requests"] * GET_PRICE
     # plain ASCII only: this prints to a cp1252 console and a UnicodeEncodeError
     # here would abort a pull AFTER the bytes were already paid for
-    print(f"  [cost] +{nbytes/1e6:.1f} MB, cumulative "
-          f"{led['total_bytes']/1e9:.2f} GB ~ ${cost:.2f}", flush=True)
+    print(f"  [cost] +{nbytes / 1e6:.1f} MB, cumulative "
+          f"{led['total_bytes'] / 1e9:.2f} GB ~ ${cost:.2f}", flush=True)
     if cost >= COST_CAP_USD:
         raise RuntimeError(
             f"COST CAP: cumulative ~ ${cost:.2f} >= ${COST_CAP_USD} - "

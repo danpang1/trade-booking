@@ -180,7 +180,7 @@ def main():
             print(f"[{i}/{len(todo)}] {key}  s3={rec['s3_fills']:>6} "
                   f"store={rec['store_fills']:>6} miss={rec['missing']:>5} "
                   f"feegap={rec['fee_gap']:>9.2f} "
-                  f"({time.time()-t0:.0f}s, ~${usd:.2f}){flag}", flush=True)
+                  f"({time.time() - t0:.0f}s, ~${usd:.2f}){flag}", flush=True)
             REPORT.write_text(json.dumps(sorted(done.values(),
                                                 key=lambda r: r["day"]),
                                          indent=1), encoding="utf-8")
@@ -192,7 +192,7 @@ def main():
     print(f"\n=== {len(rows)} days audited ===")
     print(f"total missing fills : {tm:,}")
     print(f"total fee gap       : {tf:,.2f} USDC")
-    print(f"cost                : ~${_cost['bytes']/1e9*s3m.GB_PRICE:.2f}")
+    print(f"cost                : ~${_cost['bytes'] / 1e9 * s3m.GB_PRICE:.2f}")
     print(f"report              : {REPORT}")
 
 

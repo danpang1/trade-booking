@@ -496,8 +496,8 @@ def main():
     # ── daily roll-up tie-out (sum of hours == daily run) ──
     print(f"\nDAILY ROLL-UP (Σ hours)  COB {COB}:")
     print(f"  SPCX pair   = {f(btot_pair)} USD   "
-          f"(perp {f(pair_tot['pr']+pair_tot['pd']+pair_tot['pfn']-pair_tot['pf'])} "
-          f"+ spot {f(pair_tot['sr']+pair_tot['sd']-pair_tot['sf'])})")
+          f"(perp {f(pair_tot['pr'] + pair_tot['pd'] + pair_tot['pfn'] - pair_tot['pf'])} "
+          f"+ spot {f(pair_tot['sr'] + pair_tot['sd'] - pair_tot['sf'])})")
     print(f"  HL perps    = {f(btot_perp)} USD")
     print(f"  BOOK total  = {f(btot)} USD")
 

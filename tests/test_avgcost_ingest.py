@@ -3,10 +3,19 @@ from pathlib import Path
 import sys
 from decimal import Decimal
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "8041-pnl"))
+import pytest
 
-import avgcost_ingest as ing  # noqa: E402
+# 8041-pnl is an ops toolkit that the app image deliberately does not ship —
+# docker/Dockerfile's test stage COPYs only ./scripts and ./tests. Skip there
+# rather than fail; the repo test run still covers this.
+REPO = Path(__file__).resolve().parents[1]
+_PNL = REPO / "8041-pnl"
+if _PNL.is_dir():
+    sys.path.insert(0, str(_PNL))
+
+ing = pytest.importorskip(
+    "avgcost_ingest", reason="8041-pnl not present (not shipped in the app image)"
+)
 
 D = Decimal
 

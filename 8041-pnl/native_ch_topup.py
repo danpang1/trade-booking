@@ -80,8 +80,8 @@ def main():
             by_sym[f["base_asset"]][0] += 1
             by_sym[f["base_asset"]][1] += f["signed_qty"]
         print(f"[native] CH top-up: {len(gap)} fills missing from the store "
-              f"({datetime.fromtimestamp(gap[0]['trade_date_ms']/1000, timezone.utc):%m-%d %H:%M}"
-              f" .. {datetime.fromtimestamp(gap[-1]['trade_date_ms']/1000, timezone.utc):%m-%d %H:%M})")
+              f"({datetime.fromtimestamp(gap[0]['trade_date_ms'] / 1000, timezone.utc):%m-%d %H:%M}"
+              f" .. {datetime.fromtimestamp(gap[-1]['trade_date_ms'] / 1000, timezone.utc):%m-%d %H:%M})")
         for sym, (n, q) in sorted(by_sym.items()):
             print(f"  {sym}: {n} fills, net qty {q:+,.3f}")
         if dry:
@@ -99,7 +99,7 @@ def main():
             rows, tip = adb.refold_leg(conn, inst)
             conn.commit()
             print(f"  {inst}: +{n} ingested, refold {rows} rows "
-                  f"({time.time()-t0:.0f}s), tip qty {tip}")
+                  f"({time.time() - t0:.0f}s), tip qty {tip}")
     finally:
         conn.close()
 

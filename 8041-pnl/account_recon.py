@@ -1113,8 +1113,8 @@ def run_recon(date_iso):
     w0, w1 = to_ms(sod[anyk][1]), to_ms(eod[anyk][1])
     sod_ts = sorted({ts for _, ts in sod.values()})
     eod_ts = sorted({ts for _, ts in eod.values()})
-    sod_note = "" if len(sod_ts) == 1 else f"  (+{len(sod_ts)-1} more, latest {sod_ts[-1]})"
-    eod_note = "" if len(eod_ts) == 1 else f"  (+{len(eod_ts)-1} more, latest {eod_ts[-1]})"
+    sod_note = "" if len(sod_ts) == 1 else f"  (+{len(sod_ts) - 1} more, latest {sod_ts[-1]})"
+    eod_note = "" if len(eod_ts) == 1 else f"  (+{len(eod_ts) - 1} more, latest {eod_ts[-1]})"
     mo_map = instrument_mo_map()
     bin_syms = {to_mo(i, mo_map) for (a, i) in (set(sod) | set(eod)) if a == BIN_FUT and i not in ("USDT", "USDC")}
     bin_trades = {s: bin_user_trades_raw(s) for s in bin_syms}

@@ -66,7 +66,7 @@ def main():
                + audit._cost["gets"] * s3m.GET_PRICE)
         note = f"  ABSENT HOURS {absent}" if absent else ""
         print(f"[{i}/{len(days)}] {day}: {len(fills):>6} fills -> {out.name} "
-              f"({time.time()-t0:.0f}s, ~${usd:.2f}){note}", flush=True)
+              f"({time.time() - t0:.0f}s, ~${usd:.2f}){note}", flush=True)
     print("RECOVER_PULL_DONE")
 
 
