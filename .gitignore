@@ -40,3 +40,29 @@ _db_backups/
 # OAuth client secrets — never commit
 client_secret*.txt
 client_secret*.json
+
+# ── 8041-pnl local artefacts — real position data / one-off drivers ──
+# Venue data dumps: fills, EOD price pins, recon extracts. Regenerable
+# from the venue APIs; contain live position data. Never commit.
+8041-pnl/hl_s3_fills_*.json
+8041-pnl/hl_s3_audit.json
+8041-pnl/eod_pins_*.csv
+8041-pnl/native_trades.csv
+8041-pnl/rfq_recon_*.csv
+8041-pnl/tk810_*.csv
+8041-pnl/8041_pnl_*.csv
+8041-pnl/paxos_conversions_swapgui.tsv
+8041-pnl/dinari_batch.json
+8041-pnl/s3_cost_ledger.json
+8041-pnl/*.xlsm
+8041-pnl/binance810_recon.html
+
+# Scratch day-lists and COB scratch output.
+8041-pnl/*_days.txt
+8041-pnl/*_cob*.txt
+
+# One-off drivers and diagnostics. The `_` prefix marks throwaway;
+# durable runners are named without it (run_8041_pnl.bat etc).
+8041-pnl/_*.py
+8041-pnl/_*.bat
+8041-pnl/_*.sh
