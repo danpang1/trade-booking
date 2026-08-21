@@ -72,9 +72,9 @@ def yahoo_eod_mark(symbol, cob_iso):
     close of the last bar with ts <= cutoff. last-trade close, not a mid."""
     cutoff = int(datetime.strptime(cob_iso, "%Y-%m-%d")
                  .replace(hour=23, minute=59, second=59, tzinfo=timezone.utc).timestamp())
-    url = ("https://query1.finance.yahoo.com/v8/finance/chart/" + symbol +
-           "?period1=" + str(cutoff - 3600) + "&period2=" + str(cutoff + 3600) +
-           "&interval=1m&includePrePost=true")
+    url = ("https://query1.finance.yahoo.com/v8/finance/chart/" + symbol
+           + "?period1=" + str(cutoff - 3600) + "&period2=" + str(cutoff + 3600)
+           + "&interval=1m&includePrePost=true")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         d = json.loads(urllib.request.urlopen(req, timeout=30).read())

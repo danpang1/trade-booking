@@ -36,7 +36,7 @@ from native_common import WALLET, EXCH, INSTR_VENUE, ACCOUNT_NAME  # noqa: E402
 
 CSV_PATH = REPO / "native_trades.csv"
 CH = ("https://jp-clickhouse-api.internal.tokkalabs.com:443/"
-     "?user=prod_ro&password=scCtp%21Ez8%233h%23LK8")
+      "?user=prod_ro&password=scCtp%21Ez8%233h%23LK8")
 _W = WALLET.lower()
 
 

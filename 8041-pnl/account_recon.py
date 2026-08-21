@@ -164,9 +164,9 @@ def instrument_mo_map():
         cur = pg.cursor()
         for tbl in ("tq_hist_balance", "tq_hist_position"):
             cur.execute(
-                "SELECT DISTINCT instrument, instrument_mo FROM " + tbl +
-                " WHERE " + ACCT_SQL +
-                "   AND instrument_mo IS NOT NULL AND record_ts >= '2026-06-01'")
+                "SELECT DISTINCT instrument, instrument_mo FROM " + tbl
+                + " WHERE " + ACCT_SQL
+                + "   AND instrument_mo IS NOT NULL AND record_ts >= '2026-06-01'")
             for inst, mo in cur.fetchall():
                 if inst and mo:
                     out[inst] = mo
@@ -249,7 +249,9 @@ def unrealized_sum(account, inst_like, boundary_dt):
 # ── binance ──
 def _bin(path, params):
     k, s = env("810.BINANCE_API_KEY"), env("810.BINANCE_API_SECRET")
-    p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+    p = dict(params)
+    p["timestamp"] = int(time.time() * 1000)
+    p["recvWindow"] = 60000
     qs = urllib.parse.urlencode(p)
     sig = hmac.new(s.encode(), qs.encode(), hashlib.sha256).hexdigest()
     return json.loads(urllib.request.urlopen(urllib.request.Request(
@@ -302,7 +304,9 @@ def bin_income(w0, w1):
 
 def _sapi(path, params):
     k, s = env("810.BINANCE_API_KEY"), env("810.BINANCE_API_SECRET")
-    p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+    p = dict(params)
+    p["timestamp"] = int(time.time() * 1000)
+    p["recvWindow"] = 60000
     qs = urllib.parse.urlencode(p)
     sig = hmac.new(s.encode(), qs.encode(), hashlib.sha256).hexdigest()
     return json.loads(urllib.request.urlopen(urllib.request.Request(
@@ -737,6 +741,7 @@ def hl_perp_pnl(date_iso):
     for r in hl_funding():
         if w0 <= int(r["time"]) < w1:
             fund[r["delta"]["coin"]] += D(str(r["delta"]["usdc"]))
+
     def _futbal(snap_dict, coin):
         for (a, i), (q, _) in snap_dict.items():
             if a == HL_FUT and i.startswith(coin):
@@ -1079,8 +1084,8 @@ def _render(title, info_lines, display_rows, cols=None):
 
     def line(cs, center=False):
         return "│" + "│".join(" " + (cs[i].center(w[i]) if center else
-               (cs[i].ljust(w[i]) if i in ljust_cols else cs[i].rjust(w[i]))) + " "
-               for i in range(len(cs))) + "│"
+                                     (cs[i].ljust(w[i]) if i in ljust_cols else cs[i].rjust(w[i]))) + " "
+                              for i in range(len(cs))) + "│"
 
     print(f"\n{title}")
     for ln in info_lines:
@@ -1218,11 +1223,14 @@ def run_recon_mtd(cob, inception):
             a["trd"] += r["trd"]
             a["trd_manual"] += r.get("trd_manual", 0) or 0
             if r["td"] is not None:
-                a["td"] += r["td"]; a["td_any"] = True
+                a["td"] += r["td"]
+                a["td_any"] = True
             if r["td_manual"] is not None:
-                a["td_manual"] += r["td_manual"]; a["tdm_any"] = True
+                a["td_manual"] += r["td_manual"]
+                a["tdm_any"] = True
             if r["unreal"] is not None:
-                a["unreal"] += r["unreal"]; a["un_any"] = True
+                a["unreal"] += r["unreal"]
+                a["un_any"] = True
             a["transfers"] += r["transfers"]
 
     sod0, eodN = snap_cache[inception], snap_cache[cob_next]

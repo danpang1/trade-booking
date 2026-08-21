@@ -233,6 +233,7 @@ def leg_funding(inst, prod, acct, t1):
         return hl_fund_coin(inst.split("-P/")[0], t1)
     return ZERO
 
+
 # ── per-leg ITD ─────────────────────────────────────────────────────
 print("computing per-leg ITD...")
 conn = adb.connect()

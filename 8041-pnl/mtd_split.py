@@ -18,7 +18,14 @@ to the daily script. Days run from INCEPTION to --date; Day Total + MTD tie to
 the daily script's "ALL-TRADES + NATIVE MTM" line.
 """
 from __future__ import annotations
-import argparse, hashlib, hmac, json, sys, time, urllib.parse, urllib.request
+import argparse
+import hashlib
+import hmac
+import json
+import sys
+import time
+import urllib.parse
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -117,7 +124,9 @@ def bin_funding_by_day():
     key, secret = ar.env("810.BINANCE_API_KEY"), ar.env("810.BINANCE_API_SECRET")
 
     def sget(params):
-        p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+        p = dict(params)
+        p["timestamp"] = int(time.time() * 1000)
+        p["recvWindow"] = 60000
         qs = urllib.parse.urlencode(p)
         sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
         r = urllib.request.urlopen(urllib.request.Request(
@@ -296,8 +305,8 @@ if BY_ACCOUNT:
 
     def _line(cs, center=False):
         return "│" + "│".join(" " + (cs[i].center(pw[i]) if center else
-               (cs[i].ljust(pw[i]) if i == 0 else cs[i].rjust(pw[i]))) + " "
-               for i in range(len(cs))) + "│"
+                                     (cs[i].ljust(pw[i]) if i == 0 else cs[i].rjust(pw[i]))) + " "
+                              for i in range(len(cs))) + "│"
 
     print(_bar("┌", "┬", "┐"))
     print(_line(cols, True))
@@ -349,8 +358,8 @@ def bar(a, m, c):
 
 def line(cs, center=False):
     return "│" + "│".join(" " + (cs[i].center(pw[i]) if center else
-           (cs[i].ljust(pw[i]) if i == 0 else cs[i].rjust(pw[i]))) + " "
-           for i in range(len(cs))) + "│"
+                                 (cs[i].ljust(pw[i]) if i == 0 else cs[i].rjust(pw[i]))) + " "
+                          for i in range(len(cs))) + "│"
 
 
 print(bar("┌", "┬", "┐"))

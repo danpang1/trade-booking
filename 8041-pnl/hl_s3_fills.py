@@ -6,7 +6,7 @@ AWS credentials; cost is cents). This is the ONLY source that survives both
 the venue API's ~10k-fill retention and collector outages, and it carries
 REAL FEES (ClickHouse has none).
 
-Credentials: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in 8041-pnl\.env
+Credentials: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in 8041-pnl/.env
 (or the standard AWS env/config locations).
 
 Usage:

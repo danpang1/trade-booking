@@ -263,9 +263,9 @@ def refold_leg(conn, instrument):
                                         avg_cost_after, fee_usd, id)
                  WHERE t.id = v.id
             """, batch,
-                template="(%s::numeric, %s::numeric, %s::numeric, "
-                         "%s::numeric, %s::bigint)",
-                page_size=5000)
+                           template="(%s::numeric, %s::numeric, %s::numeric, "
+                           "%s::numeric, %s::bigint)",
+                           page_size=5000)
             n += cur.rowcount
     conn.commit()
     tip_qty = folded[-1]["pos_qty_after"] if folded else None

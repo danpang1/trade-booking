@@ -434,9 +434,13 @@ def main():
         perp_leg = b["total"] + bfund_h[h]
         pair = perp_leg + hl["total"]
         cum += pair
-        pair_tot["pr"] += b["realized"]; pair_tot["pd"] += b["du"]
-        pair_tot["pfn"] += bfund_h[h]; pair_tot["pf"] += b["fees"]
-        pair_tot["sr"] += hl["realized"]; pair_tot["sd"] += hl["du"]; pair_tot["sf"] += hl["fees"]
+        pair_tot["pr"] += b["realized"]
+        pair_tot["pd"] += b["du"]
+        pair_tot["pfn"] += bfund_h[h]
+        pair_tot["pf"] += b["fees"]
+        pair_tot["sr"] += hl["realized"]
+        pair_tot["sd"] += hl["du"]
+        pair_tot["sf"] += hl["fees"]
         pair_tot["tot"] += pair
         pair_data.append([f"{h:02d}h", _sgt(h), f(b["realized"]), f(b["du"]), f(bfund_h[h]),
                           f(b["fees"]), f(hl["realized"]), f(hl["du"]), f(hl["fees"]),
@@ -456,11 +460,18 @@ def main():
             r = d = fn = fe = ZERO
             for c in perp_legs:
                 hh = perp_legs[c][h]
-                r += hh["realized"]; d += hh["du"]; fn += hh["funding"]; fe += hh["fees"]
+                r += hh["realized"]
+                d += hh["du"]
+                fn += hh["funding"]
+                fe += hh["fees"]
             tot = r + d + fn - fe
             perp_book[h] = tot
             cump += tot
-            ptot["r"] += r; ptot["d"] += d; ptot["fn"] += fn; ptot["fe"] += fe; ptot["t"] += tot
+            ptot["r"] += r
+            ptot["d"] += d
+            ptot["fn"] += fn
+            ptot["fe"] += fe
+            ptot["t"] += tot
             pdata.append([f"{h:02d}h", _sgt(h), f(r), f(d), f(fn), f(fe), f(tot), f(cump)])
         pdata.append(["TOTAL", "", f(ptot["r"]), f(ptot["d"]), f(ptot["fn"]), f(ptot["fe"]),
                       f(ptot["t"]), ""])
@@ -475,7 +486,9 @@ def main():
         pair = b["total"] + bfund_h[h] + hl["total"]
         book = pair + perp_book[h]
         cumb += book
-        btot_pair += pair; btot_perp += perp_book[h]; btot += book
+        btot_pair += pair
+        btot_perp += perp_book[h]
+        btot += book
         bdata.append([f"{h:02d}h", _sgt(h), f(pair), f(perp_book[h]), f(book), f(cumb)])
     bdata.append(["TOTAL", "", f(btot_pair), f(btot_perp), f(btot), ""])
     render(f"PORTFOLIO 8041 — HOURLY BOOK PnL — COB {COB}", bcols, bdata, {0, 1})

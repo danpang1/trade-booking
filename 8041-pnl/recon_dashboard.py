@@ -122,6 +122,7 @@ def hl_base(inst):
     """'xyz:AAPL-P/USD@HYPERLIQUID_FUTURES' -> 'AAPL'; 'HYPE-P/...' -> 'HYPE'."""
     return inst.split("-P/")[0].replace("xyz:", "")
 
+
 # USD-eq break thresholds per asset row (abs): below OK, then warn, then bad
 TH_OK = 1.0
 TH_WARN = 50.0
@@ -384,7 +385,7 @@ def fetch_snaps(t0, t1):
                 sq = -abs(sq)
             hour = (ts - timedelta(minutes=5)).replace(minute=0, second=0,
                                                        microsecond=0)
-            bbatches[hour].setdefault(ts, {})[asset] =                 bbatches[hour].get(ts, {}).get(asset, ZERO) + sq
+            bbatches[hour].setdefault(ts, {})[asset] = bbatches[hour].get(ts, {}).get(asset, ZERO) + sq
         for hour, by_ts in bbatches.items():
             ts = max(by_ts)
             out[BS_MOON][hour.isoformat()] = {
@@ -1044,7 +1045,7 @@ def build(days, mark_source="clickhouse", progress=None, end_date=None):
         import eth_goldrush_snaps
         _eth_floor = datetime(2026, 7, 10)     # wallet inception
         n = eth_goldrush_snaps.ensure_snaps(max(t0, _eth_floor), fe,
-                                    max_hours=500)
+                                            max_hours=500)
         # Robinhood pre-ClickHouse week: account_balance_snapshot starts
         # 2026-07-06; GoldRush fills 06-29 (first trading day) -> 07-06
         try:
@@ -2199,7 +2200,7 @@ def main():
 
     def _meta(days_list, partial):
         return {"generated": datetime.now(timezone.utc)
-                    .isoformat(timespec="seconds") + "Z",
+                .isoformat(timespec="seconds") + "Z",
                 "accounts": [{"id": a, "label": COL_LABEL[a]}
                              for a in ACCOUNTS],
                 "thresholds": {"ok": TH_OK, "warn": TH_WARN, "bad": TH_BAD},

@@ -98,8 +98,8 @@ def main():
 
     def line(cs, center=False):
         return "│" + "│".join(" " + (cs[i].center(w[i]) if center else
-               (cs[i].ljust(w[i]) if i == 0 else cs[i].rjust(w[i]))) + " "
-               for i in range(len(cs))) + "│"
+                                     (cs[i].ljust(w[i]) if i == 0 else cs[i].rjust(w[i]))) + " "
+                              for i in range(len(cs))) + "│"
 
     print(f"\nNATIVE CORE — ITD PnL (ALL stored trades) — inception -> COB {a.date} 23:59:59 UTC")
     print(f"  account {ACCOUNT_NAME}; marks = HL xyz: perp index at the EOD boundary; USDT@1")

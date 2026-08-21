@@ -117,6 +117,8 @@ print(f"rfq_fill rows: {len(rows)} -> {len(rfq)} tx-legs"
 
 # ── compare ────────────────────────────────────────────────────────────
 out = []
+
+
 def _when(k):
     c, r = chain.get(k), rfq.get(k)
     return str(c["t"])[:19] if c else r["t"][:19]
@@ -162,6 +164,8 @@ if miss_txs:
             row[10] = "MISATTRIBUTED_IN_RFQ"
 
 # ── verify phantom candidates against Blockscout live ──────────────────
+
+
 def tx_on_chain(tx):
     if BLOCKSCOUT_KEY:  # metered PRO gateway; instance ignores apikey
         url = (f"https://api.blockscout.com/4663/api/v2/transactions/{tx}"

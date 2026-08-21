@@ -12,7 +12,14 @@ Avg-cost replay runs from book inception; only the --date COB is reported.
 EOD mark for --date is pinned via --mark (or PINNED_MARKS / the 24/7 feed).
 """
 from __future__ import annotations
-import argparse, hashlib, hmac, json, sys, time, urllib.parse, urllib.request
+import argparse
+import hashlib
+import hmac
+import json
+import sys
+import time
+import urllib.parse
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -344,8 +351,12 @@ DAYS = _drange(INCEPTION, COB)
 MARK_CUTOFFS = [(datetime.strptime(INCEPTION, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")] + DAYS
 
 
-def day_of(ms): return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%d")
-def ms_at(y, mo, d, h, mi): return int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp() * 1000)
+def day_of(ms):
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%d")
+
+
+def ms_at(y, mo, d, h, mi):
+    return int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def _hl_end_ms():
@@ -440,7 +451,9 @@ def binance_um_events(symbol):
     H = {"X-MBX-APIKEY": key}
 
     def sget(path, params):
-        p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+        p = dict(params)
+        p["timestamp"] = int(time.time() * 1000)
+        p["recvWindow"] = 60000
         qs = urllib.parse.urlencode(p)
         sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
         r = urllib.request.urlopen(urllib.request.Request(
@@ -542,7 +555,9 @@ def binance_spot_events(symbol, instrument=None):
     H = {"X-MBX-APIKEY": key}
 
     def sget(path, params):
-        p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+        p = dict(params)
+        p["timestamp"] = int(time.time() * 1000)
+        p["recvWindow"] = 60000
         qs = urllib.parse.urlencode(p)
         sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
         r = urllib.request.urlopen(urllib.request.Request(
@@ -603,7 +618,9 @@ def binance_funding_by_day():
     H = {"X-MBX-APIKEY": key}
 
     def sget(params):
-        p = dict(params); p["timestamp"] = int(time.time() * 1000); p["recvWindow"] = 60000
+        p = dict(params)
+        p["timestamp"] = int(time.time() * 1000)
+        p["recvWindow"] = 60000
         qs = urllib.parse.urlencode(p)
         sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
         r = urllib.request.urlopen(urllib.request.Request(
@@ -806,7 +823,7 @@ def _rh_parallel_transfers(get, cutoff):
             params = d.get("next_page_params")
             if not params:
                 return out
-            if items and (( is_oldest and _rh_ts(items[-1]) < cutoff)
+            if items and ((is_oldest and _rh_ts(items[-1]) < cutoff)
                           or (not is_oldest
                               and items[-1]["block_number"] <= floor)):
                 return out
@@ -951,12 +968,13 @@ def ch_marks(codename):
            f"AND ts_edge_first_seen <= toUnixTimestamp(toDateTime('2026-06-14 23:59:59'))*1000000\n"
            f"FORMAT TabSeparated")
     r = urllib.request.urlopen(urllib.request.Request(CH, data=sql.encode(),
-        headers={"Content-Type": "text/plain"}), timeout=60)
+                                                      headers={"Content-Type": "text/plain"}), timeout=60)
     vals = r.read().decode().strip().split("\t")
     return {c: (D(v) if v not in ("", "\\N") else None) for c, v in zip(MARK_CUTOFFS, vals)}
 
 
-def f(x, dp=2): return "—" if x is None else f"{float(x):,.{dp}f}"
+def f(x, dp=2):
+    return "—" if x is None else f"{float(x):,.{dp}f}"
 
 
 def marks_for(account, inst_like, cutoffs):
@@ -1405,8 +1423,8 @@ def _pbar(a, m, c):
 
 def _pline(cs, center=False):
     return "│" + "│".join(" " + (cs[i].center(pw[i]) if center else
-           (cs[i].ljust(pw[i]) if i in (0, 1, 2) else cs[i].rjust(pw[i]))) + " "
-           for i in range(len(cs))) + "│"
+                                 (cs[i].ljust(pw[i]) if i in (0, 1, 2) else cs[i].rjust(pw[i]))) + " "
+                          for i in range(len(cs))) + "│"
 
 
 print(f"\n{'='*108}\nPORTFOLIO 8041 — DAILY PnL (ALL TRADES) — COB {day} 23:59:59 UTC")
