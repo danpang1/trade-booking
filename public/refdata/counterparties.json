@@ -312,6 +312,12 @@
     "subType": "SERVICE PROVIDER"
   },
   {
+    "id": 200,
+    "name": "COLB ASSET SA",
+    "type": "LENDER",
+    "subType": "CORPORATION"
+  },
+  {
     "id": 72,
     "name": "CONNEXT FOUNDATION - EVERCLEAR",
     "type": "TRADING VENUE",
@@ -363,6 +369,12 @@
     "id": 94,
     "name": "DIGITAL GAS MANAGEMENT LIMITED (ETHGAS)",
     "type": "INVESTMENT",
+    "subType": "CORPORATION"
+  },
+  {
+    "id": 202,
+    "name": "DINARI",
+    "type": "ISSUER",
     "subType": "CORPORATION"
   },
   {
@@ -418,6 +430,12 @@
     "name": "ETHGAS",
     "type": "TRADING VENUE",
     "subType": "VENDOR"
+  },
+  {
+    "id": 204,
+    "name": "FILECOIN",
+    "type": "BLOCKCHAIN",
+    "subType": "BLOCKCHAIN"
   },
   {
     "id": 182,
@@ -580,6 +598,12 @@
     "name": "LI.FI",
     "type": "TRADING VENUE",
     "subType": "EXCHANGE (DEX)"
+  },
+  {
+    "id": 199,
+    "name": "LiFi",
+    "type": "PROTOCOL",
+    "subType": "NOT APPLICABLE"
   },
   {
     "id": 127,
@@ -762,6 +786,12 @@
     "subType": "BLOCKCHAIN"
   },
   {
+    "id": 201,
+    "name": "PHOENIX",
+    "type": "TRADING VENUE",
+    "subType": "EXCHANGE (DEX)"
+  },
+  {
     "id": 160,
     "name": "PLASMA",
     "type": "BLOCKCHAIN",
@@ -868,6 +898,12 @@
     "name": "SOLANA",
     "type": "BLOCKCHAIN",
     "subType": "BLOCKCHAIN"
+  },
+  {
+    "id": 203,
+    "name": "Solstice Technologies SRL",
+    "type": "LENDER",
+    "subType": "CORPORATION"
   },
   {
     "id": 134,

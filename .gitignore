@@ -33,3 +33,10 @@ r.txt
 Screenshot *.png
 *.screenshot.png
 screenshots/
+
+# Local DB backups (real data) — never commit
+_db_backups/
+
+# OAuth client secrets — never commit
+client_secret*.txt
+client_secret*.json

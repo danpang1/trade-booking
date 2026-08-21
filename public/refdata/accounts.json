@@ -301,6 +301,11 @@
       "portfolio": "TOKKA LABS - TREASURY"
     },
     {
+      "name": "MOON-TOKKA@BITSTAMP",
+      "venue": "BITSTAMP",
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
+    },
+    {
       "name": "MOON-TOKKA@OKXSG",
       "venue": "OKX (SG)",
       "portfolio": "TOKKA LABS - TREASURY"
@@ -473,7 +478,7 @@
     {
       "name": "TK810@BINANCE",
       "venue": "BINANCE",
-      "portfolio": "TOKKA LABS - TREASURY"
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
     },
     {
       "name": "TK811@BINANCE",
@@ -493,7 +498,7 @@
     {
       "name": "TK814@BINANCE",
       "venue": "BINANCE",
-      "portfolio": "TOKKA LABS - TREASURY"
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
     },
     {
       "name": "TK815@BINANCE",
@@ -674,6 +679,11 @@
       "name": "TRADING01@LIGHTER",
       "venue": "LIGHTER",
       "portfolio": "TOKKA LABS - SSB - CDA SOL"
+    },
+    {
+      "name": "TRADING01@PHOENIX",
+      "venue": "PHOENIX",
+      "portfolio": "TOKKA LABS - SSB - CDA SOL"
     }
   ],
   "wallet": [
@@ -761,6 +771,11 @@
       "name": "TOKKA TREASURY - ETH - 10 - CENTRIFUGE",
       "venue": "LEDGER",
       "portfolio": "TOKKA LABS - TREASURY"
+    },
+    {
+      "name": "TOKKA TREASURY - EVM - 01 - DINARI",
+      "venue": "METAMASK",
+      "portfolio": "TOKKA LABS - MM - CENTRAL RISK BOOK"
     },
     {
       "name": "TOKKA TREASURY - SOL - 03 - TRADING",
@@ -1733,8 +1748,13 @@
       "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
     },
     {
-      "name": "WALLET_PMMCROSSCHAIN_EVM_38",
-      "venue": "METAMASK",
+      "name": "WALLET_PMMCROSSCHAIN_EVM_39",
+      "venue": "NOT APPLICABLE",
+      "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
+    },
+    {
+      "name": "WALLET_PMMCROSSCHAIN_EVM_40",
+      "venue": "NOT APPLICABLE",
       "portfolio": "TOKKA LABS - MM PMM - CROSSCHAIN"
     },
     {
@@ -2594,6 +2614,11 @@
       "owner": "TESTING ACCOUNTS"
     },
     {
+      "name": "DINARI_OTC_WALLET_01",
+      "venue": "ARBITRUM",
+      "owner": "DINARI"
+    },
+    {
       "name": "Dominic_Testwallet_sol_01",
       "venue": "SOLANA",
       "owner": "TESTING ACCOUNTS"
@@ -3039,6 +3064,11 @@
       "owner": "NATIVE MARKETS"
     },
     {
+      "name": "WALLET_CRB_TEST_01",
+      "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
       "name": "WALLET_JOHANTEST_BSC_01",
       "venue": "BINANCE SMART CHAIN",
       "owner": "TESTING ACCOUNTS"
@@ -3066,6 +3096,11 @@
     {
       "name": "YAQING_TEST_ACCOUNT_ARB_01",
       "venue": "ARBITRUM",
+      "owner": "TESTING ACCOUNTS"
+    },
+    {
+      "name": "YAQING_TEST_WALLET_03",
+      "venue": "SOLANA",
       "owner": "TESTING ACCOUNTS"
     },
     {

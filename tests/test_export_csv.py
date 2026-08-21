@@ -97,6 +97,24 @@ def test_fmt_month_year_garbage_returns_empty():
     assert export_csv.fmt_month_year("not a date") == ""
 
 
+# ── §2b: dd/mm/yyyy hh:mm:ss format ──────────────────────────────
+
+def test_fmt_dmy_hms_iso_with_tz():
+    assert export_csv.fmt_dmy_hms("2026-07-24T20:33:00+00:00") == "24/07/2026 20:33:00"
+
+
+def test_fmt_dmy_hms_postgres_space_separator():
+    assert export_csv.fmt_dmy_hms("2026-05-19 08:42:00+00") == "19/05/2026 08:42:00"
+
+
+def test_fmt_dmy_hms_none_returns_empty():
+    assert export_csv.fmt_dmy_hms(None) == ""
+
+
+def test_fmt_dmy_hms_garbage_returns_raw():
+    assert export_csv.fmt_dmy_hms("not a date") == "not a date"
+
+
 # ── §3: Cashflow → row ───────────────────────────────────────────
 
 def test_cashflow_incoming_amount_positive():
@@ -124,7 +142,7 @@ def test_cashflow_input_date_uses_first_effective_start():
                   effective_start="2026-05-20T11:00:00+00:00"),
         portfolios=PORTFOLIOS,
     )
-    assert row["Input Date"] == "2026-05-10T09:00:00+00:00"
+    assert row["Input Date"] == "10/05/2026 09:00:00"
 
 
 def test_cashflow_txn_type_and_trade_type():
@@ -224,7 +242,7 @@ def test_spot_trade_type_is_direction():
 def test_spot_all_rows_share_deal_ref_and_input_date():
     rows = export_csv.spot_to_rows(_spot())
     assert {r["Deal Reference"] for r in rows} == {"MFX-7"}
-    assert {r["Input Date"] for r in rows} == {"2026-05-19T08:42:00+00:00"}
+    assert {r["Input Date"] for r in rows} == {"19/05/2026 08:42:00"}
 
 
 def test_spot_base_quote_legs_have_empty_fee_columns():
