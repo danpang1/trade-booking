@@ -411,17 +411,22 @@ def _loan_totals_from_rows(rows: list) -> tuple[float, float]:
 
 
 def _borrowable_usdt(collateral_post_haircut: float,
-                     locked_collateral: float,
+                     total_loan_usd: float,
                      initial_ltv: float) -> float:
-    """USDT still drawable against unlocked collateral. Floored at 0.
+    """USDT still drawable before the account hits `initial_ltv`. Floored at 0.
 
-    Free collateral is a COLLATERAL value, not a loan amount — lending
-    against it at `initial_ltv` is what makes it borrowable. Returning the
-    free collateral itself (as this did until 2026-08-21) overstated the
-    figure by 1/initial_ltv, roughly 1.4x.
+    The cap is account-wide: total debt may not exceed initial_ltv of TOTAL
+    post-haircut collateral, so the headroom is what that cap allows minus
+    what is already drawn. Equivalently debt * (initial_ltv/current_ltv - 1).
+
+    Two wrong answers to avoid, both tried here before:
+      - collateral_post_haircut - locked_collateral is a COLLATERAL value,
+        not a loan amount, and overstates by ~1/initial_ltv.
+      - (collateral_post_haircut - locked) * initial_ltv assumes locked
+        equals debt/initial_ltv. It does not — 818's locked balance implies
+        71.978% against a 71% cap — so it still reads high.
     """
-    free = collateral_post_haircut - locked_collateral
-    return max(0.0, free * initial_ltv)
+    return max(0.0, collateral_post_haircut * initial_ltv - total_loan_usd)
 
 
 def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
@@ -444,7 +449,7 @@ def build_detail(api_key: str, api_secret: str, rows: list) -> dict:
         locked_collateral = max(locked_collateral, locked)
 
     borrowable_usdt = _borrowable_usdt(
-        collateral_post_haircut, locked_collateral, INITIAL_LTV
+        collateral_post_haircut, total_loan_usd, INITIAL_LTV
     )
 
     balances = _get_spot_balances(api_key, api_secret)
