@@ -253,6 +253,8 @@ const CASHFLOW_TYPES = [
   "WITHHOLDING TAX",
   "LOAN",
   "LOAN REPAYMENT",
+  "MARGIN LOAN",
+  "MARGIN REPAYMENT",
 ];
 // Cashflow types that semantically belong to a loan contract — when
 // any of these is selected, the form surfaces the loan-link picker
