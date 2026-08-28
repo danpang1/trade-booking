@@ -182,7 +182,18 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   async function onBulkApprove() {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    if (!confirm(`Approve ${ids.length} draft${ids.length > 1 ? "s" : ""}? Each will insert into trades_cashflow.`)) return;
+    // Name the tables actually involved — a SPOT draft lands in trades_spot,
+    // not trades_cashflow, and the old copy claimed otherwise for every draft.
+    const tables = [
+      ...new Set(
+        ids
+          .map((id) => rows.find((r) => r.id === id)?.category)
+          .map((c) => (c === "SPOT" ? "trades_spot" : c === "CASHFLOW" ? "trades_cashflow" : null))
+          .filter(Boolean)
+      ),
+    ];
+    const target = tables.length > 0 ? tables.join(" / ") : "its category's trades table";
+    if (!confirm(`Approve ${ids.length} draft${ids.length > 1 ? "s" : ""}? Each will insert into ${target}.`)) return;
     setBulkBusy(true);
     for (const id of ids) {
       const { status, body } = await approveDraft(id);

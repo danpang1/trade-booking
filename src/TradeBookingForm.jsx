@@ -10601,7 +10601,8 @@ export default function TradeBookingForm() {
   // Load a draft into the form's state. Returns true on success.
   // Used by (a) the URL ?draft=<id> mount effect for deep links, and
   // (b) the PendingDrafts inbox "FORM" button via the onOpenDraft callback.
-  // Only handles CASHFLOW for Plan 1a.
+  // Handles CASHFLOW and SPOT — the two categories draft_db.CATEGORIES
+  // allows and that draft_approve.py has inserters for.
   // Tracks whether a draft fetch is in flight so the form modal can
   // open optimistically (instant feedback on click) and show a loading
   // state while getDraft runs (~1s on Windows due to Python subprocess
@@ -10631,12 +10632,55 @@ export default function TradeBookingForm() {
       return false;
     }
     const d = body.draft;
-    if (d.category !== "CASHFLOW") {
-      setDraftLoadError(`Draft #${id} is ${d.category}; Phase 1a supports CASHFLOW only`);
+    const p = d.payload || {};
+    if (d.category !== "CASHFLOW" && d.category !== "SPOT") {
+      setDraftLoadError(
+        `Draft #${id} is ${d.category}; only CASHFLOW and SPOT drafts can be opened in the form`
+      );
       setDraftLoading(false);
       return false;
     }
-    const p = d.payload || {};
+    if (d.category === "SPOT") {
+      // Inverse of the SPOT branch of outputRecord (~line 11563). The draft
+      // payload carries the same keys the approve path will insert, so the
+      // SPOT inputs repopulate straight from it. Kept as an explicit mapping
+      // rather than reusing spotPayloadToFormState() because that one expects
+      // a booked trades_spot row (deal_ref, external_trade_id, ...) which a
+      // draft payload does not carry.
+      setForm((cur) => ({
+        ...cur,
+        category: "SPOT",
+        spot_direction: p.direction ?? cur.spot_direction,
+        // An internal SPOT stores a portfolio number as the counterparty —
+        // restore the flag so the picker re-renders as a PortfolioPicker.
+        spot_internal: !!(
+          p.counterparty &&
+          PORTFOLIOS.some((x) => String(x.number) === String(p.counterparty))
+        ),
+        entity_row: p.entity ?? cur.entity_row,
+        portfolio: p.portfolio_id != null ? String(p.portfolio_id) : cur.portfolio,
+        portfolio_name_row: p.portfolio_name ?? cur.portfolio_name_row,
+        counterparty: p.counterparty ?? cur.counterparty,
+        account_name: p.account ?? cur.account_name,
+        account_venue_type: p.account_type ?? cur.account_venue_type,
+        base_asset: p.base_asset ?? cur.base_asset,
+        base_amount:
+          p.base_amount != null ? String(Math.abs(parseFloat(p.base_amount) || 0)) : cur.base_amount,
+        quote_asset: p.quote_asset ?? cur.quote_asset,
+        quote_amount:
+          p.quote_amount != null ? String(Math.abs(parseFloat(p.quote_amount) || 0)) : cur.quote_amount,
+        price: p.price != null ? String(p.price) : cur.price,
+        fee_asset: p.fee_asset ?? cur.fee_asset,
+        fee_amount: p.fee_amount != null ? String(p.fee_amount) : cur.fee_amount,
+        trade_date: p.trade_date ?? cur.trade_date,
+        value_date: p.value_date ?? cur.value_date,
+        notes: p.comment ?? cur.notes,
+        created_by: p.user_id ?? cur.created_by,
+        status: p.status ?? cur.status,
+      }));
+      setDraftLoading(false);
+      return true;
+    }
     setForm((cur) => ({
       ...cur,
       category: "CASHFLOW",
@@ -11861,14 +11905,13 @@ export default function TradeBookingForm() {
       value_date: row.value_date,
       network: row.network || "",
       tx_hash: row.txid_reference || "",
-      // Don't copy row.user_id into created_by — the form's created_by
-      // represents WHO IS DOING THIS ACTION NOW (the amender), not the
-      // original author. Copying the original leaks the prior author's
-      // identity into the JSON preview and submit payload; server.js
-      // stampUserId() rewrites it back to the session user before
-      // persistence, so DB rows are still correct, but the UI preview
-      // was confusing. Leaving created_by untouched preserves whatever
-      // the session-user useEffect set it to.
+      // Created By shows WHO LAST SAVED this record, so an amender opens
+      // the trade seeing the previous editor's name. server.js stampUserId()
+      // overwrites user_id with the session user on every write, so once
+      // this amendment is saved the row — and the next person to open it —
+      // carries the amender instead. Display only: the value sent from here
+      // is always discarded server-side.
+      created_by: row.user_id || user?.username || "",
       status: row.status,
       notes: row.comment || "",
       // Pre-fill the loan picker from joined mappings (server attaches
@@ -11920,8 +11963,13 @@ export default function TradeBookingForm() {
       // loan_term_days is derived in the form; clear so the open-term
       // input shows blank unless the user re-enters a term.
       loan_term_days: "",
-      // created_by intentionally NOT copied from row.user_id; see the
-      // matching note in payloadToFormState (cashflow).
+      // Created By shows WHO LAST SAVED this record, so an amender opens
+      // the trade seeing the previous editor's name. server.js stampUserId()
+      // overwrites user_id with the session user on every write, so once
+      // this amendment is saved the row — and the next person to open it —
+      // carries the amender instead. Display only: the value sent from here
+      // is always discarded server-side.
+      created_by: row.user_id || user?.username || "",
       status: row.status,
       notes: row.comment || "",
     };
@@ -11960,8 +12008,13 @@ export default function TradeBookingForm() {
       trade_date: row.trade_date,
       value_date: row.value_date,
       tx_hash: row.txid_reference || "",
-      // created_by intentionally NOT copied from row.user_id; see the
-      // matching note in payloadToFormState (cashflow).
+      // Created By shows WHO LAST SAVED this record, so an amender opens
+      // the trade seeing the previous editor's name. server.js stampUserId()
+      // overwrites user_id with the session user on every write, so once
+      // this amendment is saved the row — and the next person to open it —
+      // carries the amender instead. Display only: the value sent from here
+      // is always discarded server-side.
+      created_by: row.user_id || user?.username || "",
       status: row.status,
       notes: row.comment || "",
     };
@@ -12933,7 +12986,7 @@ export default function TradeBookingForm() {
             }}>
               {draftLoading
                 ? `Loading draft #${draftId}…`
-                : `Editing draft #${draftId}. Save Draft to keep editing later, or Approve & Book to insert into trades_cashflow.`}
+                : `Editing draft #${draftId}. Save Draft to keep editing later, or Approve & Book to insert into ${form.category === "SPOT" ? "trades_spot" : "trades_cashflow"}.`}
             </div>
           )}
           {/* ═════ 1. SUMMARY (category-specific title) ═════ */}
