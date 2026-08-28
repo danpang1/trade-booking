@@ -6,6 +6,7 @@ deployment:
 
 ingress:
   host: sg-tms.internal.tokkalabs.com
+  tlsSecret: tls-rancher-ingress
   # TODO: re-enable once SSO is wired up in the SG cluster.
   # Leaving on with the chart-default placeholder ssoOauth2Signin
   # caused nginx auth_request to 500 every UI request.
