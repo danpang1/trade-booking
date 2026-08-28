@@ -4,6 +4,26 @@ Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-08-28
+### Changed
+- **Mandatory fields are now asked for, never defaulted.** The skill lists the
+  exact `*` set the MO web form validates (`validate()` + `<Field required>` in
+  `TradeBookingForm.jsx`) and must stop and ask when one is missing. The API is
+  more permissive than the form, so a draft that the API accepts but that misses
+  a `*` field cannot be opened or approved and strands in PENDING_REVIEW.
+- **`account` is mandatory for SPOT.** Previously documented as optional because
+  `spot_db` doesn't require it — but the form marks Account Name `*`, so an
+  account-less SPOT draft was unapprovable. `counterparty` stays optional for
+  SPOT.
+- **Dropped the `TOKKA TREASURY` counterparty fallback** for OPEX vendors that
+  aren't in refdata. It misattributed spend; the skill now asks instead.
+
+### Fixed
+- Version bumped so the pinned plugin cache actually refreshes. 0.2.0 shipped
+  twice: `MARGIN LOAN` / `MARGIN REPAYMENT` were added to the CLI without a
+  version change, so installs kept serving the older `VALID_CASHFLOW_TYPES` and
+  rejected both types.
+
 ## [0.2.0] — 2026-06-30
 ### Added
 - **SPOT / FX trade booking.** `tokka-mo book --category SPOT` and per-row

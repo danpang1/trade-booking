@@ -32,14 +32,24 @@ Middle Office web form — this skill creates new CASHFLOW and SPOT drafts only.
    manually mint one. If a submit fails and the user wants to retry, reuse the same
    CRID — passing a fresh UUID on retry creates a duplicate draft.
 5. **CASHFLOW or SPOT only.** Anything else (loans, amendments) → web form.
+6. **Never invent, default, or blank a mandatory field.** Every field the MO web
+   form marks `*` must carry a real, user-supplied value before you submit. If one
+   is missing — counterparty, account, asset, amount, dates, anything — STOP and
+   ask the user for it. Do not substitute a placeholder, do not fall back to a
+   "safe" default like `TOKKA TREASURY`, do not send an empty string, and do not
+   proceed on the grounds that the server or the CLI would accept it. The server
+   is more permissive than the web form: a draft that passes the API but is
+   missing a `*` field cannot be opened and approved in the form, so it strands
+   in PENDING_REVIEW. Asking one extra question always beats a stranded draft.
 
 ## Workflow
 
 1. **Parse the user's input** into a list of trades, tagging each as CASHFLOW or
    SPOT. For CASHFLOW extract the fields in `references/cashflow-schema.md`; for
    SPOT extract the fields in `references/spot-schema.md`.
-2. **Identify missing required fields.** Ask the user to supply them — one round of
-   questions, batched.
+2. **Identify missing mandatory fields** (the `*` list below). Ask the user to
+   supply them — one round of questions, batched, before any preview. Never guess
+   a value and never leave one blank.
 3. **Validate** against the cached refdata. For SPOT: `portfolio_id`,
    `portfolio_name`, `base_asset`, `quote_asset`, and (if given) `account` /
    `counterparty` / `fee_asset`. If anything's missing or wrong, ask the user.
@@ -50,6 +60,28 @@ Middle Office web form — this skill creates new CASHFLOW and SPOT drafts only.
    `${CLAUDE_PLUGIN_ROOT}/bin/tokka-mo book --category <CASHFLOW|SPOT>`. Two or more
    (including mixed) → `${CLAUDE_PLUGIN_ROOT}/bin/tokka-mo book-batch`, with each
    trade carrying its own `"category"`. Report draft IDs + the review URL.
+
+## Mandatory (`*`) fields — must come from the user
+
+These mirror the MO web form's own validation, which is what a reviewer hits when
+they open the draft. Anything here that the user has not given is a question, not
+a default.
+
+**CASHFLOW** — `cashflow_type`, `direction`, `portfolio_id`, `counterparty`,
+`account`, `account_type`, `asset`, `amount`, `trade_date`, `value_date`.
+Plus `network` when `account_type = WALLET`.
+
+**SPOT** — `direction`, `portfolio_id`, `base_asset`, `base_amount`,
+`quote_asset`, `quote_amount`, `price`, `account`, `account_type`, `trade_date`,
+`value_date`. `counterparty` is genuinely optional for SPOT — the form does not
+require it — so don't badger the user for one.
+
+Derived, so never ask: `entity` and `portfolio_name` (from the portfolio's
+refdata row), `user_id` (the logged-in user), `status` (`PENDING`).
+
+If the user gives a value that isn't in refdata, that is also a question — say
+what they gave, show the near matches, and let them pick. Never silently snap to
+the closest one.
 
 ## SPOT specifics
 
@@ -77,19 +109,25 @@ SHORT X.
 - Omit `txn_type` (the server defaults it to `SPOT`); set `status = PENDING`;
   `user_id` is stamped by the CLI from the logged-in user.
 
-### Account / counterparty are optional for SPOT
+### Account is mandatory for SPOT; counterparty is not
 
-The server does **not** require `account` / `account_type` / `counterparty` on a
-SPOT booking. If the user names a venue ("on Paxos"), resolve it to that venue's
-refdata account and set `account_type` accordingly; otherwise book without one.
-When an account *is* supplied, `account_type` must be `EXCHANGE`, `WALLET`, or
-`BROKER` and the account must exist in refdata.
+The API will accept a SPOT draft with no `account`, but the MO web form marks
+Account Name `*` and refuses to save without it — so an account-less draft cannot
+be approved and just sits in PENDING_REVIEW. Always establish the venue. If the
+user names one ("on Paxos"), resolve it to that venue's refdata account and set
+`account_type` to match; if they don't, **ask which account** rather than booking
+without one. `account_type` must be `EXCHANGE`, `WALLET`, or `BROKER`, and the
+account must exist in refdata.
+
+`counterparty` really is optional on SPOT — omit it unless the user names one.
 
 ## Common patterns
 
 ### OPEX payment (CASHFLOW)
-- cashflow_type `OPEX`, direction `OUTGOING`, counterparty = vendor (must be in
-  refdata; else fall back to `TOKKA TREASURY` and flag a vendor-add later).
+- cashflow_type `OPEX`, direction `OUTGOING`, counterparty = the vendor, which
+  must exist in refdata. If the vendor isn't catalogued yet, STOP and ask the user
+  how to proceed — booking it against `TOKKA TREASURY` misattributes the spend and
+  someone has to unpick it later.
 
 ### Inter-portfolio funding (CASHFLOW)
 - cashflow_type `INTER PTF FUNDING`; book both legs (OUTGOING from source,

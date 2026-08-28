@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Tokka Labs Middle Office Claude Code plugins. The middle-office-tools repo doubles as a Claude Code marketplace — the `plugin/` subdirectory ships `tokka-mo`, the CASHFLOW + SPOT trade-booking client.",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "plugins": [
     {

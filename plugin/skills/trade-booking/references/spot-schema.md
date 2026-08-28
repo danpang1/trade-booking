@@ -22,14 +22,14 @@ same core rules — if one fails, the other will too. Top-level keys map 1:1 to 
 | `value_date` | ISO 8601 + tz | When value moves (typically "now" or T+1). |
 | `user_id` | string | Set automatically by the plugin from the logged-in username. |
 | `status` | enum | `PENDING` / `CONFIRMED` / `PROCESSED` / `SETTLED` / `CANCELLED`. Default `PENDING`. |
+| `account` | string | Refdata account name (e.g. `MOON-TK@PAXOS`). The API tolerates its absence but the MO web form marks it `*` and won't save without it, so a draft missing it can't be approved. Ask the user which venue. |
+| `account_type` | enum | `EXCHANGE` / `WALLET` / `BROKER`. Follows from `account`. |
 
 ## Optional fields
 
 | Field | Type | Notes |
 |---|---|---|
-| `account` | string | Refdata account name (e.g. `MOON-TK@PAXOS`). Omit if unknown. |
-| `account_type` | enum | `EXCHANGE` / `WALLET` / `BROKER`. Required only when `account` is set. |
-| `counterparty` | string | NAMED counterparty in refdata (NOT a portfolio number). Omit if none. |
+| `counterparty` | string | NAMED counterparty in refdata (NOT a portfolio number). Genuinely optional — the web form does not require it for SPOT. Omit if none. |
 | `counterparty_id` | string | Derived from `counterparty`; leave to the form/server. |
 | `fee_asset` | string | Ticker in refdata tokens, if a fee applies. |
 | `fee_amount` | numeric string | Fee magnitude. |

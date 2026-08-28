@@ -9,7 +9,7 @@ The 14 required fields a CASHFLOW draft must carry. The plugin's local validator
 | `entity` | string | Legal entity. Common values: `TOKKA LABS PTE LTD`, `ECHO CREEK LIMITED`, `IMAGINE LABS PTE LTD`, `NATIVE TECHNOLOGY LIMITED`, `RANGE PROTOCOL LIMITED` |
 | `portfolio_id` | int | Must match an `id` in `tokka-mo refdata` |
 | `portfolio_name` | string | Must match the name of `portfolio_id`'s row in `tokka-mo refdata` |
-| `counterparty` | string | Must match a `name` in `tokka-mo refdata`. Falls back to `TOKKA TREASURY` for OPEX where vendor isn't catalogued yet |
+| `counterparty` | string | Must match a `name` in `tokka-mo refdata`. Mandatory — if the vendor isn't catalogued, ask the user; never fall back to `TOKKA TREASURY` |
 | `account` | string | Must match an `account` name in `tokka-mo refdata` (e.g. `TK006@BINANCE`) |
 | `account_type` | enum | `EXCHANGE`, `WALLET`, `BROKER`, or `BANK` |
 | `asset` | string | Must match a `symbol` in `tokka-mo refdata` (e.g. `USDC`) |
