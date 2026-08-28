@@ -14,7 +14,7 @@ ingress:
 
 vault:
   enabled: true
-  authPath: "auth/kubernetes/sg-k8s"
+  authPath: "auth/kubernetes/sg-k8"
   role: "vault-main-trading-prod"
   agentInjectDefaultTemplate: json
   agentInjectSecrets:
