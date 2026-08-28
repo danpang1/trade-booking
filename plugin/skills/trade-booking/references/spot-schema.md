@@ -24,12 +24,12 @@ same core rules — if one fails, the other will too. Top-level keys map 1:1 to 
 | `status` | enum | `PENDING` / `CONFIRMED` / `PROCESSED` / `SETTLED` / `CANCELLED`. Default `PENDING`. |
 | `account` | string | Refdata account name (e.g. `MOON-TK@PAXOS`). The API tolerates its absence but the MO web form marks it `*` and won't save without it, so a draft missing it can't be approved. Ask the user which venue. |
 | `account_type` | enum | `EXCHANGE` / `WALLET` / `BROKER`. Follows from `account`. |
+| `counterparty` | string | Who the trade faced. NAMED counterparty in refdata, or the other portfolio's number for an internal SPOT. Mandatory — ask the user; never omit as "optional". |
 
 ## Optional fields
 
 | Field | Type | Notes |
 |---|---|---|
-| `counterparty` | string | NAMED counterparty in refdata (NOT a portfolio number). Genuinely optional — the web form does not require it for SPOT. Omit if none. |
 | `counterparty_id` | string | Derived from `counterparty`; leave to the form/server. |
 | `fee_asset` | string | Ticker in refdata tokens, if a fee applies. |
 | `fee_amount` | numeric string | Fee magnitude. |

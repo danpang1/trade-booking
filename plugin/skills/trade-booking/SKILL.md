@@ -51,8 +51,8 @@ Middle Office web form — this skill creates new CASHFLOW and SPOT drafts only.
    supply them — one round of questions, batched, before any preview. Never guess
    a value and never leave one blank.
 3. **Validate** against the cached refdata. For SPOT: `portfolio_id`,
-   `portfolio_name`, `base_asset`, `quote_asset`, and (if given) `account` /
-   `counterparty` / `fee_asset`. If anything's missing or wrong, ask the user.
+   `portfolio_name`, `base_asset`, `quote_asset`, `account`, `counterparty`, and
+   (if given) `fee_asset`. If anything's missing or wrong, ask the user.
 4. **Show a structured preview** in a code block. For batches, number the rows and
    group them by category (`CASHFLOW (n)` / `SPOT (n)`).
 5. **Ask: "Submit? (y/N)"** — wait for an explicit `y`. Anything else is a no.
@@ -72,9 +72,8 @@ a default.
 Plus `network` when `account_type = WALLET`.
 
 **SPOT** — `direction`, `portfolio_id`, `base_asset`, `base_amount`,
-`quote_asset`, `quote_amount`, `price`, `account`, `account_type`, `trade_date`,
-`value_date`. `counterparty` is genuinely optional for SPOT — the form does not
-require it — so don't badger the user for one.
+`quote_asset`, `quote_amount`, `price`, `counterparty`, `account`,
+`account_type`, `trade_date`, `value_date`.
 
 Derived, so never ask: `entity` and `portfolio_name` (from the portfolio's
 refdata row), `user_id` (the logged-in user), `status` (`PENDING`).
@@ -109,17 +108,24 @@ SHORT X.
 - Omit `txn_type` (the server defaults it to `SPOT`); set `status = PENDING`;
   `user_id` is stamped by the CLI from the logged-in user.
 
-### Account is mandatory for SPOT; counterparty is not
+### Account AND counterparty are both mandatory for SPOT
 
-The API will accept a SPOT draft with no `account`, but the MO web form marks
-Account Name `*` and refuses to save without it — so an account-less draft cannot
-be approved and just sits in PENDING_REVIEW. Always establish the venue. If the
-user names one ("on Paxos"), resolve it to that venue's refdata account and set
-`account_type` to match; if they don't, **ask which account** rather than booking
-without one. `account_type` must be `EXCHANGE`, `WALLET`, or `BROKER`, and the
-account must exist in refdata.
+Neither may be omitted. Do not treat either as optional, and never emit a line
+like "counterparty omitted — optional for SPOT": if you don't have one, that is a
+question for the user.
 
-`counterparty` really is optional on SPOT — omit it unless the user names one.
+Be aware that permissiveness further down the stack is not permission. The API
+accepts a SPOT draft with no `account` and no `counterparty`, and the web form's
+own client-side check only enforces Account Name — but every SPOT trade has a
+venue and a party on the other side, and a draft missing either is not reviewable.
+
+- `account` — if the user names a venue ("on Paxos"), resolve it to that venue's
+  refdata account and set `account_type` to match. Otherwise **ask which
+  account**. `account_type` is `EXCHANGE`, `WALLET`, or `BROKER`, and the account
+  must exist in refdata.
+- `counterparty` — must be a NAMED counterparty in refdata. For an internal SPOT
+  between two Tokka portfolios it is the other portfolio's number. If the user
+  hasn't said who the trade faced, **ask**.
 
 ## Common patterns
 

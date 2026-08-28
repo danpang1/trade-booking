@@ -4,6 +4,15 @@ Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-08-28
+### Fixed
+- **`counterparty` is mandatory for SPOT**, not optional. 0.2.1 told the skill it
+  was "genuinely optional for SPOT", so bookings came back saying "counterparty
+  omitted". That came from reading the web form's `*` markers with a grep that
+  only caught literal `required` props — Counterparty uses
+  `required={form.category === "LOAN"}`, a dynamic prop, and was missed. Every
+  SPOT trade has a party on the other side; if the user hasn't named one, ask.
+
 ## [0.2.1] — 2026-08-28
 ### Changed
 - **Mandatory fields are now asked for, never defaulted.** The skill lists the
