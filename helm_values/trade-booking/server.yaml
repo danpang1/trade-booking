@@ -20,7 +20,7 @@ ingress:
   enabled: true
   external: false
   path: /
-  pathType: Prefix
+  pathType: ImplementationSpecific
   service:
     portName: http
   authentication:

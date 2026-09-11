@@ -45,7 +45,7 @@ ingress:
   #      rewriteTarget: '/(t2x-admin/?)($|.*)'
   #
   path: "/"
-  pathType: "Prefix"
+  pathType: "ImplementationSpecific"
   useRegex: false
   rewriteTarget: ""
 
