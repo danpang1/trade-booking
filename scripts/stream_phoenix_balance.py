@@ -86,11 +86,25 @@ def _env_block(marker: str) -> dict[str, str]:
 # Phoenix fetch + normalize
 # ─────────────────────────────────────────────────────────────────────
 
-def _fetch_state(pda_index: int) -> dict:
+def _fetch_state(pda_index: int, attempts: int = 5) -> dict:
+    """GET trader state, retrying on HTTP 429.
+
+    Phoenix rate-limits back-to-back calls (the balance + position collectors
+    hit the same endpoint ~1s apart in snapshot_all) and answers 429 with a
+    `Retry-After` header (observed: 2s). Honour it; give up after `attempts`.
+    """
     url = f"{PHOENIX_API}/trader/{WALLET}/state?pdaIndex={pda_index}"
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read())
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == attempts:
+                raise
+            wait = float(e.headers.get("Retry-After") or 2)
+            log.warning(f"Phoenix 429 (attempt {attempt}/{attempts}), retrying in {wait:.0f}s")
+            time.sleep(wait)
 
 
 def _ui_float(field: dict | None) -> float:
@@ -186,7 +200,7 @@ def snap_once(conn, dry_run: bool) -> int:
         st = _fetch_state(PDA_INDEX)
     except Exception as e:
         log.error(f"state fetch failed: {e}")
-        return 0
+        raise
 
     rows: list[dict] = []
     for trader in st.get("traders", []):
