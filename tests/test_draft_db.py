@@ -293,3 +293,56 @@ def test_row_to_public_omits_internal_fields_and_isoformats_dates():
     assert out["created_by"] == "alice"
     assert out["created_at"].startswith("2026-05-25T10:00:00")
     assert out["approved_at"] is None
+
+
+# ── On-behalf-of booking (resolve_booker) ───────────────────────────
+
+def _users(*names):
+    return lambda u: next((n for n in names if n.lower() == u.lower()), None)
+
+
+def test_resolve_booker_defaults_to_the_acting_user():
+    payload = {"amount": "1"}
+    assert draft_db.resolve_booker(payload, "danny.pang", "bearer", _users()) == ("danny.pang", payload)
+    assert draft_db.resolve_booker(payload, "danny.pang", "cookie", _users()) == ("danny.pang", payload)
+    assert draft_db.resolve_booker(None, "danny.pang", "bearer", _users()) == ("danny.pang", None)
+
+
+def test_resolve_booker_honours_requested_by_for_bearer_callers():
+    booker, payload = draft_db.resolve_booker(
+        {"amount": "1", "requested_by": "Irven.Heng"}, "danny.pang", "bearer",
+        _users("irven.heng"))
+    assert booker == "irven.heng"          # the DB's spelling, not the caller's
+    assert payload == {"amount": "1"}      # the field never reaches the row
+
+
+def test_resolve_booker_blank_requested_by_is_ignored():
+    for blank in (None, ""):
+        booker, payload = draft_db.resolve_booker(
+            {"amount": "1", "requested_by": blank}, "danny.pang", "bearer", _users())
+        assert booker == "danny.pang" and payload == {"amount": "1"}
+
+
+def test_resolve_booker_refuses_cookie_sessions():
+    for mode in ("cookie", None):
+        with pytest.raises(draft_db.ValidationError, match="API-token callers"):
+            draft_db.resolve_booker({"requested_by": "irven.heng"}, "danny.pang", mode,
+                                    _users("irven.heng"))
+
+
+def test_resolve_booker_refuses_unknown_or_inactive_users():
+    with pytest.raises(draft_db.ValidationError, match="not an active MO user"):
+        draft_db.resolve_booker({"requested_by": "nobody"}, "danny.pang", "bearer",
+                                _users("irven.heng"))
+
+
+@pytest.mark.parametrize("bad", [" ", "a b", "x" * 65, 42, "irven;drop", "a@b.com"])
+def test_resolve_booker_rejects_malformed_names(bad):
+    with pytest.raises(draft_db.ValidationError, match="invalid requested_by"):
+        draft_db.resolve_booker({"requested_by": bad}, "danny.pang", "bearer", _users())
+
+
+def test_resolve_booker_does_not_mutate_the_caller_payload():
+    src = {"amount": "1", "requested_by": "irven.heng"}
+    draft_db.resolve_booker(src, "danny.pang", "bearer", _users("irven.heng"))
+    assert "requested_by" in src

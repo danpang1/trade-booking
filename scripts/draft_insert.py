@@ -4,7 +4,12 @@ Stdin (server mode only):
   {"category": "CASHFLOW",
    "payload": {...the form-shape cashflow payload...},
    "client_request_id": "<uuid>",
-   "_acting_user": "alice"}
+   "_acting_user": "alice",
+   "_auth_mode": "cookie" | "bearer"}
+
+A Bearer caller may add "requested_by": "<mo username>" inside the payload
+to book on that user's behalf (the draft's user_id); created_by stays the
+token owner.
 
 Stdout success: {"ok": true, "row": {...public fields...}, "deduped": false}
 Stdout failure: {"ok": false, "error": "..."}
@@ -56,9 +61,13 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
     # case catches CLI/agent submissions that strip the time component
     # ("2026-05-27T00:00:00+00:00"); the user wants those to reflect
     # the actual moment of submission, not 00:00 of the day.
+    # `requested_by` (Bearer callers only) names who the draft is booked
+    # for; created_by below keeps the token owner. See draft_db.resolve_booker.
+    booker, payload = draft_db.resolve_booker(
+        payload, acting, payload_in.get("_auth_mode"))
     if isinstance(payload, dict):
         now_iso = datetime.now(timezone.utc).isoformat()
-        defaults = {"user_id": f"claude:{acting}"}
+        defaults = {"user_id": f"claude:{booker}"}
         if _is_missing_or_midnight(payload.get("trade_date")):
             defaults["trade_date"] = now_iso
         if _is_missing_or_midnight(payload.get("value_date")):

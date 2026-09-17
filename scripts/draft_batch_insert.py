@@ -5,7 +5,11 @@ Stdin:
      {"category": "CASHFLOW", "payload": {...}, "client_request_id": "<uuid>"},
      ...
    ],
-   "_acting_user": "alice"}
+   "_acting_user": "alice",
+   "_auth_mode": "cookie" | "bearer"}
+
+A Bearer caller may add "requested_by": "<mo username>" inside any payload
+to book that trade on the named user's behalf (see draft_insert.py).
 
 Stdout success: {"ok": true, "batch_id": "<uuid>", "created": N, "rows": [...]}
 Stdout failure: {"ok": false, "error": "..."}
@@ -30,6 +34,7 @@ def _insert_batch(body: dict) -> dict:
     acting = body.get("_acting_user")
     if not isinstance(acting, str) or not acting:
         raise draft_db.ValidationError("missing _acting_user (server bug)")
+    auth_mode = body.get("_auth_mode")
     trades = body.get("trades")
     if not isinstance(trades, list) or not trades:
         raise draft_db.ValidationError("'trades' must be a non-empty list")
@@ -57,9 +62,14 @@ def _insert_batch(body: dict) -> dict:
         # Also default trade_date / value_date to now (UTC) when missing
         # OR when supplied as exact UTC midnight — see draft_insert.py
         # for the rationale.
+        # Per-trade on-behalf-of (Bearer callers only) — see draft_db.resolve_booker.
+        try:
+            booker, payload = draft_db.resolve_booker(payload, acting, auth_mode)
+        except draft_db.ValidationError as e:
+            raise draft_db.ValidationError(f"trade {i}: {e}") from e
         if isinstance(payload, dict):
             now_iso = datetime.now(timezone.utc).isoformat()
-            defaults = {"user_id": f"claude:{acting}"}
+            defaults = {"user_id": f"claude:{booker}"}
             if _is_missing_or_midnight(payload.get("trade_date")):
                 defaults["trade_date"] = now_iso
             if _is_missing_or_midnight(payload.get("value_date")):

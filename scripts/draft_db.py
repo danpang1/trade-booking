@@ -7,6 +7,8 @@ touching the DB. DB-touching functions reuse cashflow_db.connect.
 from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
+import re as _re
+import sys as _sys
 import uuid as _uuid
 
 import cashflow_db
@@ -57,6 +59,59 @@ def validate_payload_for_category(category: str, payload) -> None:
             raise ValidationError(str(e)) from e
         return
     raise ValidationError(f"unknown category: {category!r}")
+
+
+# ── On-behalf-of booking ───────────────────────────────────────────
+
+# Who a draft is booked BY is normally the authenticated caller. A service
+# caller such as the Colossus Slack bot books for many people through one
+# API token; it names the real requester in `requested_by`, and that name
+# becomes the draft's user_id while `created_by` keeps the token owner as
+# the audit trail. Only a Bearer session may do this: a cookie session is a
+# person at the form, and there is no honest reason for them to book as
+# someone else.
+REQUESTED_BY_RE = _re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def lookup_active_user(username: str):
+    """The canonical username of an active MO user with TMS access, else None."""
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT username FROM users "
+                " WHERE LOWER(username) = LOWER(%s) "
+                "   AND status = 'active' AND access_tms",
+                (username,),
+            )
+            row = cur.fetchone()
+    finally:
+        conn.close()
+    return row[0] if row else None
+
+
+def resolve_booker(payload, acting: str, auth_mode, lookup=None) -> tuple[str, dict]:
+    """(username to stamp as the booker, payload without `requested_by`).
+
+    Raises ValidationError when `requested_by` is present on a non-Bearer
+    session, is malformed, or names no active MO user.
+    """
+    if not isinstance(payload, dict) or "requested_by" not in payload:
+        return acting, payload
+    payload = dict(payload)
+    requested = payload.pop("requested_by")
+    if requested in (None, ""):
+        return acting, payload
+    if auth_mode != "bearer":
+        raise ValidationError("requested_by is only accepted from API-token callers")
+    if not isinstance(requested, str) or not REQUESTED_BY_RE.match(requested):
+        raise ValidationError(f"invalid requested_by: {requested!r}")
+    found = (lookup or lookup_active_user)(requested)
+    if not found:
+        raise ValidationError(
+            f"requested_by {requested!r} is not an active MO user with TMS access")
+    print(f"draft booked on behalf of {found} via token of {acting}", file=_sys.stderr)
+    return found, payload
 
 
 # ── DB-touching ────────────────────────────────────────────────────

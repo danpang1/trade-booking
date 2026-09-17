@@ -692,6 +692,9 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
       parsed._acting_user = acting;
+      // Bearer callers (the Colossus bot) may name the real requester per
+      // trade via payload.requested_by; Python honours it only for "bearer".
+      parsed._auth_mode = req.sessionUser.authMode;
       const result = await spawnPython(DRAFT_BATCH_INSERT_SCRIPT, JSON.stringify(parsed));
       res.statusCode = httpStatusFor(result.code, result.json);
       res.setHeader("Content-Type", "application/json");
@@ -704,6 +707,7 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
       parsed._acting_user = acting;
+      parsed._auth_mode = req.sessionUser.authMode;
       const result = await spawnPython(DRAFT_INSERT_SCRIPT, JSON.stringify(parsed));
       res.statusCode = httpStatusFor(result.code, result.json);
       res.setHeader("Content-Type", "application/json");
