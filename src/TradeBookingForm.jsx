@@ -8568,6 +8568,37 @@ function VipCollateralSimulatorModal({ open, detail, baseLtvPct, focusAsset, onC
   );
 }
 
+// A sortable column heading for the Loan Enquiry grid: the label, plus an
+// arrow on the column currently in charge. Rendered as a button so it is
+// reachable by keyboard and announced as one, and the arrow is aria-hidden
+// because the direction is already in the button's title.
+function SortTh({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey;
+  const next = active && sort.dir === "desc" ? "ascending" : "descending";
+  return (
+    <th
+      className="px-3 py-2 text-left whitespace-nowrap"
+      aria-sort={active ? (sort.dir === "desc" ? "descending" : "ascending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        title={`Sort by ${label}, ${next}`}
+        style={{
+          background: "none", border: 0, padding: 0, font: "inherit",
+          color: "inherit", cursor: "pointer", display: "inline-flex",
+          alignItems: "center", gap: 4, opacity: active ? 1 : 0.85,
+        }}
+      >
+        {label}
+        <span aria-hidden="true" style={{ fontSize: "9px", lineHeight: 1 }}>
+          {active ? (sort.dir === "desc" ? "▼" : "▲") : "⇅"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   const isMobile = useIsMobile();
   const [rows, setRows] = useState([]);
@@ -8615,10 +8646,21 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
   // auto-shown when a portfolio is already selected so it's never hidden.
   const hasPortfolioFilter = filters.portfolios.length > 0;
   const [showPortfolio, setShowPortfolio] = useState(false);
-  // Pagination — page is 1-indexed; resets to 1 whenever filters change.
+  // Column sort. Updated Date descending is the default the blotter has
+  // always had; clicking a sortable header switches to it (descending), and
+  // clicking the active one flips the direction.
+  const [sort, setSort] = useState({ key: "updated", dir: "desc" });
+  const toggleSort = useCallback((key) => {
+    setSort((s) => (s.key === key
+      ? { key, dir: s.dir === "desc" ? "asc" : "desc" }
+      : { key, dir: "desc" }));
+  }, []);
+  // Pagination — page is 1-indexed; resets to 1 whenever filters or the
+  // sort change, so a re-sort shows its first page rather than page 7 of the
+  // old order.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  useEffect(() => { setPage(1); }, [filters, pageSize]);
+  useEffect(() => { setPage(1); }, [filters, pageSize, sort]);
 
   const filteredRows = useMemo(() => {
     const filtered = rows.filter((r) => {
@@ -8634,22 +8676,30 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
       if (!dynamicFilterMatch(r, filters.dynamic, LOAN_DYNAMIC_FIELDS)) return false;
       return true;
     });
-    // Sort: Updated Date (effective_start) desc, tie-break on Start
-    // Date (trade_date for loans) desc. effective_start truncated to
-    // second-level precision so sub-second backfill artifacts don't
-    // override the real start-date ordering. Mirrors Deal Enquiry.
+    // Sort: whichever column the operator picked, newest first by default.
+    // Updated Date (effective_start) is the default and Start Date
+    // (trade_date for loans) the alternative; each falls back to the other
+    // so equal keys still land in a stable, meaningful order.
+    // effective_start is truncated to second-level precision so sub-second
+    // backfill artifacts don't override the real start-date ordering.
+    // Mirrors Deal Enquiry.
+    const upd = (r) => String(r.effective_start || "").slice(0, 19);
+    const start = (r) => String(r.trade_date || "");
+    const primary = sort.key === "start" ? start : upd;
+    const secondary = sort.key === "start" ? upd : start;
+    const dir = sort.dir === "asc" ? -1 : 1;
     return [...filtered].sort((a, b) => {
-      const aUpd = String(a.effective_start || "").slice(0, 19);
-      const bUpd = String(b.effective_start || "").slice(0, 19);
-      if (aUpd < bUpd) return 1;
-      if (aUpd > bUpd) return -1;
-      const aTd = String(a.trade_date || "");
-      const bTd = String(b.trade_date || "");
-      if (aTd < bTd) return 1;
-      if (aTd > bTd) return -1;
+      const ap = primary(a), bp = primary(b);
+      if (ap < bp) return dir;
+      if (ap > bp) return -dir;
+      // the tie-break stays newest-first whichever way the column runs:
+      // two loans booked on the same day read most-recently-touched first
+      const as = secondary(a), bs = secondary(b);
+      if (as < bs) return 1;
+      if (as > bs) return -1;
       return 0;
     });
-  }, [rows, filters]);
+  }, [rows, filters, sort]);
 
   const totalRows = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -10265,7 +10315,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   title="Select all on this page"
                 />
               </th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Updated Date</th>
+              <SortTh label="Updated Date" sortKey="updated" sort={sort} onSort={toggleSort} />
               <th className="px-3 py-2 text-left whitespace-nowrap">Deal Reference</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Direction</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Type</th>
@@ -10274,7 +10324,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
               <th className="px-3 py-2 text-right whitespace-nowrap">Principal</th>
               <th className="px-3 py-2 text-right whitespace-nowrap">Balance</th>
               <th className="px-3 py-2 text-right whitespace-nowrap">Rate</th>
-              <th className="px-3 py-2 text-left whitespace-nowrap">Start Date</th>
+              <SortTh label="Start Date" sortKey="start" sort={sort} onSort={toggleSort} />
               <th className="px-3 py-2 text-left whitespace-nowrap">Maturity</th>
               <th className="px-3 py-2 text-center whitespace-nowrap">Interest Hedged</th>
               <th className="px-3 py-2 text-left whitespace-nowrap">Hedged Till</th>
