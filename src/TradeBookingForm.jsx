@@ -255,6 +255,7 @@ const CASHFLOW_TYPES = [
   "LOAN REPAYMENT",
   "MARGIN LOAN",
   "MARGIN REPAYMENT",
+  "MARGIN SETTLEMENT",
 ];
 // Cashflow types that semantically belong to a loan contract — when
 // any of these is selected, the form surfaces the loan-link picker
