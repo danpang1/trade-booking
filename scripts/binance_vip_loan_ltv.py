@@ -258,6 +258,35 @@ def load_creds() -> tuple[str, str]:
     )
 
 
+def creds_for_account(account_id: str) -> tuple[str, str] | None:
+    """(api_key, api_secret) for one Vault account id, or None.
+
+    Same sources as load_creds(), with one difference: the env / .env
+    fallbacks carry a single credential with no id attached, so they are
+    honoured only when `account_id` IS the default account
+    (VAULT_ACCOUNT_ID). Handing the default key to a request for another
+    account would sign that account's calls with the wrong key, so an id the
+    Vault map lacks fails closed. Used by the read-only gateway
+    (binance_proxy.py).
+    """
+    account_id = str(account_id or "").strip()
+    if not account_id:
+        return None
+    for path in VAULT_SECRET_CANDIDATES:
+        if not path.exists():
+            continue
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        hit = _creds_from_doc(doc, account_id)
+        if hit:
+            return hit
+    if account_id == VAULT_ACCOUNT_ID:
+        return _from_env() or _from_dotenv()
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Binance request
 # ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 const EXPORT_BLOTTER_SCRIPT = resolve(__dirname, "scripts", "export_blotter.py");
 const LOAN_EXPORT_SCRIPT    = resolve(__dirname, "scripts", "loan_export.py");
 const BINANCE_VIP_LTV_SCRIPT = resolve(__dirname, "scripts", "binance_vip_loan_ltv.py");
+const BINANCE_PROXY_SCRIPT   = resolve(__dirname, "scripts", "binance_proxy.py");
 const FUNDING_SETTINGS_READ_SCRIPT   = resolve(__dirname, "scripts", "funding_settings_read.py");
 const FUNDING_SETTINGS_UPSERT_SCRIPT = resolve(__dirname, "scripts", "funding_settings_upsert.py");
 
@@ -1028,6 +1029,40 @@ const server = createServer(async (req, res) => {
   // USD-value the exposure breakdown panel.
   if (req.method === "GET" && req.url.startsWith("/api/rates/latest")) {
     const { code, json } = await spawnPython(RATES_LATEST_SCRIPT, "{}");
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/binance/proxy?account=135&path=/sapi/v1/...&signed=1&method=GET&<params>
+  // Read-only Binance gateway: the caller names an account and an API path,
+  // the pod signs and forwards ONE read with that account's key, and the JSON
+  // comes back verbatim under "data". Policy (GET only apart from the two
+  // wallet listings Binance serves over POST, allowed prefixes, deny list of
+  // address/API-key endpoints, fail-closed credential lookup) lives in
+  // scripts/binance_proxy.py. Every call is logged with the user, account and
+  // path; keys never leave the pod. Any authenticated session may call it —
+  // which portfolio a caller may read for is the bot's gate.
+  if (req.method === "GET" && req.url.startsWith("/api/binance/proxy")) {
+    const u = new URL(req.url, "http://localhost");
+    const params = {};
+    for (const [k, v] of u.searchParams.entries()) {
+      if (!["account", "path", "signed", "method"].includes(k)) params[k] = v;
+    }
+    const body = {
+      account: u.searchParams.get("account") || undefined,
+      path: u.searchParams.get("path") || "",
+      signed: (u.searchParams.get("signed") || "1") !== "0",
+      method: (u.searchParams.get("method") || "GET").toUpperCase(),
+      params,
+      _acting_user: req.sessionUser.username,
+    };
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(BINANCE_PROXY_SCRIPT, JSON.stringify(body));
+    console.log(`[binance-proxy] user=${req.sessionUser.username} account=${body.account || "default"} ` +
+                `path=${body.path} exit=${code} (${Date.now() - t0}ms)`);
+    if (stderr && code !== 0) console.error(`[binance-proxy:err] ${stderr.trim().slice(0, 500)}`);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(json));
