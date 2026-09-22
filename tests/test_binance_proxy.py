@@ -118,9 +118,17 @@ def test_unknown_account_is_not_found(monkeypatch):
 # ── forwarding ──────────────────────────────────────────────────────
 
 class _Resp:
+    """A requests.Response stand-in whose .text is EMPTY until the gateway
+    hands the streamed bytes back — exactly the trap the real object sets."""
+
     def __init__(self, body=b'{"ok":1}', status=200):
-        self._body, self.status_code, self.text = body, status, body.decode()
+        self._body, self.status_code = body, status
+        self._content, self._content_consumed = None, False
         self.raw = self
+
+    @property
+    def text(self):
+        return (self._content or b"").decode()
 
     def read(self, n, decode_content=True):
         return self._body[:n]
@@ -151,6 +159,24 @@ def test_signed_get_carries_key_header_and_valid_signature(monkeypatch):
     unsigned = {k: v for k, v in p.items() if k != "signature"}
     expect = hmac.new(b"SECRET", urlencode(unsigned).encode(), hashlib.sha256).hexdigest()
     assert p["signature"] == expect
+
+
+def test_portfolio_margin_and_futures_go_to_their_own_hosts(monkeypatch):
+    seen = []
+    monkeypatch.setattr(gw.requests, "get",
+                        lambda url, params=None, headers=None, timeout=None, stream=None:
+                        seen.append(url) or _Resp(b'{"uniMMR":"1.9"}'))
+    monkeypatch.setattr(gw, "creds_for", lambda a: ("K", "S"))
+    for path in ("/papi/v1/account", "/fapi/v2/account", "/dapi/v1/account", "/sapi/v1/margin/account"):
+        assert gw.run({"path": path})[0] == 0
+    assert seen == ["https://papi.binance.com/papi/v1/account",
+                    "https://fapi.binance.com/fapi/v2/account",
+                    "https://dapi.binance.com/dapi/v1/account",
+                    gw.BASE_URL + "/sapi/v1/margin/account"]
+    with pytest.raises(gw.Refused):
+        gw.check_path("/papi/v2/account")      # only the listed versions
+    with pytest.raises(gw.Refused):
+        gw.check_path("/eapi/v1/account")      # options API is not relayed
 
 
 def test_unsigned_get_adds_no_timestamp(monkeypatch):

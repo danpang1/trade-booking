@@ -45,7 +45,27 @@ import requests
 import binance_vip_loan_ltv as vip
 
 BASE_URL = vip.BASE_URL
-ALLOWED_PREFIXES = ("/api/v3/", "/sapi/v1/", "/sapi/v2/", "/sapi/v3/", "/sapi/v4/")
+# Binance splits its read API over several hosts; the path prefix says which.
+# Portfolio Margin lives on papi.binance.com, USD-M futures on fapi, COIN-M on
+# dapi. The same key signs all of them.
+HOSTS = {
+    "/api/": BASE_URL,
+    "/sapi/": BASE_URL,
+    "/papi/": "https://papi.binance.com",
+    "/fapi/": "https://fapi.binance.com",
+    "/dapi/": "https://dapi.binance.com",
+}
+ALLOWED_PREFIXES = ("/api/v3/", "/sapi/v1/", "/sapi/v2/", "/sapi/v3/", "/sapi/v4/",
+                    "/papi/v1/", "/fapi/v1/", "/fapi/v2/", "/fapi/v3/", "/dapi/v1/")
+
+
+def host_for(path: str) -> str:
+    for prefix, host in HOSTS.items():
+        if path.startswith(prefix):
+            return host
+    return BASE_URL
+
+
 DENY = re.compile(
     r"(/address\b|/deposit/address|/withdraw/address|apiRestrictions|/apiKey\b|"
     r"api-key|/subAccountApi|/managed-subaccount/(deposit|withdraw)|"
@@ -115,11 +135,15 @@ def forward(path: str, params: dict, key: str, secret: str, signed: bool,
         q["signature"] = hmac.new(secret.encode("utf-8"), urlencode(q).encode("utf-8"),
                                   hashlib.sha256).hexdigest()
     call = requests.post if method == "POST" else requests.get
-    resp = call(BASE_URL + path, params=q, headers=headers, timeout=TIMEOUT,
+    resp = call(host_for(path) + path, params=q, headers=headers, timeout=TIMEOUT,
                 stream=True)
     body = resp.raw.read(MAX_BYTES + 1, decode_content=True)
     if len(body) > MAX_BYTES:
         raise Refused("Binance answered with more than %d bytes; narrow the query" % MAX_BYTES)
+    # The stream is consumed; hand the bytes back to the Response so a
+    # raise_for_status() error still carries Binance's reason in .text.
+    resp._content = body
+    resp._content_consumed = True
     resp.raise_for_status()
     try:
         return json.loads(body.decode("utf-8"))
