@@ -209,16 +209,58 @@ the UI offering actions that would 403.
   a breadth the data does not have.
 - `scope_state: 'deny'` renders the outage banner in place of an empty table.
 
+## Component 7 - the Colossus bot booking gate
+
+**Repo: `slack-trade-bot`. A separate change from everything above.**
+
+The Colossus bot's Bearer token belongs to **danny.pang**, who must remain a TMS
+admin for the bot to function. That makes the bot a full bypass of everything in
+this document unless it gates itself.
+
+`bot.py` already gates its *read* paths on the Slack user's own portfolios:
+
+- LTV (~line 2001, via `ltv.allowlist_ready`)
+- Binance (~2073, `binance_q.may_see`)
+- TMS queries (~2128, `access.portfolios_for`, returning `tms.no_access_text()`
+  for a user in no portfolio)
+
+The **booking** handler (~2581 and ~2902, through `resolve_booking_user` ->
+`validate_trades` -> draft insert) calls `access.*` nowhere. It resolves the
+Slack user's email only to stamp `booking_user` and `requested_by`, never to
+check whether they may book that portfolio.
+
+The effect, once TMS scoping ships: a trader who cannot see PTF 8043 in the
+dashboard can @mention Colossus and book into 8043, because the submission
+carries danny.pang's admin token. The dashboard control would be real for
+reading and hollow for writing.
+
+**Fix:** before submitting, check every trade's `portfolio_id` against
+`access.portfolios_for(<slack user email>)` and reject the booking if any leg
+falls outside it. Reuses the already-warm `access.py` and follows the same
+shape as the TMS-query gate, including its refdata-unavailable message.
+
+Notes:
+
+- Inter-PTF funding books **two legs in different portfolios**. The requester
+  must own both, or the booking is refused - not silently half-booked.
+- A Slack profile with no readable email already degrades to a
+  `BOOKING_USER_PREFIX + slack_id` stamp. With no email there is no portfolio
+  list, so that case must now be refused rather than booked unscoped.
+
+A follow-up, not in this change: make TMS honour `requested_by`, so an admin
+Bearer token supplying it is scoped to *that* user's portfolios. That closes the
+same hole from the server end. It is defence-in-depth rather than the primary
+fix, because a caller can omit `requested_by` and get admin scope back.
+
 ## Blast radius
 
 Rollout is a hard ship - no feature flag, enforced from the first deploy. Two
 things are most likely to bite:
 
-1. **The Colossus bot.** Its Bearer token resolves through
-   `api_tokens.user_id -> users.id`, so it inherits that user's role and scope.
-   If that user is not an admin, draft creation and `tokka-mo:drafts` begin
-   403-ing on deploy. **The owning user must be identified and confirmed admin
-   before this ships.**
+1. **The Colossus bot.** Its token belongs to danny.pang, so the bot keeps
+   working **provided danny.pang is `role = 'admin'` in the TMS Postgres
+   `users` table** - confirm before deploying. Component 7 is what stops that
+   admin token becoming a hole.
 2. **Existing non-admins.** Anyone whose email is not in a `portfolio.usernames`
    goes from seeing everything to an empty table and four fewer pages.
 
@@ -250,6 +292,15 @@ New to this app:
 - `blotter.csv` and `loan/export` are scoped
 - a scoped user with zero portfolios gets an empty read and a 403 write
 
+For Component 7, in `slack-trade-bot`:
+
+- a booking into a portfolio the Slack user does not own is refused
+- an inter-PTF booking where the user owns only one of the two legs is refused
+  outright, not half-booked
+- a Slack user with no readable email is refused rather than booked unscoped
+- refdata unavailable refuses the booking with the same message the query path
+  already uses
+
 ## Notes for implementation
 
 - Python style in this repo: no one-liner `def`s, no aligned `=`, single space
@@ -264,4 +315,5 @@ New to this app:
   (Lighter snapshots, Binance gateway, v0.0.104); `middle-office-tools` sits
   back at the Binance-LTV commits. The `src/` JSX is currently identical between
   them but `server.js` is not, and most of this change lands in `server.js`.
-- **Which user owns the Colossus bot's Bearer token?**
+- **Confirm danny.pang is `role = 'admin'`** in the TMS Postgres `users` table
+  before deploying. Not yet verified - it needs a prod read.
