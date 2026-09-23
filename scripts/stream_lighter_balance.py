@@ -55,7 +55,13 @@ LIGHTER_API = "https://mainnet.zklighter.elliot.ai/api/v1"
 # REST surface but its own order books, markets and account-index space. Host
 # taken from the explorer bundle (apidocs.rh.lighter.xyz / api.rh.lighter.xyz).
 LIGHTER_RH_API = "https://api.rh.lighter.xyz/api/v1"
-EXCH = "LIGHTER_FUTURES"
+# `exch` is per deployment, not per venue: refdata lists the Robinhood Chain
+# account under exchangeName "LIGHTER ROBINHOOD" with products=UNIFIED, so it
+# takes the UNIFIED naming used for Bitget's unified-trading accounts
+# (EC001@BITGET_UNIFIED / exch BITGET_UNIFIED) rather than the _FUTURES form.
+# Each ACCOUNT_MAP entry carries the value its rows are written with.
+EXCH = "LIGHTER_FUTURES"        # zkSync mainnet deployment
+EXCH_RH = "LIGHTER_UNIFIED"     # Robinhood Chain deployment
 
 # (api base, L1 wallet) pairs to snap. A wallet only means something together
 # with the deployment it lives on, so they travel as a pair. A wallet that has
@@ -71,8 +77,12 @@ WALLETS = [
 # index would silently merge two desks. Unmapped pairs are warned + skipped so
 # nothing is ever written under a wrong account_id.
 ACCOUNT_MAP: dict[tuple[str, int], dict] = {
-    (LIGHTER_API, 29911): {"account_id": 215002, "name": "TRADING01@LIGHTER"},
-    (LIGHTER_RH_API, 31599): {"account_id": 237002, "name": "TRADING02@LIGHTER"},
+    (LIGHTER_API, 29911): {
+        "account_id": 215002, "name": "TRADING01@LIGHTER", "exch": EXCH,
+    },
+    (LIGHTER_RH_API, 31599): {
+        "account_id": 237002, "name": "TRADING02@LIGHTER_UNIFIED", "exch": EXCH_RH,
+    },
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -166,7 +176,7 @@ def _fetch_account(api: str, index: int) -> dict | None:
     return accs[0] if accs else None
 
 
-def normalize_equity(account_id: int, account_name: str,
+def normalize_equity(account_id: int, account_name: str, exch: str,
                      fetch_dt: datetime, update_dt: datetime | None,
                      account: dict) -> dict:
     """One USDC equity (MTM) row per Lighter sub-account.
@@ -179,7 +189,7 @@ def normalize_equity(account_id: int, account_name: str,
     return {
         "account_id": account_id,
         "account_name": account_name,
-        "exch": EXCH,
+        "exch": exch,
         "instrument": "USDC",
         "instrument_type": "INST_TYPE_SPOT",
         "side": "long",
@@ -196,7 +206,7 @@ def normalize_equity(account_id: int, account_name: str,
     }
 
 
-def normalize_position_row(account_id: int, account_name: str,
+def normalize_position_row(account_id: int, account_name: str, exch: str,
                            fetch_dt: datetime, update_dt: datetime | None,
                            raw: dict) -> dict | None:
     """One INST_TYPE_PERP balance row per open Lighter position."""
@@ -210,8 +220,8 @@ def normalize_position_row(account_id: int, account_name: str,
     return {
         "account_id": account_id,
         "account_name": account_name,
-        "exch": EXCH,
-        "instrument": f"{symbol}-P/USDC@{EXCH}" if symbol else "",
+        "exch": exch,
+        "instrument": f"{symbol}-P/USDC@{exch}" if symbol else "",
         "instrument_type": "INST_TYPE_PERP",
         "side": side,
         "total_qty": abs_qty,
@@ -268,12 +278,12 @@ def snap_once(conn, dry_run: bool) -> int:
         update_dt = (datetime.fromtimestamp(tx_us / 1_000_000, tz=timezone.utc)
                      if tx_us > 0 else None)
 
-        rows.append(normalize_equity(meta["account_id"], meta["name"],
+        rows.append(normalize_equity(meta["account_id"], meta["name"], meta["exch"],
                                      fetch_dt, update_dt, acc))
         positions = acc.get("positions", [])
         pos_kept = 0
         for p in positions:
-            row = normalize_position_row(meta["account_id"], meta["name"],
+            row = normalize_position_row(meta["account_id"], meta["name"], meta["exch"],
                                          fetch_dt, update_dt, p)
             if row:
                 rows.append(row)
