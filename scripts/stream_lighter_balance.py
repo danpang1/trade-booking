@@ -11,8 +11,11 @@ and writes:
 Convention
 ----------
 - Public read-only API (no auth).
-- L1 address `0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB` (8023 - CDA SOL desk).
-- One Lighter sub-account today (index 29911) → MO account_id 215002.
+- L1 wallets in L1_ADDRESSES; an unfunded wallet has no Lighter account yet
+  and is skipped (HTTP 400 / code 21100) without failing the other wallets.
+- Sub-account index → MO account_id via ACCOUNT_MAP; index 29911 (wallet
+  `0xF8B5bde5…`, 8023 CDA SOL desk) → 215002 TRADING01@LIGHTER. Unmapped
+  indexes are warned + skipped so nothing is written under a wrong id.
 - Equity row total_qty = `total_asset_value` (MTM, USDC).
 - Equity row avail_qty = `available_balance`.
 - Position rows total_qty = abs(position), side=long/short by `sign`,
@@ -46,11 +49,24 @@ import mo_db
 
 # ── Constants ──────────────────────────────────────────────────────────
 LIGHTER_API = "https://mainnet.zklighter.elliot.ai/api/v1"
-L1_ADDRESS = "0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB"
 EXCH = "LIGHTER_FUTURES"
+
+# L1 wallets to snap. Each is looked up via /accountsByL1Address; a wallet that
+# has never been funded has no Lighter account yet and is skipped (see
+# _resolve_subaccounts). Sub-account indexes are global, so ACCOUNT_MAP below
+# stays keyed by index regardless of which wallet a sub belongs to.
+L1_ADDRESSES = [
+    "0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB",   # TRADING01@LIGHTER - 8023 CDA SOL
+    "0xaa8307A460053a9E719e27bE78cF0135A86837f1",   # TRADING02@LIGHTER - 1INCH FUSION
+]
 
 ACCOUNT_MAP: dict[int, dict] = {
     29911: {"account_id": 215002, "name": "TRADING01@LIGHTER"},
+    # TRADING02@LIGHTER (refdata account_exchange id 237 -> account_id 237002,
+    # portfolio TOKKA LABS - SSB - 1INCH FUSION). Lighter assigns the index on
+    # first deposit; until then the wallet returns "account not found". Once it
+    # is funded the collector logs `unmapped Lighter sub-account index=N` -
+    # that N is the index to add here.
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -100,8 +116,38 @@ def _f(s: str | float | None, default: float | None = 0.0) -> float | None:
 
 
 def _resolve_subaccounts() -> list[dict]:
-    r = _get(f"{LIGHTER_API}/accountsByL1Address?l1_address={L1_ADDRESS}")
-    return r.get("sub_accounts") or []
+    """Return {index, collateral, ...} rows across every wallet in L1_ADDRESSES.
+
+    A wallet that has never been funded has no Lighter account and answers
+    HTTP 400 `{"code":21100,"message":"account not found"}`. That is the normal
+    state of a newly registered wallet, so it is logged and skipped rather than
+    failing the snap for the wallets that DO have accounts.
+
+    Any other failure is logged per wallet; if nothing at all could be resolved
+    the error is raised so snapshot_all marks the task FAILED instead of
+    recording a silent empty snapshot.
+    """
+    subs: list[dict] = []
+    errors = 0
+    for addr in L1_ADDRESSES:
+        try:
+            r = _get(f"{LIGHTER_API}/accountsByL1Address?l1_address={addr}")
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            if e.code == 400 and "21100" in body:
+                log.info(f"{addr[:10]}...: no Lighter account yet (unfunded), skipping")
+            else:
+                errors += 1
+                log.error(f"accountsByL1Address failed for {addr[:10]}...: {e} {body[:200]}")
+            continue
+        except Exception as e:
+            errors += 1
+            log.error(f"accountsByL1Address failed for {addr[:10]}...: {e}")
+            continue
+        subs.extend(r.get("sub_accounts") or [])
+    if errors and not subs:
+        raise RuntimeError("accountsByL1Address failed for every configured wallet")
+    return subs
 
 
 def _fetch_account(index: int) -> dict | None:
@@ -190,11 +236,7 @@ INSERT INTO tq_hist_balance_mo (
 
 def snap_once(conn, dry_run: bool) -> int:
     fetch_dt = datetime.now(timezone.utc)
-    try:
-        subs = _resolve_subaccounts()
-    except Exception as e:
-        log.error(f"accountsByL1Address failed: {e}")
-        return 0
+    subs = _resolve_subaccounts()
 
     rows: list[dict] = []
     for sub in subs:
@@ -293,7 +335,8 @@ def main() -> None:
             pass
 
     mode = "once" if args.once else ("hourly" if args.hourly else f"interval={args.interval}s")
-    log.info(f"mode={mode} dry_run={args.dry_run} l1={L1_ADDRESS[:10]}…")
+    log.info(f"mode={mode} dry_run={args.dry_run} "
+             f"wallets={[a[:10] + '...' for a in L1_ADDRESSES]}")
 
     try:
         if args.once:
