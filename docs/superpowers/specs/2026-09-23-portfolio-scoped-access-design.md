@@ -311,9 +311,26 @@ For Component 7, in `slack-trade-bot`:
 
 ## Open items
 
-- **Which working copy is the deploy source?** `trade-booking` is git-ahead
-  (Lighter snapshots, Binance gateway, v0.0.104); `middle-office-tools` sits
-  back at the Binance-LTV commits. The `src/` JSX is currently identical between
-  them but `server.js` is not, and most of this change lands in `server.js`.
 - **Confirm danny.pang is `role = 'admin'`** in the TMS Postgres `users` table
   before deploying. Not yet verified - it needs a prod read.
+
+## Where this is built
+
+Resolved 2026-09-23. All of Components 1-6 land in the **`trade-booking`**
+working copy; Component 7 lands in `slack-trade-bot`.
+
+`trade-booking` and `middle-office-tools` are two clones of the same repo,
+`bitbucket.org/tokka-labs/middle-office-tools` - not two codebases.
+`bitbucket-pipelines.yml` builds and publishes the image, and exposes the
+UAT/prod deploy steps, only under `branches: main`; pull requests lint and build
+but never publish. So the deploy source is `main` on the remote.
+
+Of the two clones, only `trade-booking` tracks it: its local `main` is level
+with `origin/main` (`10de29f`, v0.0.104). `middle-office-tools` is 21 commits
+behind `main`, parked on the abandoned `8041-and-export-fix` branch since
+2026-08-21, and its own `origin/main` ref is stale.
+
+**Do not mirror changes into `middle-office-tools`.** Its `src/*.jsx` matches
+`trade-booking` only because someone hand-copied the JSX across without the
+server; that habit ships nothing (the image is built from `origin/main`) and
+risks overwriting newer work from a stale tree.
