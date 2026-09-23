@@ -12,17 +12,21 @@ import json
 import sys
 
 import draft_db
+import scope
 
 
-def _get(draft_id: int, acting: str) -> dict | None:
+def _get(draft_id: int, acting: str, ptf=None) -> dict | None:
     conn = draft_db.connect()
     try:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT * FROM bookings_draft "
-                    "WHERE id = %s AND created_by = %s",
-                    (draft_id, acting),
+                    "WHERE id = %s AND created_by = %s"
+                    + ("" if ptf is None
+                       else " AND payload->>'portfolio_id' = ANY(%s)"),
+                    (draft_id, acting) if ptf is None
+                    else (draft_id, acting, ptf),
                 )
                 r = cur.fetchone()
                 if r is None:
@@ -50,7 +54,7 @@ def main() -> int:
         return 3
 
     try:
-        draft = _get(draft_id, acting)
+        draft = _get(draft_id, acting, scope.read_scope(body))
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5

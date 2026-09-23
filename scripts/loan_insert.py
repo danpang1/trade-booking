@@ -44,6 +44,7 @@ import sys
 
 import attachments_db
 import loan_db
+import scope
 
 
 def main() -> int:
@@ -63,6 +64,17 @@ def main() -> int:
         loan_db.validate_payload(payload, mode="insert")
     except loan_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+
+    # Every leg must be inside the caller's portfolios. INTER PTF FUNDING
+    # books two legs in two different portfolios, so checking only the first
+    # would let a caller book half a transfer into a book they cannot see.
+    try:
+        ptf = scope.read_scope(_raw if isinstance(_raw, dict) else {})
+        for _leg in (payload if isinstance(payload, list) else [payload]):
+            scope.check_write(ptf, (_leg or {}).get("portfolio_id"))
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
         return 3
 
     conn = loan_db.connect()

@@ -10,6 +10,7 @@ import { readFile, stat } from "fs/promises";
 import { resolve, dirname, extname, normalize, sep } from "path";
 import { fileURLToPath } from "url";
 import { platform } from "os";
+import { ACCESS_RETRY_MS, classifyRoute, scopeFor, withScope, stampScope } from "./serverScope.mjs";
 
 const PYTHON = process.env.PYTHON || (platform() === "win32" ? "python" : "python3");
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -207,11 +208,16 @@ function msUntilNextHH15UTC() {
 
 function scheduleHourlyRefdataSync() {
   runAllSyncs("startup-backfill");
+  refreshAccessMap("startup-backfill");
   const firstDelay = msUntilNextHH15UTC();
   console.log(`[refdata] next hourly tick in ${Math.round(firstDelay / 1000)}s`);
   setTimeout(() => {
     runAllSyncs("hourly-tick");
-    setInterval(() => runAllSyncs("hourly-tick"), 60 * 60 * 1000);
+    refreshAccessMap("hourly-tick");
+    setInterval(() => {
+      runAllSyncs("hourly-tick");
+      refreshAccessMap("hourly-tick");
+    }, 60 * 60 * 1000);
   }, firstDelay);
 }
 
@@ -266,6 +272,7 @@ function readBody(req) {
 // Map a Python exit code → HTTP status code.
 function httpStatusFor(exitCode, json) {
   if (exitCode === 0) return 200;
+  if (json && json.code === "forbidden") return 403;  // outside caller's portfolios
   if (json && json.code === "conflict") return 409;
   if (json && json.code === "not_found") return 404;
   if (json && json.code === "no_transfers") return 422;
@@ -344,6 +351,48 @@ function requireAdmin(req, res) {
   res.statusCode = 403;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ ok: false, error: "admin required" }));
+  return false;
+}
+
+// ── Portfolio scope ───────────────────────────────────────────────
+// A non-admin sees only the portfolios T2X says they own. The map comes
+// from reference_data.portfolio.usernames via scripts/portfolio_access.py
+// and is held here in memory — never written to disk, because public/ is
+// served to browsers without authentication.
+const PORTFOLIO_ACCESS_SCRIPT = resolve(__dirname, "scripts", "portfolio_access.py");
+
+// Staleness ceiling, route table and the scope decision live in
+// serverScope.mjs so the classifier can be tested on its own.
+let accessMap = { byEmail: new Map(), names: new Map(), loadedAt: null };
+let accessRetryTimer = null;
+
+async function refreshAccessMap(runLabel) {
+  const { code, json } = await spawnPython(PORTFOLIO_ACCESS_SCRIPT, "{}");
+  if (code === 0 && json && json.ok === true) {
+    accessMap = {
+      byEmail: new Map(Object.entries(json.by_email || {})),
+      names: new Map(Object.entries(json.names || {})),
+      loadedAt: Date.now(),
+    };
+    console.log(`[access] ${runLabel}: ${accessMap.byEmail.size} emails, `
+      + `${accessMap.names.size} portfolios`);
+    if (accessRetryTimer) {
+      clearTimeout(accessRetryTimer);
+      accessRetryTimer = null;
+    }
+    return true;
+  }
+  const detail = (json && (json.detail || json.error)) || `exit ${code}`;
+  const ageMs = accessMap.loadedAt === null ? null : Date.now() - accessMap.loadedAt;
+  console.error(`[access] ${runLabel}: failed (${detail}); `
+    + (ageMs === null ? "no cached map" : `serving map ${Math.round(ageMs / 1000)}s old`));
+  // Retry sooner than the hourly tick while we have no usable map.
+  if (!accessRetryTimer) {
+    accessRetryTimer = setTimeout(() => {
+      accessRetryTimer = null;
+      refreshAccessMap("access-retry");
+    }, ACCESS_RETRY_MS);
+  }
   return false;
 }
 
@@ -452,6 +501,29 @@ const server = createServer(async (req, res) => {
       return;
     }
     req.sessionUser = sessionUser;  // {sid, id, username, email, role}
+
+    // ── Portfolio scope gate ──────────────────────────────────────
+    // Runs once, here, so no handler can forget it. An undeclared route
+    // classifies as admin-only, which is why adding one fails loudly.
+    const pathname = (req.url || "").split("?")[0];
+    const klass = classifyRoute(req.method, pathname);
+    req.scope = scopeFor(sessionUser, accessMap);
+
+    if (klass === "admin-only") {
+      if (!requireAdmin(req, res)) return;
+    } else if (klass === "scoped-read" || klass === "scoped-write") {
+      // "we cannot tell who you are" is a different answer from "you own
+      // nothing" — a trader needs to know which one they are looking at.
+      if (req.scope.kind === "deny") {
+        res.statusCode = 503;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({
+          ok: false,
+          error: "portfolio access data unavailable — please try again shortly",
+        }));
+        return;
+      }
+    }
   }
 
   if (req.url === "/api/health") {
@@ -467,7 +539,10 @@ const server = createServer(async (req, res) => {
   // per-source success/fail status.
   if (req.url === "/api/refdata/refresh" && req.method === "POST") {
     const t0 = Date.now();
-    const results = await runAllSyncs("manual-refresh");
+    const [results] = await Promise.all([
+      runAllSyncs("manual-refresh"),
+      refreshAccessMap("manual-refresh"),
+    ]);
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
       ok: results.every((r) => r.ok),
@@ -539,9 +614,18 @@ const server = createServer(async (req, res) => {
   // ── Auth: whoami ──────────────────────────────────────────────────
   if (req.url === "/api/auth/me" && req.method === "GET") {
     const { username, email, role } = req.sessionUser;
+    // The client mirrors these to hide what it would only get a 403 on.
+    // The server stays the authority; this is convenience, not control.
+    const scope = req.scope || scopeFor(req.sessionUser, accessMap);
+    const portfolios = scope.kind === "scoped"
+      ? scope.portfolios.map((n) => ({ number: n, name: accessMap.names.get(String(n)) || null }))
+      : [];
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true, user: { username, email, role } }));
+    res.end(JSON.stringify({
+      ok: true,
+      user: { username, email, role, portfolios, scope_state: scope.kind },
+    }));
     return;
   }
 
@@ -696,7 +780,7 @@ const server = createServer(async (req, res) => {
       // Bearer callers (the Colossus bot) may name the real requester per
       // trade via payload.requested_by; Python honours it only for "bearer".
       parsed._auth_mode = req.sessionUser.authMode;
-      const result = await spawnPython(DRAFT_BATCH_INSERT_SCRIPT, JSON.stringify(parsed));
+      const result = await spawnPython(DRAFT_BATCH_INSERT_SCRIPT, withScope(req, parsed));
       res.statusCode = httpStatusFor(result.code, result.json);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(result.json));
@@ -709,7 +793,7 @@ const server = createServer(async (req, res) => {
       let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
       parsed._acting_user = acting;
       parsed._auth_mode = req.sessionUser.authMode;
-      const result = await spawnPython(DRAFT_INSERT_SCRIPT, JSON.stringify(parsed));
+      const result = await spawnPython(DRAFT_INSERT_SCRIPT, withScope(req, parsed));
       res.statusCode = httpStatusFor(result.code, result.json);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(result.json));
@@ -721,7 +805,7 @@ const server = createServer(async (req, res) => {
     {
       const u = new URL(req.url || "", "http://localhost");
       if (req.method === "GET" && /^\/api\/bookings\/drafts\/?$/.test(u.pathname)) {
-        const stdin = JSON.stringify({
+        const stdin = withScope(req, {
           _acting_user: acting,
           status: u.searchParams.get("status") || null,
           batch_id: u.searchParams.get("batch_id") || null,
@@ -769,7 +853,7 @@ const server = createServer(async (req, res) => {
       let parsed; try { parsed = JSON.parse(body || "{}"); } catch { parsed = {}; }
       parsed.id = id;
       parsed._acting_user = acting;
-      const result = await spawnPython(DRAFT_PATCH_SCRIPT, JSON.stringify(parsed));
+      const result = await spawnPython(DRAFT_PATCH_SCRIPT, withScope(req, parsed));
       res.statusCode = httpStatusFor(result.code, result.json);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(result.json));
@@ -779,7 +863,7 @@ const server = createServer(async (req, res) => {
     // GET /api/bookings/drafts/:id
     if (idOnlyMatch && req.method === "GET") {
       const id = parseInt(idOnlyMatch[1], 10);
-      const stdin = JSON.stringify({ id, _acting_user: acting });
+      const stdin = withScope(req, { id, _acting_user: acting });
       const result = await spawnPython(DRAFT_GET_SCRIPT, stdin);
       res.statusCode = httpStatusFor(result.code, result.json);
       res.setHeader("Content-Type", "application/json");
@@ -832,7 +916,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(CASHFLOW_INSERT_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(CASHFLOW_INSERT_SCRIPT, stampScope(stampedBody, req));
     const dealRefs = (json && json.rows || []).map((r) => r.deal_ref).join(",");
     console.log(`[cashflow] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
@@ -863,7 +947,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_SCRIPT, stampScope(stampedBody, req));
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[cashflow] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
@@ -878,7 +962,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampBatchUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_BATCH_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(CASHFLOW_AMEND_BATCH_SCRIPT, stampScope(stampedBody, req));
     console.log(`[cashflow] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[cashflow:err] ${stderr.trim()}`);
     res.statusCode = httpStatusFor(code, json);
@@ -891,7 +975,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url.startsWith("/api/cashflow/recent")) {
     const url = new URL(req.url, "http://localhost");
     const limit = parseInt(url.searchParams.get("limit") || "20", 10);
-    const stdin = JSON.stringify({ limit: Number.isNaN(limit) ? 20 : limit });
+    const stdin = withScope(req, { limit: Number.isNaN(limit) ? 20 : limit });
     const { code, json } = await spawnPython(CASHFLOW_RECENT_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -905,7 +989,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && /^\/api\/cashflow\/[^/]+\/history$/.test(req.url)) {
     const segments = req.url.split("/");
     const dealRef = decodeURIComponent(segments[segments.length - 2]);
-    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const stdin = withScope(req, { deal_ref: dealRef });
     const { code, json } = await spawnPython(CASHFLOW_HISTORY_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -916,7 +1000,7 @@ const server = createServer(async (req, res) => {
   // GET /api/cashflow/:deal_ref  (must come AFTER /api/cashflow/recent so the more-specific route matches first)
   if (req.method === "GET" && /^\/api\/cashflow\/[^/]+$/.test(req.url)) {
     const dealRef = decodeURIComponent(req.url.split("/").pop());
-    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const stdin = withScope(req, { deal_ref: dealRef });
     const { code, json } = await spawnPython(CASHFLOW_GET_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -931,7 +1015,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(LOAN_SCHEDULE_COMMENT_UPSERT_SCRIPT, stampScope(stampedBody, req));
     const ref = json && json.row && json.row.loan_deal_ref;
     console.log(`[loan] schedule-comment ${ref || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
@@ -972,7 +1056,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_INSERT_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(LOAN_INSERT_SCRIPT, stampScope(stampedBody, req));
     const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
     console.log(`[loan] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
@@ -987,7 +1071,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_AMEND_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(LOAN_AMEND_SCRIPT, stampScope(stampedBody, req));
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[loan] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
@@ -1002,7 +1086,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampBatchUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(LOAN_AMEND_BATCH_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(LOAN_AMEND_BATCH_SCRIPT, stampScope(stampedBody, req));
     console.log(`[loan] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[loan:err] ${stderr.trim()}`);
     res.statusCode = httpStatusFor(code, json);
@@ -1015,7 +1099,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url.startsWith("/api/loan/recent")) {
     const url = new URL(req.url, "http://localhost");
     const limit = parseInt(url.searchParams.get("limit") || "20", 10);
-    const stdin = JSON.stringify({ limit: Number.isNaN(limit) ? 20 : limit });
+    const stdin = withScope(req, { limit: Number.isNaN(limit) ? 20 : limit });
     const { code, json } = await spawnPython(LOAN_RECENT_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -1130,7 +1214,7 @@ const server = createServer(async (req, res) => {
     const from = url.searchParams.get("from") || null;
     const to   = url.searchParams.get("to")   || null;
     const portfolioIds = url.searchParams.getAll("portfolio").filter(Boolean);
-    const stdin = JSON.stringify({ from, to, portfolio_ids: portfolioIds });
+    const stdin = withScope(req, { from, to, portfolio_ids: portfolioIds });
     const t0 = Date.now();
     const { code, json, stderr } = await spawnPython(LOAN_EXPORT_SCRIPT, stdin);
     if (stderr) console.error(`[loan:export:err] ${stderr.trim()}`);
@@ -1146,7 +1230,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && /^\/api\/loan\/[^/]+\/history$/.test(req.url)) {
     const segments = req.url.split("/");
     const dealRef = decodeURIComponent(segments[segments.length - 2]);
-    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const stdin = withScope(req, { deal_ref: dealRef });
     const { code, json } = await spawnPython(LOAN_HISTORY_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -1157,7 +1241,7 @@ const server = createServer(async (req, res) => {
   // GET /api/loan/:deal_ref  (must come AFTER /api/loan/recent so the more-specific route matches first)
   if (req.method === "GET" && /^\/api\/loan\/[^/]+$/.test(req.url)) {
     const dealRef = decodeURIComponent(req.url.split("/").pop());
-    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const stdin = withScope(req, { deal_ref: dealRef });
     const { code, json } = await spawnPython(LOAN_GET_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -1170,7 +1254,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(SPOT_INSERT_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(SPOT_INSERT_SCRIPT, stampScope(stampedBody, req));
     const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
     console.log(`[spot] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
@@ -1185,7 +1269,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(SPOT_AMEND_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(SPOT_AMEND_SCRIPT, stampScope(stampedBody, req));
     const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
     console.log(`[spot] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
@@ -1200,7 +1284,7 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     const stampedBody = stampBatchUserId(body, req.sessionUser.username);
     const t0 = Date.now();
-    const { code, json, stderr } = await spawnPython(SPOT_AMEND_BATCH_SCRIPT, stampedBody);
+    const { code, json, stderr } = await spawnPython(SPOT_AMEND_BATCH_SCRIPT, stampScope(stampedBody, req));
     console.log(`[spot] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
     if (stderr) console.error(`[spot:err] ${stderr.trim()}`);
     res.statusCode = httpStatusFor(code, json);
@@ -1213,7 +1297,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url.startsWith("/api/spot/recent")) {
     const url = new URL(req.url, "http://localhost");
     const limit = parseInt(url.searchParams.get("limit") || "20", 10);
-    const stdin = JSON.stringify({ limit: Number.isNaN(limit) ? 20 : limit });
+    const stdin = withScope(req, { limit: Number.isNaN(limit) ? 20 : limit });
     const { code, json } = await spawnPython(SPOT_RECENT_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -1225,7 +1309,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && /^\/api\/spot\/[^/]+\/history$/.test(req.url)) {
     const segments = req.url.split("/");
     const dealRef = decodeURIComponent(segments[segments.length - 2]);
-    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const stdin = withScope(req, { deal_ref: dealRef });
     const { code, json } = await spawnPython(SPOT_HISTORY_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -1236,7 +1320,7 @@ const server = createServer(async (req, res) => {
   // GET /api/spot/:deal_ref  (must come AFTER /api/spot/recent so the more-specific route matches first)
   if (req.method === "GET" && /^\/api\/spot\/[^/]+$/.test(req.url)) {
     const dealRef = decodeURIComponent(req.url.split("/").pop());
-    const stdin = JSON.stringify({ deal_ref: dealRef });
+    const stdin = withScope(req, { deal_ref: dealRef });
     const { code, json } = await spawnPython(SPOT_GET_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
     res.setHeader("Content-Type", "application/json");
@@ -1257,7 +1341,7 @@ const server = createServer(async (req, res) => {
     const to   = url.searchParams.get("to")   || null;
     const type = (url.searchParams.get("type") || "all").toLowerCase();
     const portfolioIds = url.searchParams.getAll("portfolio").filter(Boolean);
-    const stdin = JSON.stringify({
+    const stdin = withScope(req, {
       from, to, type,
       portfolio_ids: portfolioIds,
     });

@@ -11,6 +11,7 @@ import json
 import sys
 
 import spot_db
+import scope
 
 
 def main() -> int:
@@ -26,6 +27,12 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "limit must be integer"}))
         return 3
     limit = max(1, min(2000, limit))
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    scope_sql, scope_args = scope.where_clause(ptf, alias="t")
 
     conn = spot_db.connect()
     try:
@@ -39,9 +46,10 @@ def main() -> int:
                 "         WHERE deal_ref = t.deal_ref) AS first_effective_start "
                 "  FROM trades_spot t "
                 " WHERE t.effective_end IS NULL "
-                " ORDER BY t.trade_date DESC, t.deal_ref DESC "
+                + scope_sql
+                + " ORDER BY t.trade_date DESC, t.deal_ref DESC "
                 " LIMIT %s",
-                (limit,),
+                (*scope_args, limit),
             )
             cols = [d.name for d in cur.description]
             rows = [spot_db.row_to_payload(cols, r) for r in cur.fetchall()]

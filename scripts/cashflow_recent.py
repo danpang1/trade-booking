@@ -12,6 +12,7 @@ import sys
 
 import cashflow_db
 import loan_cashflow_map_db
+import scope
 
 
 def main() -> int:
@@ -27,6 +28,12 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "limit must be integer"}))
         return 3
     limit = max(1, min(2000, limit))
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    scope_sql, scope_args = scope.where_clause(ptf, alias="t")
 
     conn = cashflow_db.connect()
     try:
@@ -43,10 +50,11 @@ def main() -> int:
                 "  FROM trades_cashflow t "
                 "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
                 " WHERE t.effective_end IS NULL "
-                " GROUP BY t.id "
+                + scope_sql
+                + " GROUP BY t.id "
                 " ORDER BY t.trade_date DESC, t.deal_ref DESC "
                 " LIMIT %s",
-                (limit,),
+                (*scope_args, limit),
             )
             cols = [d.name for d in cur.description]
             rows = [cashflow_db.row_to_payload(cols, r) for r in cur.fetchall()]

@@ -20,6 +20,7 @@ import json
 import sys
 
 import loan_db
+import scope
 
 
 class _BatchConflict(Exception):
@@ -53,6 +54,12 @@ def main() -> int:
             print(json.dumps({"ok": False, "error": str(e), "deal_ref": p.get("deal_ref")}))
             return 3
 
+    try:
+        ptf = scope.read_scope(data if isinstance(data, dict) else {})
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
+
     conn = loan_db.connect()
     out_rows = []
     try:
@@ -69,22 +76,28 @@ def main() -> int:
                         cur.execute(
                             "UPDATE trades_loan SET effective_end = NOW() "
                             "WHERE deal_ref = %s AND effective_end IS NULL "
-                            "AND effective_start = %s RETURNING deal_ref",
+                            "AND effective_start = %s RETURNING deal_ref, portfolio_id",
                             (deal_ref, expected),
                         )
                     else:
                         cur.execute(
                             "UPDATE trades_loan SET effective_end = NOW() "
                             "WHERE deal_ref = %s AND effective_end IS NULL "
-                            "RETURNING deal_ref",
+                            "RETURNING deal_ref, portfolio_id",
                             (deal_ref,),
                         )
-                    if cur.fetchone() is None:
+                    _closed = cur.fetchone()
+                    if _closed is None:
                         raise _BatchConflict(
                             deal_ref,
                             f"{deal_ref} is not the current live row (changed or removed "
                             f"since the page loaded) — batch aborted, nothing changed",
                         )
+
+                    # Both ends of every row must be in scope. A refusal
+                    # raises inside the batch transaction, so the whole
+                    # batch rolls back — never a partial amend.
+                    scope.check_amend(ptf, _closed[1], p.get("portfolio_id"))
 
                     cols, vals = loan_db.payload_to_columns(p, deal_ref=deal_ref)
                     col_list = ", ".join(cols + ("effective_start", "effective_end"))
@@ -101,6 +114,9 @@ def main() -> int:
     except _BatchConflict as e:
         print(json.dumps({"ok": False, "code": "conflict", "error": str(e), "deal_ref": e.deal_ref}))
         return 4
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5

@@ -12,6 +12,7 @@ import json
 import sys
 
 import spot_db
+import scope
 
 
 def main() -> int:
@@ -25,6 +26,12 @@ def main() -> int:
     if not deal_ref:
         print(json.dumps({"ok": False, "error": "deal_ref is required"}))
         return 3
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    scope_sql, scope_args = scope.where_clause(ptf, alias='')
 
     conn = spot_db.connect()
     try:
@@ -32,8 +39,9 @@ def main() -> int:
             cur.execute(
                 "SELECT * FROM trades_spot "
                 " WHERE deal_ref = %s "
-                " ORDER BY effective_start ASC",
-                (deal_ref,),
+                + scope_sql
+                + " ORDER BY effective_start ASC",
+                (deal_ref, *scope_args),
             )
             rows = cur.fetchall()
             if not rows:

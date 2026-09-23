@@ -12,11 +12,18 @@ import json
 import sys
 
 import draft_db
+import scope
 
 
-def _list(acting: str, status, batch_id) -> list[dict]:
+def _list(acting: str, status, batch_id, ptf=None) -> list[dict]:
     where = ["created_by = %s"]
     args: list = [acting]
+    # Drafts are already isolated by created_by; the portfolio predicate is
+    # defence in depth, and the reason the route is scoped-read rather than
+    # admin-only (the tokka-mo plugin lists its own drafts through it).
+    if ptf is not None:
+        where.append("payload->>'portfolio_id' = ANY(%s)")
+        args.append(ptf)
     if status is not None:
         if status not in draft_db.STATUSES:
             raise draft_db.ValidationError(
@@ -60,7 +67,8 @@ def main() -> int:
         return 3
 
     try:
-        drafts = _list(acting, body.get("status"), body.get("batch_id"))
+        drafts = _list(acting, body.get("status"), body.get("batch_id"),
+                       scope.read_scope(body))
     except draft_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3

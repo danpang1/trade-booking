@@ -13,6 +13,7 @@ import sys
 
 import cashflow_db
 import loan_cashflow_map_db
+import scope
 
 
 def main() -> int:
@@ -26,6 +27,12 @@ def main() -> int:
     if not deal_ref:
         print(json.dumps({"ok": False, "error": "deal_ref is required"}))
         return 3
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    scope_sql, scope_args = scope.where_clause(ptf, alias='t')
 
     conn = cashflow_db.connect()
     try:
@@ -50,9 +57,10 @@ def main() -> int:
                 "  LEFT JOIN loan_cashflow_map m ON m.cashflow_deal_ref = t.deal_ref "
                 "  LEFT JOIN bookings_draft d ON d.approved_deal_ref = t.deal_ref "
                 " WHERE t.deal_ref = %s "
-                " GROUP BY t.id, d.id "
+                + scope_sql
+                + " GROUP BY t.id, d.id "
                 " ORDER BY t.effective_start ASC",
-                (deal_ref,),
+                (deal_ref, *scope_args),
             )
             rows = cur.fetchall()
             if not rows:
