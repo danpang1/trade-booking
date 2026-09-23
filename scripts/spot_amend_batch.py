@@ -90,6 +90,7 @@ def main() -> int:
                     out_cols = [d.name for d in cur.description]
                     out_rows.append(spot_db.row_to_payload(out_cols, cur.fetchone()))
         print(json.dumps({"ok": True, "rows": out_rows, "count": len(out_rows)}))
+        _dual_write_manual_trade_amend_batch(out_rows)
         return 0
     except _BatchConflict as e:
         print(json.dumps({"ok": False, "code": "conflict", "error": str(e), "deal_ref": e.deal_ref}))
@@ -99,6 +100,18 @@ def main() -> int:
         return 5
     finally:
         conn.close()
+
+
+def _dual_write_manual_trade_amend_batch(out_rows: list) -> None:
+    """Best-effort manual_trade mirror for each amended row (SCD2 supersede).
+    Runs post-commit; never affects the primary batch amend."""
+    try:
+        import manual_write
+
+        for row in out_rows:
+            manual_write.write_manual_trade_amend(row)
+    except Exception as e:  # noqa: BLE001
+        print(f"manual dual-write: skip manual_trade amend batch: {e!r}", file=sys.stderr)
 
 
 if __name__ == "__main__":

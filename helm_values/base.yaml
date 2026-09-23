@@ -62,6 +62,25 @@ env_secrets:
   T2X_RO_MYSQL_PASSWORD:
     name: trade-booking-mo-db
     key: t2x_ro_mysql_password
+  # Tech-team Postgres (prod `production` / uat `uat`) — holds manual_trade /
+  # manual_cashflow (same store as fee_event). Full DSN; used by tech_db.py /
+  # manual_write.py / apply_schema_manual_tables.py. When absent the manual
+  # dual-write is a silent no-op (best-effort), so the booking is never affected.
+  # Tech-team Postgres (uat `uat` / prod `production`) — holds manual_trade /
+  # manual_cashflow (same store as fee_event). Full DSN; used by tech_db.py /
+  # manual_write.py / apply_schema_manual_tables.py.
+  # REQUIRED: the `tech-db-config` secret must exist in THIS deployment's
+  # namespace (k8s secretKeyRef is namespace-scoped — replicate it from nx-hft
+  # into middle-office before deploying).
+  TECH_DB_URL:
+    name: tech-db-config
+    key: url
+  # Refdata Postgres (RW creds, but the client pins the session read-only) — used
+  # by refdata_db.py to resolve asset ids for the manual dual-write. REQUIRED:
+  # `refdata-db-config` must exist in this deployment's namespace too.
+  REFDATA_DB_URL:
+    name: refdata-db-config
+    key: url
 
 resources:
   requests:
