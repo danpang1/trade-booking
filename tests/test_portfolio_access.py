@@ -135,18 +135,29 @@ def test_env_vars_take_precedence_over_the_env_file(monkeypatch):
     }
 
 
-def test_creds_parse_from_the_t2x_env_block(tmp_path: Path, monkeypatch):
+def test_creds_parse_from_the_env_block_above_the_marker(tmp_path: Path,
+                                                         monkeypatch):
+    """The real .env shape: keys ABOVE the marker, a header comment further up
+    that NAMES the marker, and a second MySQL block below it. Matching the
+    marker as a substring lands on the header comment and parses nothing --
+    the bug that broke this module's first real run."""
     for k in ("HOST", "USERNAME", "PASSWORD"):
         monkeypatch.delenv(f"T2X_RO_MYSQL_{k}", raising=False)
     fake_env = tmp_path / ".env"
     fake_env.write_text(
+        "# Notes: keys go BEFORE the `# sg-ro-mysql` marker.\n"
+        "\n"
         "# MO DB UAT\n"
         "MO_DB_HOST: other.example.com\n"
         "\n"
         "host: refdata.example.com\n"
         "username: ro_user\n"
         "password: ro_secret\n"
-        "# t2x-ro-mysql\n",
+        "# sg-ro-mysql\n"
+        "\n"
+        "# MYSQL TOKEN PRICE DB\n"
+        "username: wrong\n"
+        "password: wrong\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(portfolio_access, "ENV", fake_env)
@@ -162,8 +173,25 @@ def test_missing_creds_raise_rather_than_returning_a_partial(
     for k in ("HOST", "USERNAME", "PASSWORD"):
         monkeypatch.delenv(f"T2X_RO_MYSQL_{k}", raising=False)
     fake_env = tmp_path / ".env"
-    fake_env.write_text("# t2x-ro-mysql\nhost: only.example.com\n",
+    fake_env.write_text("host: only.example.com\n# sg-ro-mysql\n",
                         encoding="utf-8")
     monkeypatch.setattr(portfolio_access, "ENV", fake_env)
     with pytest.raises(RuntimeError, match="credentials missing"):
+        portfolio_access.load_mysql_creds()
+
+
+def test_a_header_comment_naming_the_marker_is_not_the_marker(
+    tmp_path: Path, monkeypatch
+):
+    """The .env documents its own marker by name. A substring match finds that
+    comment, parses nothing, and then blames missing credentials."""
+    for k in ("HOST", "USERNAME", "PASSWORD"):
+        monkeypatch.delenv(f"T2X_RO_MYSQL_{k}", raising=False)
+    fake_env = tmp_path / ".env"
+    fake_env.write_text(
+        "# lookback window around `# sg-ro-mysql` marker.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(portfolio_access, "ENV", fake_env)
+    with pytest.raises(RuntimeError, match="marker line"):
         portfolio_access.load_mysql_creds()

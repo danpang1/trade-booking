@@ -32,9 +32,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
-# Section markers anchoring the t2x read-only MySQL block in .env. Same
-# credentials sync_portfolios.py already uses -- no new secret.
-ENV_MARKERS = ("t2x-ro-mysql", "mysql ro")
+# Marker line anchoring the read-only refdata MySQL block in .env. The keys
+# sit ABOVE it.
+#
+# Matched EXACTLY, not as a substring: the .env's own header comment mentions
+# the marker by name several lines up, and a substring search lands on that
+# comment and parses nothing. slack-trade-bot/access.py documents the same
+# trap, and this module hit it on its first real run.
+ENV_MARKERS = ("# sg-ro-mysql", "# t2x-ro-mysql")
 
 
 def load_mysql_creds() -> dict[str, str]:
@@ -57,17 +62,21 @@ def load_mysql_creds() -> dict[str, str]:
         )
 
     lines = ENV.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    marks = [
+        i for i, ln in enumerate(lines)
+        if ln.strip().lower() in ENV_MARKERS
+    ]
+    if not marks:
+        raise RuntimeError(
+            f"no {' or '.join(ENV_MARKERS)} marker line in {ENV}"
+        )
     creds: dict[str, str] = {}
-    for i, ln in enumerate(lines):
-        if any(m in ln.lower() for m in ENV_MARKERS):
-            for j in range(max(0, i - 5), min(len(lines), i + 3)):
-                s = lines[j].strip()
-                if not s or s.startswith("#"):
-                    continue
-                if ":" in s:
-                    k, _, v = s.partition(":")
-                    creds[k.strip().lower()] = v.strip()
-            break
+    for j in range(max(0, marks[0] - 5), marks[0]):
+        s = lines[j].strip()
+        if not s or s.startswith("#") or ":" not in s:
+            continue
+        k, _, v = s.partition(":")
+        creds[k.strip().lower()] = v.strip()
     missing = [k for k in ("host", "username", "password") if k not in creds]
     if missing:
         raise RuntimeError(
