@@ -60,7 +60,21 @@ def _insert_one(cur, payload: dict) -> dict:
         vals,
     )
     out_cols = [d.name for d in cur.description]
-    return spot_db.row_to_payload(out_cols, cur.fetchone())
+    row = spot_db.row_to_payload(out_cols, cur.fetchone())
+    _dual_write_manual_trade(row)
+    return row
+
+
+def _dual_write_manual_trade(row: dict) -> None:
+    """Best-effort mirror into the tech DB's manual_trade (separate DB, own
+    connection). Never affects the primary booking — all errors are swallowed,
+    including a failed import of the optional manual_write module."""
+    try:
+        import manual_write
+
+        manual_write.write_manual_trade(row)
+    except Exception as e:  # noqa: BLE001
+        print(f"manual dual-write: skip manual_trade: {e!r}", file=sys.stderr)
 
 
 def main() -> int:

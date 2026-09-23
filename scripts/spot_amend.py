@@ -109,12 +109,25 @@ def main() -> int:
                     user_id=payload.get("user_id") or "unknown",
                 )
         print(json.dumps({"ok": True, "rows": [row], "attachments": inserted_atts}))
+        _dual_write_manual_trade_amend(row)
         return 0
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5
     finally:
         conn.close()
+
+
+def _dual_write_manual_trade_amend(row: dict) -> None:
+    """Best-effort manual_* mirror for any amend (incl. cancel): closes the prior
+    open manual_trade version and inserts the new one (SCD2). Never affects the
+    primary amend — all errors (incl. import) swallowed."""
+    try:
+        import manual_write
+
+        manual_write.write_manual_trade_amend(row)
+    except Exception as e:  # noqa: BLE001
+        print(f"manual dual-write: skip manual_trade amend: {e!r}", file=sys.stderr)
 
 
 if __name__ == "__main__":

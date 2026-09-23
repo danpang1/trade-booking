@@ -2,5 +2,13 @@
 # Shared UAT overrides applied to every release of this service.
 # Instance-specific tweaks live in helm_values/{deployment,cron}/uat.yaml.
 
+# The `uat` branch publishes the image as <appVersion>-uat (see
+# .pipelines/generate-env.sh). The chart renders the deployed tag as
+# {{ .Chart.AppVersion }}{{ .Values.image.tagPostfix }}, so this postfix
+# makes the deployed tag match the published one. Without it the deploy
+# would pull the bare <appVersion> tag (main's prod image), not the uat build.
+image:
+  tagPostfix: "-uat"
+
 env:
   ENVIRONMENT: uat

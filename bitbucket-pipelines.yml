@@ -186,6 +186,30 @@ pipelines:
 
   branches:
 
+    # UAT deploy branch (mirrors nx-hft-position's standard: a long-lived
+    # `uat` branch builds+publishes the image, then a manual deploy step
+    # ships it to the test-rancher cluster). generate-env.sh already maps
+    # the `uat` branch to ENVIRONMENT=uat, VERSION=<appVersion>-uat and the
+    # test-rancher kubeconfig; helm_values/base-uat.yaml pins the matching
+    # image.tagPostfix so the published `-uat` tag is the one that deploys.
+    #
+    # ECR tags are immutable and the `-uat` tag is stable per appVersion, so
+    # bump helm/Chart.yaml (python scripts/update_version.py) before each
+    # push to uat — otherwise dockerBuildAndPublish skips the (existing) tag
+    # and the deploy re-pulls the old image.
+    uat:
+      - step: *prepareEnv
+
+      - parallel:
+        - step: *pythonLint
+        - step: *helmLint
+        - step: *secretscan
+
+      - step: *dockerBuildAndPublish
+
+      # Manual: click to ship the freshly published image to UAT.
+      - step: *deployUat
+
     main:
       - step: *prepareEnv
 
