@@ -87,13 +87,14 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
 
-    # Every leg must be inside the caller's portfolios. INTER PTF FUNDING
-    # books two legs in two different portfolios, so checking only the first
-    # would let a caller book half a transfer into a book they cannot see.
+    # Every leg must be inside the caller's portfolios, except the mirror
+    # leg of a transfer — see scope.check_insert_legs. An INTER PTF FUNDING
+    # is supposed to cross a boundary, so the far leg is exempt when it is
+    # the exact opposite of a leg the caller does own.
     try:
         ptf = scope.read_scope(_raw if isinstance(_raw, dict) else {})
-        for _leg in (payload if isinstance(payload, list) else [payload]):
-            scope.check_write(ptf, (_leg or {}).get("portfolio_id"))
+        scope.check_insert_legs(
+            ptf, payload if isinstance(payload, list) else [payload])
     except scope.ScopeError as e:
         print(json.dumps(scope.refusal(e)))
         return 3

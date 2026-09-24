@@ -13396,11 +13396,15 @@ export default function TradeBookingForm() {
                       counterparty_id_row: "",
                     })
                   }
-                  // Scoped like every other portfolio choice: an INTER PTF
-                  // FUNDING books a leg in EACH portfolio, and the insert
-                  // guard checks every leg — so offering a book the user
-                  // does not own would only produce a 403 at submit.
-                  options={visiblePortfolios().filter(
+                  // Deliberately NOT scoped, unlike every other portfolio
+                  // choice here. This is the far side of an INTER PTF
+                  // FUNDING, and a transfer is supposed to cross a
+                  // boundary: you move cash out of your book INTO one that
+                  // is not yours. The server allows that far leg as the
+                  // exact mirror of a leg you do own (scope.check_insert_legs),
+                  // so restricting the list would block the operation
+                  // rather than protect anything.
+                  options={PORTFOLIOS.filter(
                     (p) => String(p.number) !== String(form.portfolio)
                   )}
                   fallbackLabel={

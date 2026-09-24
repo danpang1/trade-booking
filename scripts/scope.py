@@ -63,6 +63,60 @@ def check_write(scope, portfolio_id, what: str = "portfolio") -> None:
         )
 
 
+def _pid(leg, key):
+    v = (leg or {}).get(key)
+    return None if v is None else str(v).strip()
+
+
+def check_insert_legs(scope, legs) -> None:
+    """Gate a multi-leg insert, exempting the mirror leg of a transfer.
+
+    The plain rule -- every leg in scope -- breaks the one operation that is
+    SUPPOSED to cross a boundary. An INTER PTF FUNDING is two legs, one per
+    portfolio, and the whole point is that the far side is someone else's
+    book: Francis moving cash from 8041 to 8888 must be able to write the
+    8888 leg or the transfer does not balance.
+
+    So a leg outside the caller's scope is allowed only as the exact mirror
+    of a leg that IS in scope -- its portfolio is that leg's counterparty and
+    its counterparty is that leg's portfolio. That pairing is read from the
+    payload itself, never from `_meta.mirror_leg`, which the client sends and
+    could therefore set on anything.
+
+    What this does and does not concede: a caller can create a row in a book
+    they cannot see, but only as the balancing half of a movement out of
+    their own, and they still cannot read it back. A lone leg in someone
+    else's portfolio, with nothing of theirs opposite it, stays refused.
+    """
+    if scope is None:
+        return
+    legs = [leg for leg in legs if isinstance(leg, dict)]
+    inside = [leg for leg in legs if allows(scope, leg.get("portfolio_id"))]
+    outside = [leg for leg in legs if not allows(scope, leg.get("portfolio_id"))]
+    if not outside:
+        return
+    if not inside:
+        raise ScopeError(
+            f"portfolio {_pid(outside[0], 'portfolio_id')} is outside your "
+            f"portfolios"
+        )
+    for leg in outside:
+        partner = next(
+            (
+                p for p in inside
+                if _pid(p, "counterparty") == _pid(leg, "portfolio_id")
+                and _pid(leg, "counterparty") == _pid(p, "portfolio_id")
+                and _pid(leg, "portfolio_id") is not None
+            ),
+            None,
+        )
+        if partner is None:
+            raise ScopeError(
+                f"portfolio {_pid(leg, 'portfolio_id')} is outside your "
+                f"portfolios, and this leg is not the mirror of one that is"
+            )
+
+
 def refusal(e) -> dict:
     """The JSON a script prints when a write falls outside the caller's scope.
 

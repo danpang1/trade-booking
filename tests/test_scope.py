@@ -116,3 +116,67 @@ def test_amend_without_a_restated_portfolio_checks_only_the_existing_row():
 
 def test_amend_is_unrestricted_when_unfiltered():
     scope.check_amend(None, "8888", "9999")
+
+
+# ── check_insert_legs: the INTER PTF FUNDING mirror ───────────────────
+
+def leg(ptf, cpty):
+    return {"portfolio_id": ptf, "counterparty": cpty,
+            "cashflow_type": "INTER PTF FUNDING"}
+
+
+def test_a_single_leg_in_scope_is_allowed():
+    scope.check_insert_legs(["8041"], [leg(8041, "8888")])
+
+
+def test_the_mirror_leg_of_an_owned_transfer_is_allowed():
+    """Francis owns 8041 only. Moving cash 8041 -> 8888 writes a leg in 8888,
+    and must be able to, or the transfer does not balance."""
+    scope.check_insert_legs(["8041"], [leg(8041, "8888"), leg(8888, "8041")])
+
+
+def test_the_mirror_is_allowed_in_either_order():
+    scope.check_insert_legs(["8041"], [leg(8888, "8041"), leg(8041, "8888")])
+
+
+def test_a_lone_leg_in_someone_elses_book_is_refused():
+    """Nothing of the caller's opposite it — that is not a transfer, it is
+    writing into a book they do not own."""
+    with pytest.raises(scope.ScopeError):
+        scope.check_insert_legs(["8041"], [leg(8888, "8041")])
+
+
+def test_a_third_portfolio_riding_along_is_refused():
+    """Two legs pair off; the third is not the mirror of anything owned."""
+    with pytest.raises(scope.ScopeError, match="not the mirror"):
+        scope.check_insert_legs(
+            ["8041"], [leg(8041, "8888"), leg(8888, "8041"), leg(9999, "8041")])
+
+
+def test_a_mismatched_pair_is_refused():
+    """The far leg names 8041 as its counterparty but the near leg points at
+    9999 — they are not two halves of the same movement."""
+    with pytest.raises(scope.ScopeError):
+        scope.check_insert_legs(["8041"], [leg(8041, "9999"), leg(8888, "8041")])
+
+
+def test_the_pairing_is_read_from_the_payload_not_from_meta():
+    """_meta.mirror_leg is client-supplied. A caller who stamps it on a lone
+    foreign leg gains nothing, because it is never consulted."""
+    forged = leg(8888, "8041")
+    forged["_meta"] = {"mirror": True, "mirror_leg": 2}
+    with pytest.raises(scope.ScopeError):
+        scope.check_insert_legs(["8041"], [forged])
+
+
+def test_numeric_and_string_portfolio_ids_pair_the_same():
+    scope.check_insert_legs(["8041"], [leg("8041", 8888), leg(8888, "8041")])
+
+
+def test_an_unfiltered_caller_may_book_anything():
+    scope.check_insert_legs(None, [leg(8888, "9999")])
+
+
+def test_an_empty_scope_cannot_ride_a_mirror():
+    with pytest.raises(scope.ScopeError):
+        scope.check_insert_legs([], [leg(8041, "8888"), leg(8888, "8041")])
