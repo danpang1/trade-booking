@@ -19,6 +19,7 @@ import sys
 
 import loan_db
 import loan_schedule_comments_db
+import scope
 
 
 def main() -> int:
@@ -48,10 +49,32 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "user_id is required"}))
         return 3
 
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
+
     conn = loan_db.connect()
     try:
         with conn:
             with conn.cursor() as cur:
+                # A comment is a write against the loan, so it is gated by
+                # the loan's portfolio, not by anything the caller sends.
+                cur.execute(
+                    "SELECT portfolio_id FROM trades_loan "
+                    " WHERE deal_ref = %s AND effective_end IS NULL",
+                    (deal_ref,),
+                )
+                _loan = cur.fetchone()
+                if _loan is None:
+                    print(json.dumps({
+                        "ok": False,
+                        "error": f"no live loan for {deal_ref}",
+                        "code": "not_found",
+                    }))
+                    return 4
+                scope.check_write(ptf, _loan[0], "the loan's portfolio")
                 row = loan_schedule_comments_db.upsert_comment(
                     cur,
                     loan_deal_ref=deal_ref,
@@ -62,6 +85,9 @@ def main() -> int:
                 )
         print(json.dumps({"ok": True, "row": row}))
         return 0
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     except loan_schedule_comments_db.ScheduleCommentError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3

@@ -9,6 +9,7 @@ import sys
 
 import loan_db
 import loan_cashflow_map_db
+import scope
 import loan_schedule_comments_db
 
 
@@ -25,6 +26,12 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "limit must be integer"}))
         return 3
     limit = max(1, min(2000, limit))
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    scope_sql, scope_args = scope.where_clause(ptf, alias="t")
 
     conn = loan_db.connect()
     try:
@@ -41,10 +48,11 @@ def main() -> int:
                 "         ON cf.deal_ref = m.cashflow_deal_ref "
                 "        AND cf.effective_end IS NULL AND cf.status <> 'CANCELLED' "
                 " WHERE t.effective_end IS NULL "
-                " GROUP BY t.id "
+                + scope_sql
+                + " GROUP BY t.id "
                 " ORDER BY t.trade_date DESC, t.deal_ref DESC "
                 " LIMIT %s",
-                (limit,),
+                (*scope_args, limit),
             )
             cols = [d.name for d in cur.description]
             rows = [loan_db.row_to_payload(cols, r) for r in cur.fetchall()]

@@ -45,6 +45,29 @@ const TokensContext = createContext(TOKENS);
 // Auto-refresh           : hourly HH:15 UTC tick in server.js
 // ═════════════════════════════════════════════════════════════
 let PORTFOLIOS = [];
+
+// Portfolio scope for the signed-in user, set from /api/auth/me by the
+// top-level component. `null` means unrestricted (an admin). Everything
+// that offers a portfolio choice reads visiblePortfolios(), never
+// PORTFOLIOS directly, so a non-admin is never shown a book they would
+// only get a 403 on. The server remains the authority — this is about
+// not offering the action, not about enforcing it.
+let SCOPED_PORTFOLIO_NUMBERS = null;
+
+function setPortfolioScope(user) {
+  if (!user || user.role === "admin" || user.scope_state === "all") {
+    SCOPED_PORTFOLIO_NUMBERS = null;
+    return;
+  }
+  SCOPED_PORTFOLIO_NUMBERS = new Set(
+    (user.portfolios || []).map((p) => String(p.number))
+  );
+}
+
+function visiblePortfolios() {
+  if (SCOPED_PORTFOLIO_NUMBERS === null) return PORTFOLIOS;
+  return PORTFOLIOS.filter((p) => SCOPED_PORTFOLIO_NUMBERS.has(String(p.number)));
+}
 let COUNTERPARTIES = [];
 let COUNTERPARTY_IDS = {};
 let SUPERADMIN_USERS = [];
@@ -4711,7 +4734,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
     return {
       from: fmtDateInput(prevBusinessDay(t)),
       to: fmtDateInput(t),
-      portfolios: PORTFOLIOS.map((p) => String(p.number)),
+      portfolios: visiblePortfolios().map((p) => String(p.number)),
     };
   };
 
@@ -4854,7 +4877,7 @@ function TradeBookingsExportModal({ open, onClose, onError }) {
                 ? "— Add portfolio —"
                 : `+ Add another (${portfolios.length} selected)`}
             </option>
-            {PORTFOLIOS.filter((p) => !portfolios.includes(String(p.number))).map((p) => (
+            {visiblePortfolios().filter((p) => !portfolios.includes(String(p.number))).map((p) => (
               <option key={p.number} value={String(p.number)}>
                 {p.number} — {p.name}
               </option>
@@ -5808,7 +5831,7 @@ function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
       <AccountPicker value={vals.account || ""} onChange={(v) => setVal("account", v)} options={bulkAllAccounts()} />
     );
     if (k === "portfolio") return (
-      <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={PORTFOLIOS} />
+      <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={visiblePortfolios()} />
     );
     if (k === "linked_loans") return (
       <LoanPicker selected={vals.linked_loans || []} onChange={(v) => setVal("linked_loans", v)} options={liveLoans} />
@@ -6073,7 +6096,7 @@ function BulkEditLoansModal({ rows, onClose, onApplied, BB }) {
       <CounterpartyPicker value={vals.counterparty || ""} onChange={(v) => setVal("counterparty", v)} options={COUNTERPARTIES} />
     );
     if (k === "portfolio") return (
-      <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={PORTFOLIOS} />
+      <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={visiblePortfolios()} />
     );
     if (k === "order_id") return (
       <Input type="text" value={vals.order_id || ""} onChange={(e) => setVal("order_id", e.target.value)} placeholder="Binance order id (blank clears)" />
@@ -6497,7 +6520,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                   if (filters.portfolios.includes(String(v))) return;
                   setFilter("portfolios", [...filters.portfolios, String(v)]);
                 }}
-                options={PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number)))}
+                options={visiblePortfolios().filter((p) => !filters.portfolios.includes(String(p.number)))}
                 prompt={
                   filters.portfolios.length === 0
                     ? "— Add portfolio —"
@@ -7106,7 +7129,7 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
       from: fmtDateInput(prevBusinessDay(t)),
       to: fmtDateInput(t),
       accrual: fmtDateInput(t),
-      portfolios: PORTFOLIOS.map((p) => String(p.number)),
+      portfolios: visiblePortfolios().map((p) => String(p.number)),
     };
   };
 
@@ -7269,7 +7292,7 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
                 ? "— Add portfolio —"
                 : `+ Add another (${portfolios.length} selected)`}
             </option>
-            {PORTFOLIOS.filter((p) => !portfolios.includes(String(p.number))).map((p) => (
+            {visiblePortfolios().filter((p) => !portfolios.includes(String(p.number))).map((p) => (
               <option key={p.number} value={String(p.number)}>
                 {p.number} — {p.name}
               </option>
@@ -10110,7 +10133,7 @@ function LoanEnquiry({ onSelect, onHistory, BB, refreshSignal }) {
                   if (filters.portfolios.includes(String(v))) return;
                   setFilter("portfolios", [...filters.portfolios, String(v)]);
                 }}
-                options={PORTFOLIOS.filter((p) => !filters.portfolios.includes(String(p.number)))}
+                options={visiblePortfolios().filter((p) => !filters.portfolios.includes(String(p.number)))}
                 prompt={
                   filters.portfolios.length === 0
                     ? "— Add portfolio —"
@@ -10596,6 +10619,11 @@ function useIsMobile(maxWidth = 640) {
 
 export default function TradeBookingForm() {
   const { user, logout } = useAuth();
+  const isAdmin = user?.role === "admin";
+  // A non-admin gets Create Deal + Deal Enquiry and nothing else. Keep the
+  // module-level scope in step with the session BEFORE the first render that
+  // reads it, so the portfolio pickers are never briefly unfiltered.
+  setPortfolioScope(user);
   const [appView, setAppView] = useState("booking"); // "booking" | "dashboard" | "users" | "tokens" | "pending"
   const [navOpen, setNavOpen] = useState(false);
   // Pending-drafts count for the sidebar badge. Polled every 60s while
@@ -12772,28 +12800,34 @@ export default function TradeBookingForm() {
               active={appView === "booking" && view === "DEAL_ENQUIRY"}
               onClick={() => { setAppView("booking"); setView("DEAL_ENQUIRY"); }}
             />
-            <NavTabRow
-              label="Loan Enquiry"
-              active={appView === "booking" && view === "LOAN_ENQUIRY"}
-              onClick={() => { setAppView("booking"); setView("LOAN_ENQUIRY"); }}
-            />
-            <NavTabRow
-              label={`Approvals${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
-              active={appView === "pending"}
-              onClick={() => setAppView("pending")}
-            />
+            {/* Loan Enquiry, Approvals and Dashboard are admin surfaces.
+                A non-admin keeps Create Deal + Deal Enquiry only. */}
+            {isAdmin && (
+              <>
+                <NavTabRow
+                  label="Loan Enquiry"
+                  active={appView === "booking" && view === "LOAN_ENQUIRY"}
+                  onClick={() => { setAppView("booking"); setView("LOAN_ENQUIRY"); }}
+                />
+                <NavTabRow
+                  label={`Approvals${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+                  active={appView === "pending"}
+                  onClick={() => setAppView("pending")}
+                />
 
-            {/* Separator — Dashboard sits in its own band between the
-                booking flows above and admin tools below. */}
-            <div
-              className="mx-5 my-2"
-              style={{ borderTop: `1px dashed #d9d4c7` }}
-            />
-            <NavTabRow
-              label="Dashboard"
-              active={appView === "dashboard"}
-              onClick={() => setAppView("dashboard")}
-            />
+                {/* Separator — Dashboard sits in its own band between the
+                    booking flows above and admin tools below. */}
+                <div
+                  className="mx-5 my-2"
+                  style={{ borderTop: `1px dashed #d9d4c7` }}
+                />
+                <NavTabRow
+                  label="Dashboard"
+                  active={appView === "dashboard"}
+                  onClick={() => setAppView("dashboard")}
+                />
+              </>
+            )}
 
             {user?.role === "admin" && (
               <>
@@ -12810,11 +12844,13 @@ export default function TradeBookingForm() {
               </>
             )}
 
-            <NavTabRow
-              label="API Tokens"
-              active={appView === "tokens"}
-              onClick={() => setAppView("tokens")}
-            />
+            {isAdmin && (
+              <NavTabRow
+                label="API Tokens"
+                active={appView === "tokens"}
+                onClick={() => setAppView("tokens")}
+              />
+            )}
           </div>
 
           {/* ─── User profile footer (clock lives in the top banner) ─── */}
@@ -12895,7 +12931,24 @@ export default function TradeBookingForm() {
 
         {/* ─── MAIN PANEL ─── */}
         <main className="flex-1 min-w-0 overflow-y-auto">
-          {appView === "dashboard" && (
+          {/* "We cannot tell which books are yours" is a different answer
+              from "you own none" — an empty table would read as the latter
+              and send the user looking for missing trades. */}
+          {user?.scope_state === "deny" && (
+            <div
+              className="px-4 py-3 text-[11px] font-mono"
+              style={{
+                background: "#fdf3e3",
+                borderBottom: `1px solid ${BB.border}`,
+                color: BB.text,
+              }}
+            >
+              Portfolio access data is unavailable, so no deals can be shown.
+              This is a reference-data problem, not a change to your access —
+              please try again shortly.
+            </div>
+          )}
+          {appView === "dashboard" && isAdmin && (
             <Dashboard />
           )}
           {appView === "booking" && view === "DEAL_ENQUIRY" && (
@@ -12907,7 +12960,7 @@ export default function TradeBookingForm() {
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
-          {appView === "booking" && view === "LOAN_ENQUIRY" && (
+          {appView === "booking" && view === "LOAN_ENQUIRY" && isAdmin && (
             <LoanEnquiry
               BB={BB}
               // Clicking the deal_ref opens the schedule modal (the
@@ -12922,7 +12975,7 @@ export default function TradeBookingForm() {
               Deal/Loan Enquiry — the dark top chrome (UTC clock + status
               dots) remains visible above. The booking-form modal still
               overlays normally when the user opens a draft for editing. */}
-          {appView === "pending" && (
+          {appView === "pending" && isAdmin && (
             <PendingDrafts
               onClose={() => setAppView("booking")}
               onChanged={refreshPendingCount}
@@ -12939,7 +12992,7 @@ export default function TradeBookingForm() {
           {appView === "users" && user?.role === "admin" && (
             <UserAdmin onClose={() => setAppView("booking")} />
           )}
-          {appView === "tokens" && (
+          {appView === "tokens" && isAdmin && (
             <ApiTokens onClose={() => setAppView("booking")} />
           )}
       <ModalShell
@@ -13284,7 +13337,7 @@ export default function TradeBookingForm() {
                   // portfolio — the refdata lookup is now authoritative.
                   setMany({ portfolio: v, account_name: "", portfolio_name_row: "" })
                 }
-                options={PORTFOLIOS}
+                options={visiblePortfolios()}
                 fallbackLabel={form.portfolio_name_row}
               />
             </Field>
@@ -13343,6 +13396,14 @@ export default function TradeBookingForm() {
                       counterparty_id_row: "",
                     })
                   }
+                  // Deliberately NOT scoped, unlike every other portfolio
+                  // choice here. This is the far side of an INTER PTF
+                  // FUNDING, and a transfer is supposed to cross a
+                  // boundary: you move cash out of your book INTO one that
+                  // is not yours. The server allows that far leg as the
+                  // exact mirror of a leg you do own (scope.check_insert_legs),
+                  // so restricting the list would block the operation
+                  // rather than protect anything.
                   options={PORTFOLIOS.filter(
                     (p) => String(p.number) !== String(form.portfolio)
                   )}

@@ -23,6 +23,7 @@ import json
 import sys
 
 import draft_db
+import scope
 
 
 def _is_missing_or_midnight(v) -> bool:
@@ -46,6 +47,11 @@ def _is_missing_or_midnight(v) -> bool:
 def _insert(payload_in: dict) -> tuple[dict, bool]:
     category = draft_db.validate_category(payload_in.get("category"))
     payload = payload_in.get("payload")
+    # A draft is a booking in waiting, so it is gated like one: you cannot
+    # queue a trade for a portfolio you do not own.
+    scope.check_write(scope.read_scope(payload_in),
+                      (payload or {}).get("portfolio_id")
+                      if isinstance(payload, dict) else None)
     crid = draft_db.validate_uuid(payload_in.get("client_request_id"))
     acting = payload_in.get("_acting_user")
     if not isinstance(acting, str) or not acting:
@@ -115,6 +121,9 @@ def main() -> int:
 
     try:
         row, deduped = _insert(body)
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     except draft_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
