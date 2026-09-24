@@ -10,7 +10,7 @@ import { readFile, stat } from "fs/promises";
 import { resolve, dirname, extname, normalize, sep } from "path";
 import { fileURLToPath } from "url";
 import { platform } from "os";
-import { ACCESS_RETRY_MS, classifyRoute, scopeFor, withScope, stampScope } from "./serverScope.mjs";
+import { ACCESS_RETRY_MS, classifyRoute, scopeFor, withScope, stampScope, userWithScope } from "./serverScope.mjs";
 
 const PYTHON = process.env.PYTHON || (platform() === "win32" ? "python" : "python3");
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -569,10 +569,16 @@ const server = createServer(async (req, res) => {
     if (status === 200 && result.json && result.json.sid) {
       setSessionCookie(res, result.json.sid);
       // Don't leak the sid in the response body — it's now in the cookie.
-      const { sid, ...rest } = result.json;
+      // The user object must carry the SAME fields whoami returns: the
+      // client sets its user from whichever it saw last, and a login
+      // response without portfolios reads as "owns nothing".
+      const { sid, user, ...rest } = result.json;
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(rest));
+      res.end(JSON.stringify({
+        ...rest,
+        user: userWithScope(user, accessMap),
+      }));
       return;
     }
     res.statusCode = status;
@@ -613,18 +619,12 @@ const server = createServer(async (req, res) => {
 
   // ── Auth: whoami ──────────────────────────────────────────────────
   if (req.url === "/api/auth/me" && req.method === "GET") {
-    const { username, email, role } = req.sessionUser;
-    // The client mirrors these to hide what it would only get a 403 on.
-    // The server stays the authority; this is convenience, not control.
-    const scope = req.scope || scopeFor(req.sessionUser, accessMap);
-    const portfolios = scope.kind === "scoped"
-      ? scope.portfolios.map((n) => ({ number: n, name: accessMap.names.get(String(n)) || null }))
-      : [];
+    // Same builder as /api/auth/login — see userWithScope for why.
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
       ok: true,
-      user: { username, email, role, portfolios, scope_state: scope.kind },
+      user: userWithScope(req.sessionUser, accessMap),
     }));
     return;
   }

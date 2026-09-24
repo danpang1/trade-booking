@@ -80,6 +80,35 @@ export function scopeFor(sessionUser, accessMap, now = Date.now()) {
   return { kind: "scoped", portfolios: accessMap.byEmail.get(email) || [] };
 }
 
+// The user object both /api/auth/login and /api/auth/me return.
+//
+// It exists because they disagreed: login returned {username, email, role}
+// and whoami returned those plus portfolios and scope_state. The client sets
+// its user from whichever response it saw last, so straight after signing in
+// a non-admin had portfolios === undefined — which the UI read as "owns
+// nothing" and used to empty every portfolio picker, correcting itself only
+// on reload. One builder, one shape, both endpoints.
+//
+// `portfolios` is always an array, so a consumer never has to distinguish
+// "none" from "not told". Only the fields listed here are echoed back: the
+// row behind this carries a password hash.
+export function userWithScope(user, accessMap, now = Date.now()) {
+  const scope = scopeFor(user, accessMap, now);
+  const portfolios = scope.kind === "scoped"
+    ? scope.portfolios.map((n) => ({
+      number: n,
+      name: accessMap.names ? (accessMap.names.get(String(n)) || null) : null,
+    }))
+    : [];
+  return {
+    username: user && user.username,
+    email: user && user.email,
+    role: user && user.role,
+    portfolios,
+    scope_state: scope.kind,
+  };
+}
+
 // Inject the scope into the JSON a Python script reads on stdin. Admins and
 // unscoped routes pass nothing, so the scripts read an absent `_scope` as
 // "no filter" and a present one as the whole allowed set.

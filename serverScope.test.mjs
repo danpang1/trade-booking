@@ -3,6 +3,7 @@
 // Exits non-zero on the first failed assertion.
 import {
   ACCESS_STALE_MAX_MS, classifyRoute, scopeFor, withScope, stampScope,
+  userWithScope,
 } from "./serverScope.mjs";
 
 let failures = 0;
@@ -136,6 +137,37 @@ check("stampScope leaves an admin body untouched",
   stampScope('{"deal_ref":"X"}', adminReq) === '{"deal_ref":"X"}');
 check("stampScope passes malformed JSON through for Python to report",
   stampScope("not json", scopedReq) === "not json");
+
+// ── userWithScope: login and whoami must agree ────────────────────
+// The bug this exists to prevent: /api/auth/login returned {username,
+// email, role} while /api/auth/me returned those PLUS portfolios and
+// scope_state. The client sets its user from whichever it got last, so a
+// freshly-logged-in non-admin had portfolios === undefined, which the UI
+// read as "owns nothing" and emptied every portfolio picker. It corrected
+// itself only on reload. Both endpoints now build the object here.
+const named = new Map([["8041", "TOKKA LABS - MM - CENTRAL RISK BOOK"]]);
+const warmNamed = { byEmail: warm.byEmail, names: named, loadedAt: Date.now() };
+const franc = { username: "test", email: "francis@x.com", role: "user" };
+
+const lu = userWithScope(franc, warmNamed);
+eq("login user carries scope_state", lu.scope_state, "scoped");
+check("login user carries its portfolios",
+  lu.portfolios.length === 2 && lu.portfolios[0].number === 8041);
+eq("...with the portfolio name attached",
+  lu.portfolios[0].name, "TOKKA LABS - MM - CENTRAL RISK BOOK");
+check("portfolios is always an array, never undefined",
+  Array.isArray(userWithScope({ role: "user", email: "nobody@x.com" }, warmNamed)
+    .portfolios));
+eq("an admin reports scope_state all",
+  userWithScope(admin, warmNamed).scope_state, "all");
+check("an admin gets no portfolio list to filter by",
+  userWithScope(admin, warmNamed).portfolios.length === 0);
+eq("a denied user reports scope_state deny",
+  userWithScope(franc, { byEmail: new Map(), names: named, loadedAt: null })
+    .scope_state, "deny");
+check("the password hash and id are never echoed back",
+  userWithScope({ ...franc, id: 9, password_hash: "x" }, warmNamed)
+    .password_hash === undefined);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);
