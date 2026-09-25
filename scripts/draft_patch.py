@@ -12,9 +12,10 @@ import json
 import sys
 
 import draft_db
+import scope
 
 
-def _patch(draft_id: int, new_payload, acting: str) -> tuple[str, dict | None]:
+def _patch(draft_id: int, new_payload, acting: str, ptf=None) -> tuple[str, dict | None]:
     """Returns (status, row). status in {'ok','not_found','conflict'}."""
     if not isinstance(new_payload, dict):
         raise draft_db.ValidationError("payload must be an object")
@@ -25,14 +26,19 @@ def _patch(draft_id: int, new_payload, acting: str) -> tuple[str, dict | None]:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT category, status FROM bookings_draft "
-                    "WHERE id = %s AND created_by = %s",
+                    "SELECT category, status, payload->>'portfolio_id' "
+                    "  FROM bookings_draft "
+                    " WHERE id = %s AND created_by = %s",
                     (draft_id, acting),
                 )
                 row = cur.fetchone()
                 if row is None:
                     return "not_found", None
-                category, status = row
+                category, status, existing_ptf = row
+                # Both ends: the draft as stored and as restated. Editing a
+                # draft must not be a way to move it between books.
+                scope.check_amend(ptf, existing_ptf,
+                                  new_payload.get("portfolio_id"))
                 if status != "PENDING_REVIEW":
                     return "conflict", None
 
@@ -69,7 +75,11 @@ def main() -> int:
         return 3
 
     try:
-        status, row = _patch(draft_id, body.get("payload"), acting)
+        status, row = _patch(draft_id, body.get("payload"), acting,
+                             scope.read_scope(body))
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     except draft_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3

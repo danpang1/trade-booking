@@ -49,6 +49,7 @@ import sys
 
 import attachments_db
 import spot_db
+import scope
 
 
 def main() -> int:
@@ -70,6 +71,11 @@ def main() -> int:
     except spot_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
+    try:
+        ptf = scope.read_scope(_raw if isinstance(_raw, dict) else {})
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     deal_ref = payload["deal_ref"]
     cols, vals = spot_db.payload_to_columns(payload, deal_ref=deal_ref)
 
@@ -81,16 +87,23 @@ def main() -> int:
                 cur.execute(
                     "UPDATE trades_spot SET effective_end = NOW() "
                     "WHERE deal_ref = %s AND effective_end IS NULL "
-                    "RETURNING deal_ref",
+                    "RETURNING deal_ref, portfolio_id",
                     (deal_ref,),
                 )
-                if cur.fetchone() is None:
+                _closed = cur.fetchone()
+                if _closed is None:
                     print(json.dumps({
                         "ok": False,
                         "error": f"{deal_ref} has no live row (already amended or never existed)",
                         "code": "conflict",
                     }))
                     return 4
+                # Both ends of the amend must be in scope. Checking only the
+                # incoming value would let a caller claim someone else's deal;
+                # checking only the existing one would let them push their own
+                # deal out to a book they cannot see. Raising here rolls back
+                # the row-close above, so a refused amend leaves no trace.
+                scope.check_amend(ptf, _closed[1], payload.get("portfolio_id"))
                 # Insert the new version. deal_ref preserved; new effective window.
                 col_list = ", ".join(cols + ("effective_start", "effective_end"))
                 placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
@@ -111,6 +124,9 @@ def main() -> int:
         print(json.dumps({"ok": True, "rows": [row], "attachments": inserted_atts}))
         _dual_write_manual_trade_amend(row, payload)
         return 0
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
         return 5

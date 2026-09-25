@@ -16,6 +16,7 @@ from pathlib import Path
 import cashflow_db
 import spot_db
 import export_csv
+import scope
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -133,6 +134,20 @@ def main() -> int:
     except ValueError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
+
+    # Narrow the caller's portfolio filter to what they may actually see.
+    # An empty result here means "no rows" — the SQL below reads an empty
+    # portfolio_ids as "no filter", so it must never reach it.
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    narrowed = scope.narrow_requested(ptf, params["portfolio_ids"])
+    if scope.is_empty_scope(ptf, narrowed):
+        print(json.dumps({"ok": True, "csv": export_csv.serialize_csv([]), "row_count": 0}))
+        return 0
+    params["portfolio_ids"] = narrowed
 
     portfolios = _load_portfolios()
     try:

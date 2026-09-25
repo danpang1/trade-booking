@@ -26,10 +26,16 @@ export function AuthProvider({ children }) {
     });
     if (status === 200 && body?.user) {
       setUser(body.user);
+      // The login and whoami payloads must agree — see userWithScope in
+      // serverScope.mjs. If this response predates that (an older server,
+      // a cached bundle), scope_state is missing and the UI would read the
+      // absent portfolio list as "owns nothing" and empty every picker.
+      // Don't guess which it is: ask whoami.
+      if (body.user.scope_state === undefined) await refresh();
       return { ok: true };
     }
     return { ok: false, error: body?.error || "Login failed" };
-  }, []);
+  }, [refresh]);
 
   const logout = useCallback(async () => {
     await apiJson("/api/auth/logout", { method: "POST" });

@@ -22,6 +22,7 @@ import sys
 import loan_db
 import loan_cashflow_map_db
 import loan_schedule_comments_db
+import scope
 
 
 def _parse_params(raw: str) -> dict:
@@ -65,6 +66,20 @@ def main() -> int:
     except ValueError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
+
+    # Narrow the caller's portfolio filter to what they may actually see.
+    # An empty result here means "no rows" — the SQL below reads an empty
+    # portfolio_ids as "no filter", so it must never reach it.
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    narrowed = scope.narrow_requested(ptf, params["portfolio_ids"])
+    if scope.is_empty_scope(ptf, narrowed):
+        print(json.dumps({"ok": True, "rows": []}))
+        return 0
+    params["portfolio_ids"] = narrowed
 
     where, args = _where_and_args(params)
     sql = (

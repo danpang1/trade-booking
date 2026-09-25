@@ -108,8 +108,9 @@ RUN npm ci --omit=dev --no-audit --no-fund \
 # Python venv from build stage.
 COPY --from=build $VENV_DIR $VENV_DIR
 
-# Runtime code.
-COPY ./server.js ./
+# Runtime code. serverScope.mjs is imported by server.js — a new top-level
+# module must be listed here or the image starts and dies on the import.
+COPY ./server.js ./serverScope.mjs ./
 COPY ./scripts ./scripts
 COPY ./public ./public
 
