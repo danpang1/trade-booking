@@ -5383,6 +5383,11 @@ const DEAL_ENQUIRY_INITIAL_FILTERS = {
   portfolios: [],
   // Default = all-except-CANCELLED (lifecycle-active rows).
   statuses: TRADE_STATUSES.filter((s) => s !== "CANCELLED"),
+  // Deal Type — empty means show all. The options are derived from the
+  // loaded rows rather than a constant, because Deal Enquiry merges two
+  // tables: a SPOT row's type is "SPOT", a cashflow row's is its
+  // cashflow_type. A fixed list would offer types the book has never seen.
+  deal_types: [],
   // Dynamic text filters keyed by DEAL_DYNAMIC_FIELDS[].key.
   // deal_ref is seeded so the Deal Reference search shows by default —
   // DynamicFilterRows renders a labeled row for every key present here.
@@ -5417,6 +5422,14 @@ function filtersDifferFromDefault(filters, initial) {
 // fields). All matching is case-insensitive substring; commas behave
 // OR. Numeric columns are deliberately excluded for v1 — they need a
 // range syntax, not substring.
+// The single "what kind of deal is this" dimension, across both tables
+// Deal Enquiry merges. A cashflow row is its business type (FUNDING FEE,
+// INTER PTF FUNDING, ...); a spot row has no cashflow_type, so it falls
+// back to txn_type ("SPOT"). Users think in one list, not two columns.
+function dealTypeOf(r) {
+  return String(r.cashflow_type || r.txn_type || "").trim();
+}
+
 const DEAL_DYNAMIC_FIELDS = [
   { key: "deal_ref",        label: "Deal Reference",   get: (r) => r.deal_ref || "" },
   { key: "base_asset",      label: "Base Asset",       get: (r) => r.asset || r.base_asset || "" },
@@ -5430,6 +5443,7 @@ const DEAL_DYNAMIC_FIELDS = [
   { key: "cashflow_type",   label: "Cashflow Type",    get: (r) => r.cashflow_type || "" },
   { key: "order_id",        label: "Order ID",         get: (r) => r.order_id || "" },
   { key: "account_name",    label: "Account",          get: (r) => r.account_name || "" },
+  { key: "account_id",      label: "Account ID",       get: (r) => r.account_id || "" },
   { key: "fee_asset",       label: "Fee Asset",        get: (r) => r.fee_asset || "" },
 ];
 
@@ -6267,6 +6281,21 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
   // toggles it on, or auto-shown when a portfolio is already selected so an
   // active filter is never hidden.
   const hasPortfolioFilter = filters.portfolios.length > 0;
+  // Offer only the types the loaded book actually contains, sorted, with
+  // SPOT first because it is the one that is not a cashflow type. Derived
+  // rather than constant so a new cashflow type needs no code change here.
+  const dealTypeOptions = useMemo(() => {
+    const seen = new Set();
+    for (const r of rows) {
+      const t = dealTypeOf(r);
+      if (t) seen.add(t);
+    }
+    return [...seen].sort((a, b) => {
+      if (a === "SPOT") return -1;
+      if (b === "SPOT") return 1;
+      return a.localeCompare(b);
+    });
+  }, [rows]);
   const [showPortfolio, setShowPortfolio] = useState(false);
   // Pagination — page is 1-indexed; resets to 1 whenever filters change.
   const [page, setPage] = useState(1);
@@ -6282,6 +6311,9 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         return false;
       }
       if (filters.statuses.length > 0 && !filters.statuses.includes(String(r.status || ""))) {
+        return false;
+      }
+      if (filters.deal_types.length > 0 && !filters.deal_types.includes(dealTypeOf(r))) {
         return false;
       }
       if (!dynamicFilterMatch(r, filters.dynamic, DEAL_DYNAMIC_FIELDS)) return false;
@@ -6600,6 +6632,45 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                   })}
                 </div>
               )}
+            </div>
+            )}
+
+            {/* Deal Type — chip toggles, full-width row. Empty = show all.
+                Options come from the loaded rows (see dealTypeOptions). */}
+            {dealTypeOptions.length > 0 && (
+            <div
+              className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+              style={{ color: "#6a665c", gridColumn: "1 / -1" }}
+            >
+              <span>Deal Type</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {dealTypeOptions.map((t) => {
+                  const on = filters.deal_types.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          "deal_types",
+                          on
+                            ? filters.deal_types.filter((x) => x !== t)
+                            : [...filters.deal_types, t]
+                        )
+                      }
+                      className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+                      style={{
+                        background: on ? "#eef0f6" : "#ffffff",
+                        border: `1px solid ${on ? "#1f63ea" : "#e0dbd0"}`,
+                        color: on ? "#1f63ea" : "#a39e90",
+                        cursor: "pointer",
+                        transition: "all 120ms ease",
+                      }}
+                      title={on ? `Hide ${t}` : `Show only ${t}`}
+                    >{t}</button>
+                  );
+                })}
+              </div>
             </div>
             )}
 
