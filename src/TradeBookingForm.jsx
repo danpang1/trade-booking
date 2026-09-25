@@ -7555,6 +7555,159 @@ function LoanScheduleExportModal({ open, onClose, onError }) {
   );
 }
 
+// ─── Funding Sankey — the Funding & Deployment table drawn as flows.
+// Takes the SAME derived figures the table renders (raw USD), so the two
+// can never disagree: sources → Total Funding → Funding Balance → uses,
+// with ITD PnL as a red side-branch when it is a loss (a gain instead
+// joins Total Funding as a green inflow). Ribbon height ∝ USD; the scale
+// is fitted to the largest column so the chart fills the same height
+// whatever the book size. Flows ≤ 0 are not drawn (a net internal LEND
+// would be funding out, which a Sankey cannot show as a source). Renders
+// nothing until there is something to draw.
+function FundingSankey({ capital, internalLoanUsd, vipLoanUsd, itdPnl, collateralUsd, illiquidUsd }) {
+  const cap = capital || 0;
+  const intl = internalLoanUsd || 0;
+  const vipL = vipLoanUsd || 0;
+  const pnl = itdPnl || 0;
+  const coll = collateralUsd || 0;
+  const illq = illiquidUsd || 0;
+  const totalFunding = cap + intl + vipL;
+  const fundingBalance = totalFunding + pnl;
+  const available = fundingBalance - coll - illq;
+  const shortfall = available < 0;
+
+  // Node table. Column 2 holds Funding Balance plus, on a loss, the ITD
+  // branch; on a gain the ITD node moves to column 1 as a second source
+  // feeding Funding Balance.
+  const gain = pnl > 0;
+  const nodes = {
+    cap:   { name: "Capital",         hint: "editable",           v: cap,  col: 0, color: "var(--signal-link)" },
+    int:   { name: "Internal Loan",   hint: "live · net borrow",  v: intl, col: 0, color: "var(--status-processed)" },
+    vip:   { name: "VIP Loan",        hint: "live · Binance VIP", v: vipL, col: 0, color: "var(--status-pending)" },
+    tot:   { name: "Total Funding",   hint: "Capital + Internal + VIP", v: totalFunding, col: 1, color: "var(--ink-2)" },
+    pnl:   { name: "ITD PnL",         hint: "editable · inception-to-date", v: Math.abs(pnl),
+             col: gain ? 1 : 2, color: gain ? "var(--signal-buy)" : "var(--signal-sell)", signed: pnl },
+    fb:    { name: "Funding Balance", hint: "Total Funding + ITD PnL", v: fundingBalance, col: 2, color: "var(--ink-2)" },
+    coll:  { name: "Collateral",      hint: "live · Binance VIP collateral", v: coll, col: 3, color: "var(--ink-3)" },
+    illq:  { name: "Illiquid Asset",  hint: "editable · illiquid holdings", v: illq, col: 3, color: "var(--status-cancelled)" },
+    avail: { name: "Available Funds", hint: "Balance − Collateral − Illiquid",
+             v: shortfall ? 0 : available, col: 3, color: "var(--signal-buy)", pos: true },
+  };
+  const links = [
+    ["cap", "tot", cap, nodes.cap.color],
+    ["int", "tot", intl, nodes.int.color],
+    ["vip", "tot", vipL, nodes.vip.color],
+    ...(gain
+      ? [["tot", "fb", totalFunding, "var(--ink-2)"], ["pnl", "fb", pnl, "var(--signal-buy)"]]
+      : [["tot", "fb", fundingBalance, "var(--ink-2)"], ["tot", "pnl", -pnl, "var(--signal-sell)"]]),
+    ["fb", "coll", coll, nodes.coll.color],
+    ["fb", "illq", illq, nodes.illq.color],
+    ["fb", "avail", shortfall ? 0 : available, nodes.avail.color],
+  ].filter((l) => l[2] > 0);
+  const drawn = new Set(links.flatMap((l) => [l[0], l[1]]));
+  if (drawn.size === 0) return null;
+
+  // Geometry — 900×400 viewBox, four columns, scale fitted to the tallest
+  // column so ribbons stay readable whether the book is $10m or $500m.
+  const W = 14, GAP = 22, CY = 212;
+  const X = [150, 340, 530, 720];
+  const order = [["cap", "int", "vip"], gain ? ["tot", "pnl"] : ["tot"], gain ? ["fb"] : ["fb", "pnl"], ["coll", "illq", "avail"]];
+  const colSum = (ids) => ids.filter((id) => drawn.has(id)).reduce((s, id) => s + nodes[id].v, 0);
+  // In a shortfall the uses column outsizes Funding Balance; size to it so
+  // the ribbons still fit the node they leave from.
+  const tallest = Math.max(...order.map(colSum), 1);
+  const K = 290 / tallest;
+  for (const ids of order) {
+    const live = ids.filter((id) => drawn.has(id));
+    const total = live.reduce((s, id) => s + nodes[id].v * K, 0) + GAP * (live.length - 1);
+    let y = CY - total / 2;
+    for (const id of live) {
+      const n = nodes[id];
+      n.x = X[n.col]; n.y = y; n.h = Math.max(n.v * K, 1.5);
+      n.outY = y; n.inY = y;
+      y += n.h + GAP;
+    }
+  }
+  const ribbons = links.map(([s, t, v, color]) => {
+    const a = nodes[s], b = nodes[t], h = v * K;
+    const x1 = a.x + W, x2 = b.x, y1 = a.outY, y2 = b.inY, m = (x1 + x2) / 2;
+    a.outY += h; b.inY += h;
+    return {
+      key: `${s}-${t}`, color,
+      title: `${a.name} → ${b.name}: ${fmtUsdMillions(v)}`,
+      d: `M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2} L${x2},${y2 + h} C${m},${y2 + h} ${m},${y1 + h} ${x1},${y1 + h} Z`,
+    };
+  });
+
+  const lbl = { fontSize: 11, fontWeight: 500, fill: "var(--ink)" };
+  const sub = { fontSize: 9, fill: "var(--ink-4)", letterSpacing: "0.04em" };
+  const valStyle = (n) => ({
+    fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums",
+    fill: n.signed < 0 ? "var(--signal-sell)" : n.pos ? "var(--signal-buy)" : "var(--ink)",
+  });
+  const valText = (n) => (n.signed != null ? fmtUsdMillions(n.signed) : fmtUsdMillions(n.v));
+  const heads = ["Sources", "Funding", "After P&L", "Uses"];
+
+  return (
+    <div style={{
+      background: "var(--paper)",
+      border: "1px solid var(--rule)",
+      borderRadius: 3,
+      fontFamily: "var(--font-mono)",
+      padding: "10px 12px 6px",
+      flex: "1 1 460px", minWidth: 0, overflowX: "auto",
+    }}>
+      <svg viewBox="0 0 900 400" style={{ display: "block", width: "100%", minWidth: 520, height: "auto" }}
+        role="img" aria-label="Funding flows from sources to available funds">
+        {heads.map((h, i) => (
+          <text key={h} x={X[i] + W / 2} y={26} textAnchor="middle" style={{
+            fontSize: 9, fill: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase",
+          }}>{h}</text>
+        ))}
+        {ribbons.map((r) => (
+          <path key={r.key} d={r.d} fill={r.color} style={{ opacity: 0.32 }}>
+            <title>{r.title}</title>
+          </path>
+        ))}
+        {Object.entries(nodes).filter(([id]) => drawn.has(id)).map(([id, n]) => {
+          const parts = [<rect key="r" x={n.x} y={n.y} width={W} height={n.h} rx={1.5} fill={n.color} />];
+          if (n.col === 0 || (gain && id === "pnl")) {
+            const x = n.x - 10, y = n.y + Math.max(n.h / 2, 10);
+            parts.push(
+              <text key="l" x={x} y={y - 6} textAnchor="end" style={lbl}>{n.name}</text>,
+              <text key="v" x={x} y={y + 8} textAnchor="end" style={valStyle(n)}>{valText(n)}</text>,
+              <text key="s" x={x} y={y + 20} textAnchor="end" style={sub}>{n.hint}</text>,
+            );
+          } else if (n.col === 3 || id === "pnl") {
+            const x = n.x + W + 10, y = n.y + Math.max(n.h / 2, 10);
+            parts.push(
+              <text key="l" x={x} y={y - 6} style={lbl}>{n.name}</text>,
+              <text key="v" x={x} y={y + 8} style={valStyle(n)}>{valText(n)}</text>,
+              <text key="s" x={x} y={y + 20} style={sub}>{n.hint}</text>,
+            );
+          } else {
+            const x = n.x + W / 2;
+            parts.push(
+              <text key="l" x={x} y={n.y - 22} textAnchor="middle" style={lbl}>{n.name}</text>,
+              <text key="v" x={x} y={n.y - 8} textAnchor="middle" style={valStyle(n)}>{valText(n)}</text>,
+              <text key="s" x={x} y={n.y + n.h + 14} textAnchor="middle" style={sub}>{n.hint}</text>,
+            );
+          }
+          return <g key={id}>{parts}</g>;
+        })}
+        {shortfall && (
+          <text x={X[3] + W + 10} y={CY + 150 + 20} style={{
+            fontSize: 10, fontWeight: 600, fill: "var(--signal-sell)",
+          }}>Available Funds {fmtUsdMillions(available)} — uses exceed Funding Balance</text>
+        )}
+      </svg>
+      <div style={{ fontSize: 9, color: "var(--ink-4)", letterSpacing: "0.04em", padding: "4px 4px 0" }}>
+        Ribbon height ∝ USD · hover a ribbon for the exact flow · same figures as the table
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard — landing surface, currently hosts the loan composition
 // donut. Marked WIP in the header so users know more widgets are coming.
 // Fetches its own loan + rates data so the view is independent of any
@@ -7856,6 +8009,12 @@ function Dashboard() {
       }}>
         Funding &amp; Deployment · capital, loans &amp; ITD PnL
       </div>
+      {/* Table and Sankey side by side; both read the same derived figures,
+          so an edit to Capital / ITD PnL / Illiquid redraws the flows. */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start",
+        maxWidth: 1100,
+      }}>
       <div style={{
         background: "var(--paper)",
         border: "1px solid var(--rule)",
@@ -7863,7 +8022,7 @@ function Dashboard() {
         borderRadius: 3,
         fontFamily: "var(--font-mono)",
         padding: "8px 20px",
-        maxWidth: 560,
+        flex: "0 1 460px", minWidth: 320,
       }}>
         {[
           {
@@ -7960,6 +8119,15 @@ function Dashboard() {
             </div>
           );
         })}
+      </div>
+      <FundingSankey
+        capital={funding.capital}
+        internalLoanUsd={internalLoanUsd}
+        vipLoanUsd={vipLoanUsd}
+        itdPnl={funding.itd_pnl}
+        collateralUsd={collateralUsd}
+        illiquidUsd={illiquidUsd}
+      />
       </div>
       {saveErr && (
         <div style={{
