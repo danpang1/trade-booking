@@ -219,9 +219,29 @@ def payload_to_columns(payload: dict, *, deal_ref: str | None = None) -> tuple[t
         elif col == "fee_amount":
             v = payload.get("fee_amount")
             vals.append("0" if v in (None, "") else v)
+        elif col == "account":
+            vals.append(_account_with_product(payload))
         else:
             vals.append(_coerce_str_or_none(payload.get(col)))
     return cols, tuple(vals)
+
+
+def _account_with_product(payload: dict):
+    """Bake the gateway product/chain into the account name for storage.
+
+    e.g. account "ECT001@BINANCE" + product "spot" -> "ECT001@BINANCE_SPOT"
+    (matching the venue's gateway account-id convention). `product` is a form
+    field, not a stored column; the manual dual-write reads it separately for the
+    account_id suffix (t2x_mysql.resolve_account_id tolerates either form). No
+    product (broker/bank, or legacy) -> the bare account name is stored, and a
+    read then shows an empty product. Idempotent (won't double-append)."""
+    acct = _coerce_str_or_none(payload.get("account"))
+    prod = payload.get("product")
+    if acct and prod:
+        prod = str(prod).strip().upper()
+        if prod and not str(acct).upper().endswith("_" + prod):
+            return f"{acct}_{prod}"
+    return acct
 
 
 def _json_safe(v):

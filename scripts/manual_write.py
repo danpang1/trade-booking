@@ -290,9 +290,14 @@ def write_manual_trade(row: dict) -> bool:
     try:
         account_id = None
         with t2x_mysql.connect() as my:
-            account_id = t2x_mysql.resolve_account_id(my.cursor(), row.get("account"))
+            account_id = t2x_mysql.resolve_account_id(
+                my.cursor(), row.get("account"), row.get("account_type"), row.get("product")
+            )
         if account_id is None:
-            _log(f"skip manual_trade {row.get('deal_ref')}: account {row.get('account')!r} not in account_exchange")
+            _log(
+                f"skip manual_trade {row.get('deal_ref')}: could not resolve account_id for "
+                f"account={row.get('account')!r} type={row.get('account_type')!r} product={row.get('product')!r}"
+            )
             return False
 
         ref = refdata_db.connect()
@@ -328,9 +333,14 @@ def write_manual_cashflow(row: dict) -> bool:
     try:
         account_id = None
         with t2x_mysql.connect() as my:
-            account_id = t2x_mysql.resolve_account_id(my.cursor(), row.get("account"))
+            account_id = t2x_mysql.resolve_account_id(
+                my.cursor(), row.get("account"), row.get("account_type"), row.get("product")
+            )
         if account_id is None:
-            _log(f"skip manual_cashflow {row.get('deal_ref')}: account {row.get('account')!r} not in account_exchange")
+            _log(
+                f"skip manual_cashflow {row.get('deal_ref')}: could not resolve account_id for "
+                f"account={row.get('account')!r} type={row.get('account_type')!r} product={row.get('product')!r}"
+            )
             return False
 
         ref = refdata_db.connect()
@@ -376,9 +386,14 @@ def _supersede(row: dict, *, table: str, insert_fn, coldict_fn) -> bool:
     deal_ref = row.get("deal_ref")
     try:
         with t2x_mysql.connect() as my:
-            account_id = t2x_mysql.resolve_account_id(my.cursor(), row.get("account"))
+            account_id = t2x_mysql.resolve_account_id(
+                my.cursor(), row.get("account"), row.get("account_type"), row.get("product")
+            )
         if account_id is None:
-            _log(f"skip {table} amend {deal_ref}: account {row.get('account')!r} not in account_exchange")
+            _log(
+                f"skip {table} amend {deal_ref}: could not resolve account_id for "
+                f"account={row.get('account')!r} type={row.get('account_type')!r} product={row.get('product')!r}"
+            )
             return False
 
         ref = refdata_db.connect()

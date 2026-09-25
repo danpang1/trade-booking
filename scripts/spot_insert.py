@@ -61,18 +61,22 @@ def _insert_one(cur, payload: dict) -> dict:
     )
     out_cols = [d.name for d in cur.description]
     row = spot_db.row_to_payload(out_cols, cur.fetchone())
-    _dual_write_manual_trade(row)
+    _dual_write_manual_trade(row, payload)
     return row
 
 
-def _dual_write_manual_trade(row: dict) -> None:
+def _dual_write_manual_trade(row: dict, payload: dict) -> None:
     """Best-effort mirror into the tech DB's manual_trade (separate DB, own
     connection). Never affects the primary booking — all errors are swallowed,
-    including a failed import of the optional manual_write module."""
+    including a failed import of the optional manual_write module.
+
+    `product` is not a trades_spot column, so it is merged in from the request
+    payload — it selects the gateway account_id sub-account suffix (see
+    manual_write / t2x_mysql.resolve_account_id)."""
     try:
         import manual_write
 
-        manual_write.write_manual_trade(row)
+        manual_write.write_manual_trade({**row, "product": payload.get("product")})
     except Exception as e:  # noqa: BLE001
         print(f"manual dual-write: skip manual_trade: {e!r}", file=sys.stderr)
 
