@@ -1,0 +1,21 @@
+# -----------------------------------------------------------------------------
+# tokka-mo Claude Code plugin as a data-only image.
+#
+# No OS and no runtime, just the marketplace manifest and plugin/ under
+# /tokka-mo. Consumers (e.g. the Colossus Slack bot) copy it into their own
+# image and install it from there:
+#
+#   FROM <ecr>/middle-office/tokka-mo-plugin:<version> AS tokka-mo
+#   COPY --from=tokka-mo /tokka-mo /opt/tokka-mo-marketplace
+#   RUN claude plugin marketplace add /opt/tokka-mo-marketplace \
+#       && claude plugin install tokka-mo@tokka-mo-marketplace
+#
+# Tag = plugin/.claude-plugin/plugin.json version. Built and pushed by the
+# pluginImageBuildAndPublish pipeline step (/opt/scripts/package_and_publish_docker.sh).
+# Build context is the repo root; what goes in is limited by
+# docker/Dockerfile.plugin.dockerignore.
+# -----------------------------------------------------------------------------
+FROM scratch
+
+COPY .claude-plugin /tokka-mo/.claude-plugin
+COPY plugin         /tokka-mo/plugin

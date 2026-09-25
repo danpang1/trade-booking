@@ -90,6 +90,25 @@ definitions:
           - docker
           - docker-local
 
+    # tokka-mo plugin as a data-only image (docker/Dockerfile.plugin),
+    # consumed by other repos' builds (e.g. colossus_slack_bot) so they need
+    # no access to this repo. Tagged with the plugin.json version: bump it
+    # to publish a plugin change.
+    - step: &pluginImageBuildAndPublish
+        name: Build and publish tokka-mo plugin image
+        runs-on:
+          - 'self.hosted'
+          - 'linux'
+          - 'jp.k8'
+        script:
+          - source setup_env.sh
+          - export IMAGE_NAME="middle-office/tokka-mo-plugin"
+          - export DOCKER_FILE="docker/Dockerfile.plugin"
+          - export VERSION=$(python3 -c "import json;print(json.load(open('plugin/.claude-plugin/plugin.json'))['version'])")
+          - bash /opt/scripts/package_and_publish_docker.sh
+        services:
+          - docker
+
     - step: &dockerTest
         name: Run pytest inside container
         runs-on:
@@ -201,6 +220,7 @@ pipelines:
         # repo variables to be configured in Bitbucket.
         - step: *dockerBuildAndPublish
         - step: *helmBuild
+        - step: *pluginImageBuildAndPublish
 
       # Manual deploy + rollback steps for each environment, all triggered
       # independently so any one can be run without blocking the others.

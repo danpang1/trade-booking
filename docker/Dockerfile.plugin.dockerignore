@@ -1,0 +1,10 @@
+# Used instead of the root .dockerignore for docker/Dockerfile.plugin.
+# Everything is excluded except the marketplace manifest and the plugin.
+*
+!.claude-plugin/
+!plugin/
+
+plugin/tests/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
