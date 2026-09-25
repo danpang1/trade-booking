@@ -55,18 +55,17 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                 # the booked row should be CONFIRMED, not PENDING. If the
                 # user manually picked another status (CANCELLED, SETTLED,
                 # etc.) we respect that as the manual override.
-                # Also strip the "claude:" prefix from user_id — the prefix
-                # tags the draft's source for the inbox, but the live trade
-                # in trades_cashflow should attribute to the bare username
-                # (matches what a form-booked trade looks like). The Claude
-                # Code provenance is still preserved on bookings_draft.source.
+                #
+                # The "claude:" prefix on user_id is KEPT, deliberately.
+                # Approval used to strip it so a bot-booked trade read like a
+                # form-booked one; that hid how the trade got there. A trade
+                # booked through Colossus stays "claude:danny.pang" for life,
+                # whoever approves it, so the blotter shows at a glance which
+                # trades came in through the bot and who asked for them.
                 if isinstance(payload, dict):
                     patched = dict(payload)
                     if patched.get("status") == "PENDING":
                         patched["status"] = "CONFIRMED"
-                    uid = patched.get("user_id")
-                    if isinstance(uid, str) and uid.startswith("claude:"):
-                        patched["user_id"] = uid[len("claude:"):]
                     payload = patched
 
                 # The trade row already exists — draft_insert booked it as
@@ -83,7 +82,6 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                 row = draft_trade_link.amend_status(
                     cur, category, deal_ref,
                     (payload or {}).get("status") or "CONFIRMED",
-                    user_id=(payload or {}).get("user_id"),
                     updated_by=acting,
                 )
 
