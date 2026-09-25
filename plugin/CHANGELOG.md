@@ -4,6 +4,55 @@ Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-25
+### Added
+- `product` (the gateway sub-account) is now a mandatory booking field wherever
+  the account offers a choice. The trade's `account_id` is derived from
+  `account` + `product`, so a booking without one files the trade against the
+  venue but not the sub-account, and the position and fee feeds cannot line it
+  up.
+- Resolved without asking where the answer is not a guess: the user named it;
+  the account offers exactly one; a WALLET booking with a `network` (the
+  network IS the chain); or a SPOT trade, taking the first of
+  `SPOT` > `UNIFIED` > `DERIVATIVES`. Anything else is a question.
+- `refdata_account` / `product_options` / `default_product` / `validate_product`
+  in the CLI, so the skill and the Colossus bot share one rule rather than two
+  drifting copies.
+
+### Notes
+- A CASHFLOW on a multi-product account is never defaulted — a funding fee and
+  a spot settlement belong to different sub-accounts.
+- Nor is an account offering only `FUNDING` / `TRADING` / `FUTURES` (the OKX and
+  KuCoin accounts). `TRADING` shares gateway code `001` with `SPOT`, which makes
+  it look like the obvious pick, but it is a distinct product and choosing it
+  silently would mis-file the trade.
+- Brokers, banks, and accounts refdata lists no options for are unaffected.
+
+## [0.3.0] — 2026-09-01
+### Added
+- `loan-booking` skill: how MLA (the facility) and MCF (the cashflow that
+  settles against it) relate, which case a request is in, and how to tag one
+  to the other.
+- `tokka-mo loan-list` — read-only lookup of loan agreements, so a cashflow is
+  tagged to the right MLA instead of a guessed ref. Defaults to `--status LIVE`
+  because only a live loan can be mapped to.
+- `tokka-mo loan-open` — create a master loan agreement. **This is not a
+  draft**: the server exposes only a direct `/api/loan/insert`, so the loan is
+  live the moment it returns. Requires `--yes`; `--dry-run` validates and sends
+  nothing.
+- Local loan validation against cached refdata (portfolio id/name agreement,
+  counterparty, both assets, enums, positive principal). `counterparty` is
+  required here even though the server's own validator does not enforce it — a
+  facility naming nobody cannot be reconciled or repaired later.
+
+### Notes
+- Cashflows are tagged to loans through `_meta.loan_deal_refs` on the existing
+  CASHFLOW payload. No new booking path: `_meta` is carried through the draft
+  untouched and the mapping is written in the same transaction as the cashflow.
+- Mapping type is derived server-side: `LOAN` → `PRINCIPAL_DISBURSE`,
+  `LOAN REPAYMENT` → `PRINCIPAL_REPAY`, `INTEREST EXPENSE`/`INTEREST INCOME` →
+  `INTEREST`.
+
 ## [0.2.2] — 2026-08-28
 ### Fixed
 - **`counterparty` is mandatory for SPOT**, not optional. 0.2.1 told the skill it

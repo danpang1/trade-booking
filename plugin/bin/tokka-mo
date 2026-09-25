@@ -20,6 +20,7 @@ Commands:
 """
 from __future__ import annotations
 import argparse
+import concurrent.futures
 import json
 import os
 import sys
@@ -149,7 +150,6 @@ def fetch_refdata(api_url: str, token: str) -> dict:
     """
     api_url = api_url.rstrip("/")
     headers = {"Authorization": f"Bearer {token}"}
-    out = {}
     sources = {
         "portfolios": "/refdata/portfolios.json",
         "accounts": "/refdata/accounts.json",
@@ -157,14 +157,24 @@ def fetch_refdata(api_url: str, token: str) -> dict:
         "users": "/refdata/users.json",
         "tokens": "/tokens.json",
     }
-    for key, path in sources.items():
+
+    def _one(item):
+        key, path = item
         status, body, _ = _http_json("GET", api_url + path, headers=headers)
-        if status != 200:
-            raise SystemExit(
-                f"tokka-mo: refdata fetch failed for {path} "
-                f"(HTTP {status}); try `tokka-mo login` if expired"
-            )
-        out[key] = body
+        return key, path, status, body
+
+    # Five independent read-only GETs. Fetched concurrently because doing them
+    # in sequence cost ~4.5s over the VPN — long enough that a user waiting on
+    # their first booking of the day felt it. Concurrent, it is ~1s.
+    out = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(sources)) as pool:
+        for key, path, status, body in pool.map(_one, sources.items()):
+            if status != 200:
+                raise SystemExit(
+                    f"tokka-mo: refdata fetch failed for {path} "
+                    f"(HTTP {status}); try `tokka-mo login` if expired"
+                )
+            out[key] = body
     return out
 
 
@@ -237,6 +247,99 @@ def _refdata_values(refdata, key, name_field="name"):
     return out
 
 
+# Gateway sub-account ("product") support. The trade's account_id is derived
+# from account + product, so a booking without one is missing the field that
+# ties it to a sub-account -- which is why product is mandatory wherever the
+# account offers a choice.
+#
+# Hierarchy for a SPOT trade on an exchange, in order. TRADING is deliberately
+# NOT here: it is a distinct product even though it shares gateway code 001
+# with SPOT, so an account offering only FUNDING/TRADING/FUTURES is a question,
+# not a guess.
+SPOT_PRODUCT_HIERARCHY = ("SPOT", "UNIFIED", "DERIVATIVES")
+
+
+def refdata_account(refdata, name):
+    """The full refdata record for an account NAME, or None.
+
+    _refdata_values flattens accounts to a set of names; this keeps the dict
+    so `products` / `chains` are reachable.
+    """
+    raw = refdata.get("accounts")
+    groups = raw.values() if isinstance(raw, dict) else [raw or []]
+    for group in groups:
+        if not isinstance(group, list):
+            continue
+        for item in group:
+            if isinstance(item, dict) and item.get("name") == name:
+                return item
+    return None
+
+
+def product_options(account):
+    """The sub-account values valid for this account.
+
+    `products` for an exchange, deposit `chains` for a wallet. A broker has a
+    single fixed gateway suffix and a bank has no gateway account at all, so
+    both return [] and product is not required for them.
+    """
+    if not isinstance(account, dict):
+        return []
+    return list(account.get("products") or account.get("chains") or [])
+
+
+def default_product(account, category=None, network=None):
+    """The product to use without asking, or None when the user must decide.
+
+    * exactly one option            -> that one
+    * WALLET with a `network` given -> the chain matching it (network IS the
+                                       chain for a wallet booking)
+    * SPOT trade on an exchange     -> first of SPOT > UNIFIED > DERIVATIVES
+    * anything else                 -> None, ask the user
+    """
+    opts = product_options(account)
+    if not opts:
+        return None
+    if len(opts) == 1:
+        return opts[0]
+    if network:
+        for o in opts:
+            if str(o).strip().lower() == str(network).strip().lower():
+                return o
+    if str(category or "").upper() == "SPOT":
+        upper = {str(o).upper(): o for o in opts}
+        for want in SPOT_PRODUCT_HIERARCHY:
+            if want in upper:
+                return upper[want]
+    return None
+
+
+def validate_product(payload, refdata, category):
+    """Raise ValidationError unless `product` is present and valid.
+
+    Silent when the account offers no choice (broker/bank, or an account whose
+    options refdata does not list) -- there is nothing to pick, so demanding a
+    value would block a booking the gateway rule handles on its own.
+    """
+    account = refdata_account(refdata, payload.get("account"))
+    opts = product_options(account)
+    if not opts:
+        return
+    product = payload.get("product")
+    if product is None or (isinstance(product, str) and not product.strip()):
+        suggested = default_product(account, category, payload.get("network"))
+        hint = f" Suggested: {suggested}." if suggested else ""
+        raise ValidationError(
+            f"required field missing or empty: product "
+            f"(account {payload.get('account')!r} offers {opts}).{hint}"
+        )
+    if str(product).upper() not in {str(o).upper() for o in opts}:
+        raise ValidationError(
+            f"product {product!r} is not valid for account "
+            f"{payload.get('account')!r} -- it offers {opts}"
+        )
+
+
 def _refdata_portfolio_ids(refdata):
     """{portfolio_number: name} so we can validate id + name match together.
 
@@ -257,11 +360,34 @@ def _refdata_portfolio_ids(refdata):
 
 
 def _suggest(value, choices, n=3):
-    """Return n closest choices as a string hint."""
+    """Return n closest choices as a string hint.
+
+    Case matters here more than it looks. Refdata names are upper case and the
+    values we are asked about are whatever the user typed, so a case-sensitive
+    difflib scored 'native' against 'NATIVE CORE' at nearly zero and offered
+    'LiFi, ZKSYNC, ZETA' instead — three names sharing no meaning with the
+    input, from a list that contained the right answer.
+
+    Anything containing the input comes first, since a partial name is how
+    people actually abbreviate ('native' -> NATIVE CORE), then closest spelling.
+    """
     import difflib
     if not choices:
         return ""
-    matches = difflib.get_close_matches(str(value), [str(c) for c in choices], n=n, cutoff=0.0)
+    want = str(value).strip().lower()
+    if not want:
+        return ""
+    names = [str(c) for c in choices]
+    lower = {n_: n_.lower() for n_ in names}
+    contains = [n_ for n_ in names if want in lower[n_]]
+    contains.sort(key=lambda n_: (len(n_), n_))          # tightest fit first
+    close = difflib.get_close_matches(want, [lower[n_] for n_ in names],
+                                      n=n, cutoff=0.0)
+    by_lower = {}
+    for n_ in names:
+        by_lower.setdefault(lower[n_], n_)
+    matches = contains + [by_lower[c] for c in close if by_lower.get(c) not in contains]
+    matches = matches[:n]
     return f" Did you mean: {', '.join(matches)}?" if matches else ""
 
 
@@ -354,6 +480,7 @@ def validate_cashflow_payload(payload, refdata) -> None:
             f"account {payload['account']!r} not in refdata."
             f"{_suggest(payload['account'], accounts)}"
         )
+    validate_product(payload, refdata, "CASHFLOW")
 
     tokens = _refdata_values(refdata, "tokens", name_field="symbol")
     if payload["asset"] not in tokens:
@@ -484,6 +611,7 @@ def validate_spot_payload(payload, refdata) -> None:
                 f"account_type must be one of {sorted(VALID_ACCOUNT_TYPES)}, "
                 f"got {acct_type!r}"
             )
+        validate_product(payload, refdata, "SPOT")
 
     # counterparty is optional for SPOT; when set it's a NAMED counterparty
     # (unlike INTER PTF FUNDING, which uses a portfolio-number string).
@@ -781,6 +909,193 @@ def cmd_book(args) -> int:
     return 0
 
 
+REQUIRED_LOAN_FIELDS = (
+    "direction", "loan_type", "entity", "portfolio_id", "portfolio_name",
+    "counterparty", "principal_asset", "principal_amount", "interest_asset",
+    "interest_type", "trade_date", "user_id", "status",
+)
+VALID_LOAN_DIRECTIONS = {"BORROW", "LEND"}
+VALID_LOAN_TYPES = {"VIP LOAN", "INTERNAL", "EXTERNAL", "DEFI LENDING"}
+VALID_INTEREST_TYPES = {"FIXED", "FLOATING"}
+VALID_LOAN_STATUSES = {"LIVE", "MATURED", "CANCELLED"}
+
+
+def validate_loan_payload(payload, refdata):
+    """Local checks before a loan is written. Mirrors loan_db, with one
+    addition: `counterparty` is REQUIRED here even though the server's
+    validator does not enforce it. A loan with no counterparty names nobody
+    to owe, and nothing downstream can repair that after the fact.
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("loan payload must be a JSON object")
+    for field in REQUIRED_LOAN_FIELDS:
+        v = payload.get(field)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValidationError(f"required field missing or empty: {field}")
+
+    for field, valid in (("direction", VALID_LOAN_DIRECTIONS),
+                         ("loan_type", VALID_LOAN_TYPES),
+                         ("interest_type", VALID_INTEREST_TYPES),
+                         ("status", VALID_LOAN_STATUSES)):
+        if payload[field] not in valid:
+            raise ValidationError(
+                f"{field} must be one of {sorted(valid)}, got {payload[field]!r}")
+
+    try:
+        amount = float(str(payload["principal_amount"]))
+    except ValueError:
+        raise ValidationError(
+            f"principal_amount must be numeric, got {payload['principal_amount']!r}")
+    # Checked outside the try: ValidationError subclasses ValueError, so raising
+    # it inside would be swallowed and reported as "not numeric", which sends
+    # the operator looking for the wrong problem.
+    if amount <= 0:
+        raise ValidationError(
+            f"principal_amount must be greater than zero, got {amount}")
+
+    try:
+        _dt.datetime.fromisoformat(str(payload["trade_date"]).replace("Z", "+00:00"))
+    except ValueError:
+        raise ValidationError(
+            f"trade_date must be ISO 8601 with timezone, got {payload['trade_date']!r}")
+
+    ports = _refdata_portfolio_ids(refdata)
+    if payload["portfolio_id"] not in ports:
+        suggest = _suggest(payload["portfolio_id"], sorted(ports.keys()))
+        raise ValidationError(
+            f"portfolio_id {payload['portfolio_id']!r} not in refdata.{suggest}")
+    if payload["portfolio_name"] != ports[payload["portfolio_id"]]:
+        raise ValidationError(
+            f"portfolio_name {payload['portfolio_name']!r} doesn't match "
+            f"portfolio_id {payload['portfolio_id']} "
+            f"(expected {ports[payload['portfolio_id']]!r})")
+
+    cptys = _refdata_values(refdata, "counterparties")
+    if cptys and payload["counterparty"] not in cptys:
+        suggest = _suggest(payload["counterparty"], sorted(cptys))
+        raise ValidationError(
+            f"counterparty {payload['counterparty']!r} not in refdata.{suggest}")
+
+    tokens = _refdata_values(refdata, "tokens", name_field="symbol")
+    for field in ("principal_asset", "interest_asset"):
+        if tokens and payload[field] not in tokens:
+            suggest = _suggest(payload[field], sorted(tokens))
+            raise ValidationError(f"{field} {payload[field]!r} not in refdata.{suggest}")
+
+
+def cmd_loan_list(args) -> int:
+    """List loan agreements, so an MCF can be tagged to the right MLA.
+
+    Read-only. Defaults to LIVE, because a cashflow can only be mapped to a
+    live loan -- offering a matured or cancelled one as a candidate would
+    produce a mapping the server rejects.
+    """
+    status, body, _ = _authed_request("GET", "/api/loan/recent?limit=2000")
+    if status == 401:
+        print("Token rejected — run: tokka-mo login", file=sys.stderr)
+        return 4
+    if status != 200 or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"could not read loans: {msg}", file=sys.stderr)
+        return 3
+
+    rows = body.get("rows") or []
+    want_status = (getattr(args, "status", None) or "LIVE").upper()
+    if want_status != "ALL":
+        rows = [r for r in rows if (r.get("status") or "") == want_status]
+    if getattr(args, "counterparty", None):
+        needle = args.counterparty.upper()
+        rows = [r for r in rows if needle in (r.get("counterparty") or "").upper()]
+    if getattr(args, "asset", None):
+        needle = args.asset.upper()
+        rows = [r for r in rows if (r.get("principal_asset") or "").upper() == needle]
+    if getattr(args, "portfolio", None):
+        rows = [r for r in rows if str(r.get("portfolio_id")) == str(args.portfolio)]
+
+    if not rows:
+        print("No matching loans. Do NOT invent a deal_ref — ask the operator "
+              "whether the facility needs creating.")
+        return 0
+
+    rows.sort(key=lambda r: str(r.get("trade_date") or ""), reverse=True)
+    print(f"{len(rows)} matching loan(s):")
+    for r in rows[:40]:
+        print("  %-12s %-10s %-28s %18s %-8s %6s%%  %-9s %s" % (
+            r.get("deal_ref"), str(r.get("trade_date"))[:10],
+            str(r.get("counterparty") or "-")[:28], r.get("principal_amount"),
+            r.get("principal_asset"), r.get("interest_rate_pa_pct"),
+            r.get("status"), r.get("loan_type")))
+    if len(rows) > 40:
+        print(f"  ... and {len(rows) - 40} more; narrow with --counterparty/--asset")
+    return 0
+
+
+def cmd_loan_open(args) -> int:
+    """Create a master loan agreement (MLA). JSON payload on stdin.
+
+    UNLIKE `book`, this writes to the book IMMEDIATELY. There is no draft and
+    no approval step: the server exposes only a direct /api/loan/insert, so a
+    loan created here is live the moment it returns. Say so to the operator
+    before calling it, and never call it to "see what happens".
+    """
+    payload = _read_stdin_json()
+
+    # A facility with no stated rate is a zero-rate facility, and the desk
+    # stores that as a literal 0 (101 of 116 live loans). Omitting the field
+    # would leave a NULL, which renders as a blank rate rather than a zero one
+    # and reads as "unknown". Normalise it here and say so, so the assumption
+    # is visible rather than silent. Maturity needs no equivalent: absent
+    # already means open term, which is how every live facility is booked.
+    if isinstance(payload, dict) and payload.get("interest_rate_pa_pct") in (None, ""):
+        payload["interest_rate_pa_pct"] = "0"
+        print("note: no interest rate given — booking at 0% (open-term unless "
+              "maturity_date was set)", file=sys.stderr)
+
+    try:
+        refdata = load_refdata()
+    except CredsMissing:
+        print("not logged in; run: tokka-mo login", file=sys.stderr)
+        return 4
+    try:
+        validate_loan_payload(payload, refdata)
+    except ValidationError as e:
+        print(f"validation failed: {e}", file=sys.stderr)
+        return 3
+
+    if getattr(args, "dry_run", False):
+        print("Payload valid. NOT sent (--dry-run). Remove --dry-run and add "
+              "--yes to create the loan for real.")
+        return 0
+
+    if not getattr(args, "yes", False):
+        print("refusing to create a loan without --yes: this writes to the book "
+              "immediately, with no review step. Use --dry-run to validate only.",
+              file=sys.stderr)
+        return 3
+
+    status, body, _ = _authed_request("POST", "/api/loan/insert", body=payload)
+    if status == 401:
+        print("Token rejected — run: tokka-mo login", file=sys.stderr)
+        return 4
+    if status not in (200, 201) or not (isinstance(body, dict) and body.get("ok")):
+        msg = (isinstance(body, dict) and body.get("error")) or f"HTTP {status}"
+        print(f"server rejected loan: {msg}", file=sys.stderr)
+        return 3
+
+    # The route answers {"rows": [...]}, not {"row": {...}}.
+    rows = body.get("rows") or []
+    ref = (rows[0] or {}).get("deal_ref") if rows else None
+    if not ref:
+        # The loan very likely exists; we simply cannot name it. Say so loudly
+        # rather than returning a success the caller would tag a cashflow to.
+        print("Loan was accepted but no deal_ref came back. It may exist — check "
+              "TMS before creating another.", file=sys.stderr)
+        return 3
+    print(f"Loan {ref} created and LIVE. "
+          f"Tag cashflows to it with _meta.loan_deal_refs = [\"{ref}\"].")
+    return 0
+
+
 def cmd_book_batch(args) -> int:
     body = _read_stdin_json()
     if not isinstance(body, dict) or not isinstance(body.get("trades"), list):
@@ -1001,6 +1316,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_book_batch)
+
+    # loan-list (read-only lookup, for tagging cashflows to the right MLA)
+    sp = sub.add_parser(
+        "loan-list",
+        help="List loan agreements (MLAs) so a cashflow can be tagged correctly.",
+    )
+    sp.add_argument("--counterparty", default=None, help="Substring match.")
+    sp.add_argument("--asset", default=None, help="Exact principal asset ticker.")
+    sp.add_argument("--portfolio", default=None, help="Portfolio number.")
+    sp.add_argument("--status", default="LIVE",
+                    choices=("LIVE", "MATURED", "CANCELLED", "ALL"),
+                    help="Default LIVE — only live loans can be mapped to.")
+    sp.set_defaults(func=cmd_loan_list)
+
+    # loan-open (NOT a draft -- writes immediately)
+    sp = sub.add_parser(
+        "loan-open",
+        help=("Create a master loan agreement (MLA). JSON payload on stdin. "
+              "WRITES IMMEDIATELY -- there is no draft or approval step."),
+    )
+    sp.add_argument("--yes", action="store_true",
+                    help="Required. Confirms you understand this is not a draft.")
+    sp.add_argument("--dry-run", action="store_true", dest="dry_run",
+                    help="Validate the payload and send nothing. Use this first.")
+    sp.set_defaults(func=cmd_loan_open)
 
     # drafts list
     sp = sub.add_parser("drafts", help="Inspect your drafts")
