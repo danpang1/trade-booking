@@ -185,6 +185,8 @@ DATA_COLUMNS = (
     "comment",
     # See cashflow_db — resolved server-side, NULL-safe.
     "account_id",
+    # Who made THIS version. user_id stays the original author.
+    "updated_by",
 )
 
 

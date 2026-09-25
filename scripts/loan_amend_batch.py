@@ -20,6 +20,7 @@ import json
 import sys
 
 import loan_db
+import authorship
 import scope
 
 
@@ -98,6 +99,9 @@ def main() -> int:
                     # raises inside the batch transaction, so the whole
                     # batch rolls back — never a partial amend.
                     scope.check_amend(ptf, _closed[1], p.get("portfolio_id"))
+                    # Created By stays the original booker; the
+                    # amender moves to updated_by.
+                    authorship.apply_on_amend(cur, "trades_loan", p, deal_ref)
 
                     cols, vals = loan_db.payload_to_columns(p, deal_ref=deal_ref)
                     col_list = ", ".join(cols + ("effective_start", "effective_end"))

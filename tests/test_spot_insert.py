@@ -69,13 +69,29 @@ def test_insert_one_returns_row_and_omits_deal_ref_on_insert():
 
 
 def test_insert_one_signature_matches_cashflow():
-    # draft_approve relies on (cur, payload) -> dict, same as cashflow_insert.
+    # draft_insert relies on (cur, payload) -> dict, same as cashflow_insert.
     import inspect
     params = list(inspect.signature(spot_insert._insert_one).parameters)
     assert params == ["cur", "payload"]
 
 
-def test_draft_approve_routes_spot_and_cashflow():
+def test_draft_insert_routes_spot_and_cashflow():
+    """The trade row is created at BOOKING time now, not on approval, so the
+    inserter table lives on draft_insert. draft_approve only moves the row."""
+    import draft_insert
+    assert set(draft_insert._INSERTERS) == {"CASHFLOW", "SPOT"}
+    assert draft_insert._INSERTERS["SPOT"] is spot_insert._insert_one
+
+
+def test_draft_approve_no_longer_inserts():
+    """Approval must AMEND the existing row. If it regained an inserter table
+    it would create a second trade for the same draft."""
     import draft_approve
-    assert set(draft_approve._INSERTERS) == {"CASHFLOW", "SPOT"}
-    assert draft_approve._INSERTERS["SPOT"] is spot_insert._insert_one
+    assert not hasattr(draft_approve, "_INSERTERS")
+
+
+def test_draft_link_covers_both_categories():
+    import draft_trade_link
+    assert draft_trade_link.category_table("SPOT")[0] == "trades_spot"
+    assert draft_trade_link.category_table("CASHFLOW")[0] == "trades_cashflow"
+    assert draft_trade_link.category_table("LOAN") is None

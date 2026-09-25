@@ -249,6 +249,8 @@ DATA_COLUMNS = (
     # Present for uniformity with cashflow/spot; nothing populates it
     # yet — trades_loan has no account to resolve an id from.
     "account_id",
+    # Who made THIS version. user_id stays the original author.
+    "updated_by",
 )
 
 

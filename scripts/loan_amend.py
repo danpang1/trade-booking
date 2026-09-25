@@ -13,6 +13,7 @@ import sys
 
 import attachments_db
 import loan_db
+import authorship
 import scope
 import account_id_resolve
 
@@ -72,6 +73,12 @@ def main() -> int:
                 # deal out to a book they cannot see. Raising here rolls back
                 # the row-close above, so a refused amend leaves no trace.
                 scope.check_amend(ptf, _closed[1], payload.get("portfolio_id"))
+                # Created By is the ORIGINAL booker, not whoever is
+                # amending — the caller stamped themselves onto
+                # user_id, so move that to updated_by and restore the
+                # first version's author.
+                authorship.apply_on_amend(cur, "trades_loan", payload, deal_ref)
+                cols, vals = loan_db.payload_to_columns(payload, deal_ref=deal_ref)
                 col_list = ", ".join(cols + ("effective_start", "effective_end"))
                 placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
                 cur.execute(

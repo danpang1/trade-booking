@@ -14,13 +14,7 @@ import json
 import sys
 
 import draft_db
-from cashflow_insert import _insert_one as cashflow_insert_one
-from spot_insert import _insert_one as spot_insert_one
-
-_INSERTERS = {
-    "CASHFLOW": cashflow_insert_one,
-    "SPOT": spot_insert_one,
-}
+import draft_trade_link
 
 
 def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
@@ -39,7 +33,7 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                     " WHERE id = %s "
                     "   AND created_by = %s "
                     "   AND status = 'PENDING_REVIEW' "
-                    "RETURNING id, category, payload",
+                    "RETURNING id, category, payload, approved_deal_ref",
                     (acting, draft_id, acting),
                 )
                 claim = cur.fetchone()
@@ -56,13 +50,7 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         return "not_found", None, None
                     return "conflict", None, None
 
-                _, category, payload = claim
-                insert_one = _INSERTERS.get(category)
-                if insert_one is None:
-                    raise draft_db.ValidationError(
-                        f"approve not implemented for category {category}"
-                    )
-
+                _, category, payload, existing_ref = claim
                 # Approving a draft is the human "yes, book it" gate, so
                 # the booked row should be CONFIRMED, not PENDING. If the
                 # user manually picked another status (CANCELLED, SETTLED,
@@ -81,14 +69,24 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         patched["user_id"] = uid[len("claude:"):]
                     payload = patched
 
-                # IN-PROCESS insert into the live trade table on the SAME
-                # cursor, dispatched by the draft's category. The human
-                # approver is preserved separately on bookings_draft.approved_by.
-                # If this raises, the enclosing `with conn:` block rolls back
-                # both the UPDATE above AND any partial INSERT.
-                inserted = insert_one(cur, payload)
+                # The trade row already exists — draft_insert booked it as
+                # PENDING. Approval MOVES it rather than creating it, on the
+                # same cursor, so the claim above and the status change commit
+                # together or not at all.
+                deal_ref = (existing_ref or "").strip() or None
+                if deal_ref is None:
+                    raise draft_db.ValidationError(
+                        f"draft {draft_id} has no trade row to approve "
+                        f"(booked before the double-write flow — amend it "
+                        f"directly in the blotter instead)"
+                    )
+                row = draft_trade_link.amend_status(
+                    cur, category, deal_ref,
+                    (payload or {}).get("status") or "CONFIRMED",
+                    user_id=(payload or {}).get("user_id"),
+                    updated_by=acting,
+                )
 
-                deal_ref = inserted["deal_ref"]
                 cur.execute(
                     "UPDATE bookings_draft "
                     "   SET approved_deal_ref = %s "
@@ -96,7 +94,9 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                     "RETURNING *",
                     (deal_ref, draft_id),
                 )
-                return "ok", draft_db.row_to_public(cur, cur.fetchone()), deal_ref
+                public = draft_db.row_to_public(cur, cur.fetchone())
+                draft_trade_link.mirror_amend(category, row)
+                return "ok", public, deal_ref
     finally:
         conn.close()
 

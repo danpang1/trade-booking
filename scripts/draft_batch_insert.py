@@ -26,8 +26,10 @@ import json
 import sys
 import uuid
 
+import account_id_resolve
 import draft_db
 import scope
+import draft_insert
 from draft_insert import _is_missing_or_midnight
 
 
@@ -102,14 +104,25 @@ def _insert_batch(body: dict) -> dict:
                     if existing is not None:
                         out_rows.append(draft_db.row_to_public(cur, existing))
                         continue
+                    # Book the live trade as PENDING alongside the draft, on
+                    # the same cursor. The batch is already all-or-nothing, so
+                    # a failure on any leg leaves no drafts AND no trades —
+                    # which matters most for an inter-PTF pair, where half a
+                    # transfer in the book is worse than none.
+                    deal_ref = None
+                    inserter = draft_insert._INSERTERS.get(cat)
+                    if inserter is not None:
+                        account_id_resolve.stamp(payload)
+                        deal_ref = inserter(cur, payload).get("deal_ref")
                     cur.execute(
                         "INSERT INTO bookings_draft "
                         "(category, payload, source, status, batch_id, "
-                        " client_request_id, created_by) "
+                        " client_request_id, created_by, approved_deal_ref) "
                         "VALUES (%s, %s, 'CLAUDE_CODE', 'PENDING_REVIEW', "
-                        "        %s, %s, %s) "
+                        "        %s, %s, %s, %s) "
                         "RETURNING *",
-                        (cat, json.dumps(payload), batch_id, crid, acting),
+                        (cat, json.dumps(payload), batch_id, crid, acting,
+                         deal_ref),
                     )
                     out_rows.append(draft_db.row_to_public(cur, cur.fetchone()))
     finally:

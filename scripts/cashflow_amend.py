@@ -49,6 +49,7 @@ import sys
 
 import attachments_db
 import cashflow_db
+import authorship
 import scope
 import account_id_resolve
 import loan_cashflow_map_db
@@ -113,6 +114,12 @@ def main() -> int:
                 # deal out to a book they cannot see. Raising here rolls back
                 # the row-close above, so a refused amend leaves no trace.
                 scope.check_amend(ptf, _closed[1], payload.get("portfolio_id"))
+                # Created By is the ORIGINAL booker, not whoever is
+                # amending — the caller stamped themselves onto
+                # user_id, so move that to updated_by and restore the
+                # first version's author.
+                authorship.apply_on_amend(cur, "trades_cashflow", payload, deal_ref)
+                cols, vals = cashflow_db.payload_to_columns(payload, deal_ref=deal_ref)
                 # Insert the new version. deal_ref preserved; new effective window.
                 col_list = ", ".join(cols + ("effective_start", "effective_end"))
                 placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"

@@ -12,6 +12,7 @@ import json
 import sys
 
 import draft_db
+import draft_trade_link
 import scope
 
 
@@ -26,7 +27,8 @@ def _patch(draft_id: int, new_payload, acting: str, ptf=None) -> tuple[str, dict
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT category, status, payload->>'portfolio_id' "
+                    "SELECT category, status, payload->>'portfolio_id', "
+                    "       payload->>'user_id' "
                     "  FROM bookings_draft "
                     " WHERE id = %s AND created_by = %s",
                     (draft_id, acting),
@@ -34,7 +36,7 @@ def _patch(draft_id: int, new_payload, acting: str, ptf=None) -> tuple[str, dict
                 row = cur.fetchone()
                 if row is None:
                     return "not_found", None
-                category, status, existing_ptf = row
+                category, status, existing_ptf, prior_user = row
                 # Both ends: the draft as stored and as restated. Editing a
                 # draft must not be a way to move it between books.
                 scope.check_amend(ptf, existing_ptf,
@@ -42,7 +44,12 @@ def _patch(draft_id: int, new_payload, acting: str, ptf=None) -> tuple[str, dict
                 if status != "PENDING_REVIEW":
                     return "conflict", None
 
-                payload = {**new_payload, "user_id": acting}
+                # Created By is the draft's original booker, not the
+                # person editing it — keep whatever the draft already
+                # carries and record the editor separately.
+                payload = {**new_payload,
+                           "user_id": prior_user or new_payload.get("user_id") or acting,
+                           "updated_by": acting}
                 draft_db.validate_payload_for_category(category, payload)
 
                 cur.execute(
@@ -52,7 +59,19 @@ def _patch(draft_id: int, new_payload, acting: str, ptf=None) -> tuple[str, dict
                     "RETURNING *",
                     (json.dumps(payload), draft_id),
                 )
-                return "ok", draft_db.row_to_public(cur, cur.fetchone())
+                public = draft_db.row_to_public(cur, cur.fetchone())
+
+                # The trade row was booked when the draft was created, so an
+                # edit has to move it too. Leaving it would let the book
+                # disagree with the draft it came from — and the book is what
+                # the exports and the position feed read.
+                deal_ref = (public.get("approved_deal_ref") or "").strip()
+                if deal_ref:
+                    moved = draft_trade_link.replace_from_payload(
+                        cur, category, deal_ref, payload,
+                    )
+                    draft_trade_link.mirror_amend(category, moved)
+                return "ok", public
     finally:
         conn.close()
 

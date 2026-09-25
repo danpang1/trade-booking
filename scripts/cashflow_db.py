@@ -354,6 +354,8 @@ DATA_COLUMNS = (
     # account + account_type + product. NULL when the account has no
     # gateway code or T2X was unreachable — never blocks a booking.
     "account_id",
+    # Who made THIS version. user_id stays the original author.
+    "updated_by",
 )
 
 

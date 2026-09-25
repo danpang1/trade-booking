@@ -210,6 +210,7 @@ def test_payload_to_columns_orders_match_ddl():
         "counterparty_id", "counterparty", "account", "account_type", "asset", "amount",
         "fee_asset", "fee_amount", "trade_date", "value_date", "network",
         "txid_reference", "user_id", "status", "comment", "account_id",
+        "updated_by",
     )
     # Values must align positionally with cols.
     assert vals[cols.index("deal_ref")] == "MCF-42"

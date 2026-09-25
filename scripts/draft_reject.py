@@ -11,6 +11,7 @@ import json
 import sys
 
 import draft_db
+import draft_trade_link
 
 
 def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
@@ -42,7 +43,21 @@ def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
                     if cur.fetchone() is None:
                         return "not_found", None
                     return "conflict", None
-                return "ok", draft_db.row_to_public(cur, row)
+
+                # The trade row was booked as PENDING when the draft was
+                # created, so a rejection has to retire it too — otherwise a
+                # refused booking stays live in the book. Cancelled, not
+                # deleted: trades_* are bitemporal, and "someone booked this
+                # and it was refused" is worth keeping.
+                public = draft_db.row_to_public(cur, row)
+                deal_ref = (public.get("approved_deal_ref") or "").strip()
+                if deal_ref:
+                    moved = draft_trade_link.amend_status(
+                        cur, public.get("category"), deal_ref, "CANCELLED",
+                        updated_by=acting,
+                    )
+                    draft_trade_link.mirror_amend(public.get("category"), moved)
+                return "ok", public
     finally:
         conn.close()
 

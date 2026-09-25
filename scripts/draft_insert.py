@@ -22,8 +22,21 @@ from datetime import datetime, timezone
 import json
 import sys
 
+import account_id_resolve
 import draft_db
 import scope
+from cashflow_insert import _insert_one as _cashflow_insert_one
+from spot_insert import _insert_one as _spot_insert_one
+
+# The trade row is created at BOOKING time now, not on approval. Same
+# inserters draft_approve used to call — identical validation, just earlier.
+# `approved_deal_ref` on the draft carries the ref: the column predates this
+# flow and its name now reads oddly (it is set at creation, not approval),
+# but it is the link and nothing else consumes it beforehand.
+_INSERTERS = {
+    "CASHFLOW": _cashflow_insert_one,
+    "SPOT": _spot_insert_one,
+}
 
 
 def _is_missing_or_midnight(v) -> bool:
@@ -98,13 +111,33 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
                 if existing is not None:
                     return draft_db.row_to_public(cur, existing), True
 
+                # Book the live trade NOW, as PENDING, on the same cursor.
+                # The trade is visible in Deal Enquiry, the exports and the
+                # position feed before anyone approves it — that is the
+                # point of this flow. Approval and rejection move this row
+                # rather than creating one.
+                #
+                # Same transaction as the draft insert, so a failure in
+                # either leaves neither: there is no window where a draft
+                # exists without its trade, or vice versa.
+                deal_ref = None
+                inserter = _INSERTERS.get(category)
+                if inserter is not None:
+                    # Stamp the gateway account_id here too. The insert
+                    # scripts do it in main(), which this path bypasses by
+                    # calling _insert_one directly — without it every
+                    # bot-booked trade would land with a NULL account_id.
+                    account_id_resolve.stamp(payload)
+                    inserted = inserter(cur, payload)
+                    deal_ref = inserted.get("deal_ref")
+
                 cur.execute(
                     "INSERT INTO bookings_draft "
                     "(category, payload, source, status, "
-                    " client_request_id, created_by) "
-                    "VALUES (%s, %s, 'CLAUDE_CODE', 'PENDING_REVIEW', %s, %s) "
+                    " client_request_id, created_by, approved_deal_ref) "
+                    "VALUES (%s, %s, 'CLAUDE_CODE', 'PENDING_REVIEW', %s, %s, %s) "
                     "RETURNING *",
-                    (category, json.dumps(payload), crid, acting),
+                    (category, json.dumps(payload), crid, acting, deal_ref),
                 )
                 return draft_db.row_to_public(cur, cur.fetchone()), False
     finally:
