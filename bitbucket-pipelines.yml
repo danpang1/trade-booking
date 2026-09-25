@@ -92,7 +92,10 @@ definitions:
 
     # tokka-mo plugin as a data-only image, consumed by other repos' builds
     # (e.g. colossus_slack_bot) so they need no access to this repo.
-    # See docker/Dockerfile.plugin.
+    # See docker/Dockerfile.plugin. Same build/publish scripts as the app
+    # image; only the name, Dockerfile and version differ. The tag is the
+    # plugin.json version, and publish_or_skip leaves an existing tag alone,
+    # so bump plugin.json to publish a plugin change.
     - step: &pluginImageBuild
         name: Build tokka-mo plugin image
         runs-on:
@@ -100,7 +103,12 @@ definitions:
           - 'linux'
           - 'jp.k8'
         script:
-          - bash ./scripts/publish_plugin_image.sh
+          - source setup_env.sh
+          - export IMAGE_NAME="middle-office/tokka-mo-plugin"
+          - export DOCKER_FILE="docker/Dockerfile.plugin"
+          - export DOCKER_BUILDX_REMOTE_CACHE_ENABLE=false
+          - export VERSION=$(python3 -c "import json;print(json.load(open('plugin/.claude-plugin/plugin.json'))['version'])")
+          - bash ./scripts/package_docker.sh
         services:
           - docker
 
@@ -111,7 +119,12 @@ definitions:
           - 'linux'
           - 'jp.k8'
         script:
-          - bash ./scripts/publish_plugin_image.sh publish
+          - source setup_env.sh
+          - export IMAGE_NAME="middle-office/tokka-mo-plugin"
+          - export DOCKER_FILE="docker/Dockerfile.plugin"
+          - export DOCKER_BUILDX_REMOTE_CACHE_ENABLE=false
+          - export VERSION=$(python3 -c "import json;print(json.load(open('plugin/.claude-plugin/plugin.json'))['version'])")
+          - bash ./scripts/package_and_publish_docker.sh
         services:
           - docker
 

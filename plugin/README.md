@@ -127,8 +127,7 @@ the plugin from a data-only image instead of cloning this repo. On every
 `main` build the pipeline publishes
 `942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/middle-office/tokka-mo-plugin:<version>`,
 tagged with the version in `plugin/.claude-plugin/plugin.json`. An existing
-tag is skipped, so **bump that version** (and `metadata.version` in
-`.claude-plugin/marketplace.json`) for a change to be published.
+tag is skipped, so **bump that version** for a change to be published.
 
 ```dockerfile
 FROM 942117878223.dkr.ecr.ap-northeast-1.amazonaws.com/middle-office/tokka-mo-plugin:0.2.2 AS tokka-mo
@@ -138,8 +137,9 @@ RUN claude plugin marketplace add /opt/tokka-mo-marketplace \
     && claude plugin install tokka-mo@tokka-mo-marketplace
 ```
 
-Build it locally with `./scripts/publish_plugin_image.sh`; see
-`docker/Dockerfile.plugin`.
+Build it locally with
+`IMAGE_NAME=middle-office/tokka-mo-plugin DOCKER_FILE=docker/Dockerfile.plugin IMAGE_PLATFORMS=linux/amd64 VERSION=<version> ./scripts/package_docker.sh`;
+see `docker/Dockerfile.plugin`.
 
 ## Uninstalling
 
