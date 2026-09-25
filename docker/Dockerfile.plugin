@@ -11,7 +11,7 @@
 #       && claude plugin install tokka-mo@tokka-mo-marketplace
 #
 # Tag = plugin/.claude-plugin/plugin.json version. Built and pushed by the
-# pluginImage* pipeline steps via scripts/package_and_publish_docker.sh.
+# pluginImageBuildAndPublish pipeline step (/opt/scripts/package_and_publish_docker.sh).
 # Build context is the repo root; what goes in is limited by
 # docker/Dockerfile.plugin.dockerignore.
 # -----------------------------------------------------------------------------

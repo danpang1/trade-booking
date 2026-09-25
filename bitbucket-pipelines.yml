@@ -90,14 +90,12 @@ definitions:
           - docker
           - docker-local
 
-    # tokka-mo plugin as a data-only image, consumed by other repos' builds
-    # (e.g. colossus_slack_bot) so they need no access to this repo.
-    # See docker/Dockerfile.plugin. Same build/publish scripts as the app
-    # image; only the name, Dockerfile and version differ. The tag is the
-    # plugin.json version, and publish_or_skip leaves an existing tag alone,
-    # so bump plugin.json to publish a plugin change.
-    - step: &pluginImageBuild
-        name: Build tokka-mo plugin image
+    # tokka-mo plugin as a data-only image (docker/Dockerfile.plugin),
+    # consumed by other repos' builds (e.g. colossus_slack_bot) so they need
+    # no access to this repo. Tagged with the plugin.json version: bump it
+    # to publish a plugin change.
+    - step: &pluginImageBuildAndPublish
+        name: Build and publish tokka-mo plugin image
         runs-on:
           - 'self.hosted'
           - 'linux'
@@ -106,25 +104,8 @@ definitions:
           - source setup_env.sh
           - export IMAGE_NAME="middle-office/tokka-mo-plugin"
           - export DOCKER_FILE="docker/Dockerfile.plugin"
-          - export DOCKER_BUILDX_REMOTE_CACHE_ENABLE=false
           - export VERSION=$(python3 -c "import json;print(json.load(open('plugin/.claude-plugin/plugin.json'))['version'])")
-          - bash ./scripts/package_docker.sh
-        services:
-          - docker
-
-    - step: &pluginImagePublish
-        name: Publish tokka-mo plugin image
-        runs-on:
-          - 'self.hosted'
-          - 'linux'
-          - 'jp.k8'
-        script:
-          - source setup_env.sh
-          - export IMAGE_NAME="middle-office/tokka-mo-plugin"
-          - export DOCKER_FILE="docker/Dockerfile.plugin"
-          - export DOCKER_BUILDX_REMOTE_CACHE_ENABLE=false
-          - export VERSION=$(python3 -c "import json;print(json.load(open('plugin/.claude-plugin/plugin.json'))['version'])")
-          - bash ./scripts/package_and_publish_docker.sh
+          - bash /opt/scripts/package_and_publish_docker.sh
         services:
           - docker
 
@@ -239,7 +220,7 @@ pipelines:
         # repo variables to be configured in Bitbucket.
         - step: *dockerBuildAndPublish
         - step: *helmBuild
-        - step: *pluginImagePublish
+        - step: *pluginImageBuildAndPublish
 
       # Manual deploy + rollback steps for each environment, all triggered
       # independently so any one can be run without blocking the others.
@@ -261,4 +242,3 @@ pipelines:
       - parallel:
         - step: *dockerBuild
         - step: *helmBuild
-        - step: *pluginImageBuild
