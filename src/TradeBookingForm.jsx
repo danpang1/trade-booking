@@ -5732,8 +5732,17 @@ function buildBulkAmendPayload(row, enabled, vals) {
     portfolio_name: row.portfolio_name ?? null,
     counterparty: row.counterparty ?? null,
     counterparty_id: row.counterparty_id ?? null,
-    account: row.account ?? null,
+    // trades_* store the account with the gateway product baked in
+    // ("TRADING_01@NATIVECORE_DERIVATIVES"), but refdata — and therefore the
+    // server's account validation — holds the bare name. Split it back, the
+    // same way loadRowIntoForm does for a single-row amend. Passing the
+    // stored string through unsplit fails validation on every row booked
+    // with a product, even when the edit does not touch the account.
+    account: splitAccountProduct(row.account, row.account_type).name || null,
     account_type: row.account_type ?? null,
+    // Carry the row's existing product so an unrelated bulk edit does not
+    // silently drop it — account_id is derived from account + product.
+    product: splitAccountProduct(row.account, row.account_type).product || null,
     fee_asset: row.fee_asset ?? null,
     fee_amount: row.fee_amount ?? "0",
     trade_date: row.trade_date,
