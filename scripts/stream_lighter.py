@@ -6,8 +6,13 @@ and writes one row per open position.
 Convention
 ----------
 - Public read-only API (no auth).
-- L1 address `0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB` (8023 - CDA SOL desk).
-- One Lighter sub-account (index 29911 today) → MO account_id 215002.
+- L1 wallets in L1_ADDRESSES; an unfunded wallet has no Lighter account yet
+  and is skipped (HTTP 400 / code 21100) without failing the other wallets.
+- Two deployments: zkSync mainnet and Robinhood Chain (same REST surface,
+  separate index spaces), so ACCOUNT_MAP is keyed by (api base, index):
+    (mainnet, 29911) → 215002 TRADING01@LIGHTER  (8023 CDA SOL desk)
+    (rh chain, 31599) → 237002 TRADING02@LIGHTER (1INCH FUSION desk)
+  Unmapped pairs are warned + skipped so nothing lands under a wrong id.
 - `last_trade_price` derived: |position_value| / |position|.
 - `margin`:
     cross  (margin_mode=0) → position_value × initial_margin_fraction / 100
@@ -43,14 +48,38 @@ import mo_db
 
 # ── Constants ──────────────────────────────────────────────────────────
 LIGHTER_API = "https://mainnet.zklighter.elliot.ai/api/v1"
-L1_ADDRESS = "0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB"
-EXCH = "LIGHTER_FUTURES"
+# Lighter also runs on Robinhood Chain - a SEPARATE deployment with the same
+# REST surface but its own order books, markets and account-index space. Host
+# taken from the explorer bundle (apidocs.rh.lighter.xyz / api.rh.lighter.xyz).
+LIGHTER_RH_API = "https://api.rh.lighter.xyz/api/v1"
+# `exch` is per deployment, not per venue: refdata lists the Robinhood Chain
+# account under exchangeName "LIGHTER ROBINHOOD" with products=UNIFIED, so it
+# takes the UNIFIED naming used for Bitget's unified-trading accounts
+# (EC001@BITGET_UNIFIED / exch BITGET_UNIFIED) rather than the _FUTURES form.
+# Each ACCOUNT_MAP entry carries the value its rows are written with.
+EXCH = "LIGHTER_FUTURES"        # zkSync mainnet deployment
+EXCH_RH = "LIGHTER_UNIFIED"     # Robinhood Chain deployment
 
-# Lighter sub-account index → (MO account_id, account_name).
-# Only one sub-account exists today (index 29911); if more get created the
-# collector logs a warning and skips so we don't write under a wrong id.
-ACCOUNT_MAP: dict[int, dict] = {
-    29911: {"account_id": 215002, "name": "TRADING01@LIGHTER"},
+# (api base, L1 wallet) pairs to snap. A wallet only means something together
+# with the deployment it lives on, so they travel as a pair. A wallet that has
+# never been funded has no account yet and is skipped (see _resolve_subaccounts).
+WALLETS = [
+    (LIGHTER_API, "0xF8B5bde5f6aa989c01754931E077e1E5A915E2bB"),      # TRADING01 - 8023 CDA SOL
+    (LIGHTER_RH_API, "0xaa8307A460053a9E719e27bE78cF0135A86837f1"),   # TRADING02 - 1INCH FUSION
+]
+
+# (api base, sub-account index) -> MO account. Keyed by api base as well as
+# index because index spaces are PER DEPLOYMENT: index N on Robinhood Chain is
+# a different account from index N on zkSync mainnet, so keying on the bare
+# index would silently merge two desks. Unmapped pairs are warned + skipped so
+# nothing is ever written under a wrong account_id.
+ACCOUNT_MAP: dict[tuple[str, int], dict] = {
+    (LIGHTER_API, 29911): {
+        "account_id": 215002, "name": "TRADING01@LIGHTER", "exch": EXCH,
+    },
+    (LIGHTER_RH_API, 31599): {
+        "account_id": 237002, "name": "TRADING02@LIGHTER_UNIFIED", "exch": EXCH_RH,
+    },
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -100,20 +129,53 @@ def _f(s: str | float | None, default: float | None = 0.0) -> float | None:
         return default
 
 
-def _resolve_subaccounts() -> list[dict]:
-    """Return the list of {index, collateral, ...} for the L1 address."""
-    r = _get(f"{LIGHTER_API}/accountsByL1Address?l1_address={L1_ADDRESS}")
-    return r.get("sub_accounts") or []
+def _resolve_subaccounts() -> list[tuple[str, dict]]:
+    """Return (api base, sub-account row) for every wallet in WALLETS.
+
+    The api base is carried alongside each row because every later call - the
+    /account fetch and the ACCOUNT_MAP lookup - has to hit the same deployment
+    the sub-account was discovered on.
+
+    A wallet that has never been funded has no account and answers HTTP 400
+    `{"code":21100,"message":"account not found"}`. That is the normal state of
+    a newly registered wallet, so it is logged and skipped rather than failing
+    the snap for the wallets that DO have accounts.
+
+    Any other failure is logged per wallet; if nothing at all could be resolved
+    the error is raised so snapshot_all marks the task FAILED instead of
+    recording a silent empty snapshot.
+    """
+    subs: list[tuple[str, dict]] = []
+    errors = 0
+    for api, addr in WALLETS:
+        try:
+            r = _get(f"{api}/accountsByL1Address?l1_address={addr}")
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            if e.code == 400 and "21100" in body:
+                log.info(f"{addr[:10]}...: no Lighter account yet (unfunded), skipping")
+            else:
+                errors += 1
+                log.error(f"accountsByL1Address failed for {addr[:10]}...: {e} {body[:200]}")
+            continue
+        except Exception as e:
+            errors += 1
+            log.error(f"accountsByL1Address failed for {addr[:10]}...: {e}")
+            continue
+        subs.extend((api, s) for s in (r.get("sub_accounts") or []))
+    if errors and not subs:
+        raise RuntimeError("accountsByL1Address failed for every configured wallet")
+    return subs
 
 
-def _fetch_account(index: int) -> dict | None:
+def _fetch_account(api: str, index: int) -> dict | None:
     """Return the inner account object (accounts[0]) for a given index."""
-    r = _get(f"{LIGHTER_API}/account?by=index&value={index}")
+    r = _get(f"{api}/account?by=index&value={index}")
     accs = r.get("accounts") or []
     return accs[0] if accs else None
 
 
-def normalize_position(account_id: int, account_name: str,
+def normalize_position(account_id: int, account_name: str, exch: str,
                        fetch_dt: datetime, update_dt: datetime | None,
                        raw: dict) -> dict | None:
     symbol = raw.get("symbol", "")
@@ -144,8 +206,8 @@ def normalize_position(account_id: int, account_name: str,
     return {
         "account_id": account_id,
         "account_name": account_name,
-        "exch": EXCH,
-        "instrument": f"{symbol}-P/USDC@{EXCH}" if symbol else "",
+        "exch": exch,
+        "instrument": f"{symbol}-P/USDC@{exch}" if symbol else "",
         "instrument_type": "INST_TYPE_PERP",
         "side": side,
         "contract_size": 1,
@@ -186,21 +248,17 @@ INSERT INTO tq_hist_position_mo (
 
 def snap_once(conn, dry_run: bool) -> int:
     fetch_dt = datetime.now(timezone.utc)
-    try:
-        subs = _resolve_subaccounts()
-    except Exception as e:
-        log.error(f"accountsByL1Address failed: {e}")
-        return 0
+    subs = _resolve_subaccounts()
 
     rows: list[dict] = []
-    for sub in subs:
+    for api, sub in subs:
         idx = sub.get("index")
-        meta = ACCOUNT_MAP.get(idx)
+        meta = ACCOUNT_MAP.get((api, idx))
         if meta is None:
-            log.warning(f"unmapped Lighter sub-account index={idx}, skipping")
+            log.warning(f"unmapped Lighter sub-account index={idx} on {api}, skipping")
             continue
         try:
-            acc = _fetch_account(idx)
+            acc = _fetch_account(api, idx)
         except Exception as e:
             log.error(f"account fetch failed for index={idx}: {e}")
             continue
@@ -216,7 +274,7 @@ def snap_once(conn, dry_run: bool) -> int:
         positions = acc.get("positions", [])
         kept = 0
         for p in positions:
-            row = normalize_position(meta["account_id"], meta["name"],
+            row = normalize_position(meta["account_id"], meta["name"], meta["exch"],
                                      fetch_dt, update_dt, p)
             if row:
                 rows.append(row)
@@ -290,7 +348,8 @@ def main() -> None:
             pass
 
     mode = "once" if args.once else ("hourly" if args.hourly else f"interval={args.interval}s")
-    log.info(f"mode={mode} dry_run={args.dry_run} l1={L1_ADDRESS[:10]}…")
+    log.info(f"mode={mode} dry_run={args.dry_run} "
+             f"wallets={[a[:10] + '...' for _, a in WALLETS]}")
 
     try:
         if args.once:

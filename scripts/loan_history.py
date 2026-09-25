@@ -10,6 +10,7 @@ import sys
 
 import loan_db
 import loan_cashflow_map_db
+import scope
 
 
 def main() -> int:
@@ -23,6 +24,12 @@ def main() -> int:
     if not deal_ref:
         print(json.dumps({"ok": False, "error": "deal_ref is required"}))
         return 3
+    try:
+        ptf = scope.read_scope(params)
+    except scope.ScopeError as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+    scope_sql, scope_args = scope.where_clause(ptf, alias='t')
 
     conn = loan_db.connect()
     try:
@@ -38,9 +45,10 @@ def main() -> int:
                 "         ON cf.deal_ref = m.cashflow_deal_ref "
                 "        AND cf.effective_end IS NULL AND cf.status <> 'CANCELLED' "
                 " WHERE t.deal_ref = %s "
-                " GROUP BY t.id "
+                + scope_sql
+                + " GROUP BY t.id "
                 " ORDER BY t.effective_start ASC",
-                (deal_ref,),
+                (deal_ref, *scope_args),
             )
             rows = cur.fetchall()
             if not rows:

@@ -27,6 +27,7 @@ import sys
 import uuid
 
 import draft_db
+import scope
 from draft_insert import _is_missing_or_midnight
 
 
@@ -44,6 +45,7 @@ def _insert_batch(body: dict) -> dict:
     # Pre-validate everything BEFORE opening a txn so all errors surface
     # without holding locks. The DB UNIQUE constraint on client_request_id
     # backs this up at write time.
+    ptf = scope.read_scope(body)
     prepared = []
     seen_crids = set()
     for i, t in enumerate(trades):
@@ -57,6 +59,13 @@ def _insert_batch(body: dict) -> dict:
             )
         seen_crids.add(crid)
         payload = t.get("payload")
+        # Every trade in the batch, not just the first: an inter-PTF pair
+        # books two legs in two portfolios and both must be the caller's.
+        try:
+            scope.check_write(ptf, payload.get("portfolio_id")
+                              if isinstance(payload, dict) else None)
+        except scope.ScopeError as e:
+            raise scope.ScopeError(f"trade {i}: {e}") from e
         # Stamp user_id with "claude:" prefix so the row's booker is
         # attributed to the Claude Code path (see draft_insert.py).
         # Also default trade_date / value_date to now (UTC) when missing
@@ -124,6 +133,9 @@ def main() -> int:
 
     try:
         result = _insert_batch(body)
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
+        return 3
     except draft_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3

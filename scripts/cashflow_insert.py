@@ -41,6 +41,7 @@ import sys
 
 import attachments_db
 import cashflow_db
+import scope
 import loan_cashflow_map_db
 
 
@@ -117,6 +118,18 @@ def main() -> int:
         cashflow_db.validate_payload(payload, mode="insert")
     except cashflow_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
+        return 3
+
+    # Every leg must be inside the caller's portfolios, except the mirror
+    # leg of a transfer — see scope.check_insert_legs. An INTER PTF FUNDING
+    # is supposed to cross a boundary, so the far leg is exempt when it is
+    # the exact opposite of a leg the caller does own.
+    try:
+        ptf = scope.read_scope(_raw if isinstance(_raw, dict) else {})
+        scope.check_insert_legs(
+            ptf, payload if isinstance(payload, list) else [payload])
+    except scope.ScopeError as e:
+        print(json.dumps(scope.refusal(e)))
         return 3
     legs = payload if isinstance(payload, list) else [payload]
     conn = cashflow_db.connect()
