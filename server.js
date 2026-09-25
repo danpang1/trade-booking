@@ -39,6 +39,7 @@ const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
 const EXPORT_BLOTTER_SCRIPT = resolve(__dirname, "scripts", "export_blotter.py");
 const LOAN_EXPORT_SCRIPT    = resolve(__dirname, "scripts", "loan_export.py");
+const ACCOUNT_ID_RESOLVE_SCRIPT = resolve(__dirname, "scripts", "account_id_resolve.py");
 const BINANCE_VIP_LTV_SCRIPT = resolve(__dirname, "scripts", "binance_vip_loan_ltv.py");
 const BINANCE_PROXY_SCRIPT   = resolve(__dirname, "scripts", "binance_proxy.py");
 const FUNDING_SETTINGS_READ_SCRIPT   = resolve(__dirname, "scripts", "funding_settings_read.py");
@@ -1111,6 +1112,24 @@ const server = createServer(async (req, res) => {
   // Returns the latest available USD rates from reference_data.price_token_new,
   // walking back up to 7 days from today. Consumed by Loan Enquiry to
   // USD-value the exposure breakdown panel.
+  // GET /api/accounts/account-id?account=&type=&product=
+  // What account_id a booking WOULD record, so the form can show it before
+  // submit. The value stored on the trade is resolved again server-side at
+  // insert/amend — this is a preview, not the source of truth.
+  if (req.method === "GET" && req.url.startsWith("/api/accounts/account-id")) {
+    const u = new URL(req.url, "http://localhost");
+    const stdin = JSON.stringify({
+      account: u.searchParams.get("account") || null,
+      account_type: u.searchParams.get("type") || null,
+      product: u.searchParams.get("product") || null,
+    });
+    const { code, json } = await spawnPython(ACCOUNT_ID_RESOLVE_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/api/rates/latest")) {
     const { code, json } = await spawnPython(RATES_LATEST_SCRIPT, "{}");
     res.statusCode = httpStatusFor(code, json);

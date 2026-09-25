@@ -183,6 +183,8 @@ DATA_COLUMNS = (
     "user_id",
     "status",
     "comment",
+    # See cashflow_db — resolved server-side, NULL-safe.
+    "account_id",
 )
 
 

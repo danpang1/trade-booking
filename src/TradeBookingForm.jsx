@@ -11521,6 +11521,80 @@ export default function TradeBookingForm() {
     </Field>
   ) : null;
 
+  // ── Gateway Account ID (read-only) ────────────────────────────────
+  // What the booking WILL record, previewed before submit. The value the
+  // trade actually stores is resolved again server-side at insert/amend —
+  // this is a preview, never the source of truth, so a stale or failed
+  // preview cannot put a wrong id on a trade.
+  //
+  // Blank is a legitimate answer: a BANK account has no gateway account, and
+  // four live T2X values (REYA, STARKNET, FUTURES2, FUTURES3) have no code in
+  // the gateway rule at all. Those book fine with a NULL account_id.
+  const [accountIdPreview, setAccountIdPreview] = useState({
+    state: "idle", value: "",
+  });
+  useEffect(() => {
+    const acct = form.account_name;
+    if (!acct) {
+      setAccountIdPreview({ state: "idle", value: "" });
+      return;
+    }
+    // A product is required for exchange/wallet, so don't ask until it's
+    // chosen — the answer would only ever be blank.
+    if (productFieldApplies && !form.product) {
+      setAccountIdPreview({ state: "idle", value: "" });
+      return;
+    }
+    let cancelled = false;
+    setAccountIdPreview({ state: "loading", value: "" });
+    const qs = new URLSearchParams({
+      account: acct,
+      type: form.account_venue_type || "",
+      product: form.product || "",
+    });
+    api(`/api/accounts/account-id?${qs.toString()}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        setAccountIdPreview({
+          state: j?.account_id ? "ok" : "none",
+          value: j?.account_id || "",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setAccountIdPreview({ state: "error", value: "" });
+      });
+    return () => { cancelled = true; };
+  }, [form.account_name, form.account_venue_type, form.product,
+      productFieldApplies]);
+
+  const accountIdPlaceholder = {
+    idle: "—",
+    loading: "resolving…",
+    none: "no gateway id for this account",
+    error: "could not resolve — books as blank",
+  }[accountIdPreview.state] || "—";
+
+  const accountIdField = (
+    <Field label="Account ID" span={4}>
+      <input
+        type="text"
+        readOnly
+        tabIndex={-1}
+        value={accountIdPreview.value}
+        placeholder={accountIdPlaceholder}
+        title="Gateway account id, derived from the account and product. Recorded with the trade; not editable."
+        className="w-full px-2 py-1.5 text-[12px] font-mono"
+        style={{
+          background: "#f3f1ea",
+          border: `1px solid ${BB.border}`,
+          color: BB.mute,
+          cursor: "default",
+        }}
+      />
+    </Field>
+  );
+
   // INTER PTF FUNDING mirror-leg accounts. For mirror trades, the counterparty
   // field holds the counterparty portfolio's number — the leg-2 account belongs
   // to THAT portfolio, not the booking portfolio. BANK matches on entity (see
@@ -13634,6 +13708,7 @@ export default function TradeBookingForm() {
               </Field>
 
               {productField}
+              {accountIdField}
 
               {/* Tx hash (optional) */}
               <Field label="Tx Hash (optional)" span={12}>
@@ -13943,6 +14018,7 @@ export default function TradeBookingForm() {
               </Field>
 
               {productField}
+              {accountIdField}
 
               {form.cf_type === "INTER PTF FUNDING" && form.cf_mirror && (
                 <>

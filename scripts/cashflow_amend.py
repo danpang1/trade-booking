@@ -50,6 +50,7 @@ import sys
 import attachments_db
 import cashflow_db
 import scope
+import account_id_resolve
 import loan_cashflow_map_db
 
 
@@ -76,6 +77,11 @@ def main() -> int:
     except scope.ScopeError as e:
         print(json.dumps(scope.refusal(e)))
         return 3
+
+    # Re-resolve on amend: correcting the account or product should move the
+    # recorded id with it, not leave the original behind.
+    account_id_resolve.stamp(payload)
+
     if isinstance(payload, list):
         print(json.dumps({"ok": False, "error": "amend takes a single record, not a list"}))
         return 3

@@ -14,6 +14,7 @@ import sys
 import attachments_db
 import loan_db
 import scope
+import account_id_resolve
 
 
 def main() -> int:
@@ -39,6 +40,11 @@ def main() -> int:
     except scope.ScopeError as e:
         print(json.dumps(scope.refusal(e)))
         return 3
+
+    # Re-resolve on amend: correcting the account or product should move the
+    # recorded id with it, not leave the original behind.
+    account_id_resolve.stamp(payload)
+
     deal_ref = payload["deal_ref"]
     cols, vals = loan_db.payload_to_columns(payload, deal_ref=deal_ref)
 

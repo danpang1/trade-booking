@@ -84,6 +84,13 @@ eq("whoami is unscoped", classifyRoute("GET", "/api/auth/me"), "unscoped");
 eq("refdata refresh is unscoped",
   classifyRoute("POST", "/api/refdata/refresh"), "unscoped");
 eq("rates are unscoped", classifyRoute("GET", "/api/rates/latest"), "unscoped");
+eq("the account-id preview is unscoped",
+  classifyRoute("GET", "/api/accounts/account-id"), "unscoped");
+eq("...with query params too",
+  classifyRoute("GET", "/api/accounts/account-id?account=X&type=EXCHANGE"),
+  "unscoped");
+eq("but any OTHER /api/accounts route still denies by default",
+  classifyRoute("GET", "/api/accounts/list"), "admin-only");
 eq("funding settings read is unscoped",
   classifyRoute("GET", "/api/funding/settings"), "unscoped");
 eq("tx fetch is unscoped",

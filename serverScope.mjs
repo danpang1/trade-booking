@@ -43,6 +43,9 @@ export const ROUTE_RULES = [
   // refdata + market data disclose nothing portfolio-specific
   [/^\/api\/(refdata\/refresh|refresh)$/, "POST", "unscoped"],
   [/^\/api\/rates\/latest/, "GET", "unscoped"],
+  // Returns a refdata id for an account already listed in the public
+  // account picker — no portfolio data, so no new disclosure.
+  [/^\/api\/accounts\/account-id/, "GET", "unscoped"],
   [/^\/api\/funding\/settings$/, "GET", "unscoped"],
   [/^\/api\/cashflow\/fetch-tx$/, "POST", "unscoped"],
 

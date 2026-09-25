@@ -42,6 +42,7 @@ import sys
 import attachments_db
 import cashflow_db
 import scope
+import account_id_resolve
 import loan_cashflow_map_db
 
 
@@ -131,6 +132,13 @@ def main() -> int:
     except scope.ScopeError as e:
         print(json.dumps(scope.refusal(e)))
         return 3
+
+    # Stamp the gateway account_id onto every leg so it is recorded with the
+    # trade rather than re-derived later (a later derivation silently changes
+    # answer once an account is renamed or the rule is amended). Resolution
+    # never raises: an unresolvable account leaves the column NULL.
+    account_id_resolve.stamp_all(payload)
+
     legs = payload if isinstance(payload, list) else [payload]
     conn = cashflow_db.connect()
     try:

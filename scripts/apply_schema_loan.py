@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS trades_loan (
                             CHECK (status IN ('LIVE','MATURED','CANCELLED')),
   comment                 TEXT,
   wht_pct                 NUMERIC(8,4),
+  account_id              TEXT,
                           -- Optional withholding tax rate (% of accrued
                           -- interest). NULL = not applicable. Shown in
                           -- the schedule's WHT column as accrued × wht_pct/100

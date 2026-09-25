@@ -350,6 +350,10 @@ DATA_COLUMNS = (
     "user_id",
     "status",
     "comment",
+    # Gateway account id, resolved server-side at booking time from
+    # account + account_type + product. NULL when the account has no
+    # gateway code or T2X was unreachable — never blocks a booking.
+    "account_id",
 )
 
 

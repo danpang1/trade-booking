@@ -246,6 +246,9 @@ DATA_COLUMNS = (
     "status",
     "comment",
     "wht_pct",
+    # Present for uniformity with cashflow/spot; nothing populates it
+    # yet — trades_loan has no account to resolve an id from.
+    "account_id",
 )
 
 
