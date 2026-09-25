@@ -83,7 +83,22 @@ def _insert_one(cur, payload: dict) -> dict:
         }
         for m in mappings
     ]
+    _dual_write_manual_cashflow(row, payload)
     return row
+
+
+def _dual_write_manual_cashflow(row: dict, payload: dict) -> None:
+    """Best-effort mirror into the tech DB's manual_cashflow (separate DB, own
+    connection). Never affects the primary booking — all errors swallowed,
+    including a failed import of the optional manual_write module. `product`
+    (gateway sub-account selector) is merged from the payload — it is not a
+    trades_cashflow column."""
+    try:
+        import manual_write
+
+        manual_write.write_manual_cashflow({**row, "product": payload.get("product")})
+    except Exception as e:  # noqa: BLE001
+        print(f"manual dual-write: skip manual_cashflow: {e!r}", file=sys.stderr)
 
 
 def main() -> int:
