@@ -163,3 +163,147 @@ def test_stamp_all_accepts_a_single_dict(monkeypatch):
 def test_stamp_ignores_a_non_dict_leg(monkeypatch):
     _stub_t2x(monkeypatch, result="218001")
     air.stamp("not a dict")  # must not raise
+
+
+# ── reverse: id -> account + product ──────────────────────────────────
+# This is the one that can silently attach a WRONG product to a whole
+# batch, so the ambiguous codes and the round-trip guard get the attention.
+
+class FakeCur:
+    """Minimal cursor over an in-memory account table."""
+
+    def __init__(self, exchange=None, wallet=None, broker=None):
+        self.exchange = exchange or {}
+        self.wallet = wallet or {}
+        self.broker = broker or {}
+        self._row = None
+
+    def execute(self, sql, args=None):
+        rid = args[0] if args else None
+        if "account_exchange" in sql:
+            hit = self.exchange.get(rid)
+            self._row = (hit[0], hit[1]) if hit else None
+        elif "account_wallet" in sql:
+            hit = self.wallet.get(rid)
+            self._row = (hit[0], hit[1]) if hit else None
+        elif "account_broker" in sql:
+            hit = self.broker.get(rid)
+            self._row = (hit,) if hit else None
+        else:
+            self._row = None
+
+    def fetchone(self):
+        return self._row
+
+
+class FakeRevConn:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def cursor(self):
+        return self._cur
+
+
+def _stub_reverse(monkeypatch, cur):
+    import types
+    import gateway_rule
+    mod = types.ModuleType("t2x_mysql")
+    mod.connect = lambda: FakeRevConn(cur)
+    mod._rule_codes = lambda c: gateway_rule.hardcoded_codes()
+    monkeypatch.setitem(sys.modules, "t2x_mysql", mod)
+
+
+def test_reverse_resolves_an_exchange_id(monkeypatch):
+    _stub_reverse(monkeypatch, FakeCur(exchange={3: ("MOON@BINANCE", "SPOT,USDT_FUTURE")}))
+    assert air.reverse("3001") == {
+        "account": "MOON@BINANCE", "account_type": "EXCHANGE", "product": "SPOT",
+    }
+
+
+def test_reverse_picks_the_right_half_of_an_ambiguous_code(monkeypatch):
+    """001 is both `spot` and `trading`. The account lists only TRADING, so
+    that is the answer — this is what makes the reverse a function."""
+    _stub_reverse(monkeypatch, FakeCur(exchange={9: ("BROK@X", "TRADING")}))
+    assert air.reverse("9001")["product"] == "TRADING"
+
+
+def test_reverse_uses_the_accounts_own_spelling(monkeypatch):
+    _stub_reverse(monkeypatch, FakeCur(exchange={3: ("A@B", "usdt_future")}))
+    assert air.reverse("3002")["product"] == "usdt_future"
+
+
+def test_reverse_rejects_a_product_the_account_does_not_offer(monkeypatch):
+    """id says ALPHA (008) but the account only has SPOT — refuse rather
+    than attach a product that account cannot trade."""
+    _stub_reverse(monkeypatch, FakeCur(exchange={3: ("A@B", "SPOT")}))
+    assert air.reverse("3008") is None
+
+
+def test_reverse_resolves_a_wallet_chain(monkeypatch):
+    import json
+    deposits = json.dumps([{"chain": "ETHEREUM"}, {"chain": "SOLANA"}])
+    _stub_reverse(monkeypatch, FakeCur(wallet={7: ("W1", deposits)}))
+    got = air.reverse("7501")
+    assert got == {"account": "W1", "account_type": "WALLET", "product": "ETHEREUM"}
+
+
+def test_reverse_handles_an_aliased_chain(monkeypatch):
+    import json
+    deposits = json.dumps([{"chain": "BINANCE SMART CHAIN"}])
+    _stub_reverse(monkeypatch, FakeCur(wallet={7: ("W1", deposits)}))
+    assert air.reverse("7502")["product"] == "BINANCE SMART CHAIN"
+
+
+def test_reverse_gives_a_broker_no_product(monkeypatch):
+    _stub_reverse(monkeypatch, FakeCur(broker={4: "BRK1"}))
+    assert air.reverse("4201") == {
+        "account": "BRK1", "account_type": "BROKER", "product": None,
+    }
+
+
+def test_reverse_rejects_an_unknown_row_id(monkeypatch):
+    _stub_reverse(monkeypatch, FakeCur(exchange={3: ("A@B", "SPOT")}))
+    assert air.reverse("999001") is None
+
+
+def test_reverse_rejects_an_unknown_code(monkeypatch):
+    _stub_reverse(monkeypatch, FakeCur(exchange={3: ("A@B", "SPOT")}))
+    assert air.reverse("3777") is None
+
+
+def test_reverse_rejects_malformed_input(monkeypatch):
+    _stub_reverse(monkeypatch, FakeCur())
+    for bad in ("", None, "abc", "3", "001", "3001x", "  "):
+        assert air.reverse(bad) is None
+
+
+def test_reverse_never_raises_when_t2x_is_down(monkeypatch):
+    import types
+    mod = types.ModuleType("t2x_mysql")
+
+    def boom():
+        raise OSError("connection refused")
+
+    mod.connect = boom
+    mod._rule_codes = lambda c: {}
+    monkeypatch.setitem(sys.modules, "t2x_mysql", mod)
+    assert air.reverse("3001") is None
+
+
+def test_reverse_round_trips_through_resolve(monkeypatch):
+    """Whatever comes back must rebuild the id it came from — the guard that
+    keeps this safe if a colliding account ever appears."""
+    import gateway_rule
+    _stub_reverse(monkeypatch, FakeCur(exchange={3: ("A@B", "SPOT,USDT_FUTURE")}))
+    for wanted in ("3001", "3002"):
+        got = air.reverse(wanted)
+        back = gateway_rule.generate_trading_account_id(
+            3, got["account_type"].lower(), got["product"]
+        )
+        assert str(back) == wanted

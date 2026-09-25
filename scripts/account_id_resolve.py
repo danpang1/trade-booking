@@ -65,6 +65,140 @@ def resolve(account, account_type, product):
         return None
 
 
+def reverse(account_id):
+    """Gateway account_id -> {account, account_type, product}, or None.
+
+    The inverse of `resolve`, for the bulk editor: a user pastes an id and the
+    account and product fill themselves in.
+
+    The code alone is AMBIGUOUS -- 001 is both `spot` and `trading`, 002 both
+    `futures` and `usdt_future`. It is disambiguated by the account's own
+    products/chains list, which resolves it cleanly: across all 219 exchange
+    accounts and 443 wallets in T2X, no account lists both halves of a
+    colliding pair.
+
+    Should that ever stop being true, the round-trip check at the end catches
+    it: whatever comes back must forward-resolve to the id we were given, or
+    this returns None. A refusal is recoverable; a wrong product silently
+    attached to a trade is not.
+    """
+    s = str(account_id or "").strip()
+    if not s.isdigit() or len(s) <= 3:
+        return None
+    code, row_id = s[-3:], int(s[:-3])
+
+    try:
+        import gateway_rule
+        import t2x_mysql
+
+        with t2x_mysql.connect() as conn:
+            cur = conn.cursor()
+            codes = t2x_mysql._rule_codes(cur)
+            # Every {account_type}-{suffix} key sharing this 3-digit code.
+            keys = [k for k, v in codes.items() if v == code]
+            if not keys:
+                return None
+            for key in keys:
+                at, _, suffix = key.partition("-")
+                row = _fetch_by_id(cur, at, row_id)
+                if row is None:
+                    continue
+                # Match the account's own options against the key's suffix
+                # THROUGH the aliases: a wallet lists "BINANCE SMART CHAIN"
+                # but the rule keys it as `wallet-bsc`, so a literal compare
+                # would reject a perfectly valid chain.
+                product = _option_for_suffix(row.get("options"), suffix)
+                # Broker has no sub-account choice; its suffix is fixed.
+                if at != "broker" and (row.get("options") or []) and product is None:
+                    continue
+                if product is None:
+                    product = suffix
+                # Round-trip: the answer must rebuild the id it came from.
+                back = gateway_rule.generate_trading_account_id(
+                    row_id, at, product or suffix, codes
+                )
+                if back is None or str(back) != s:
+                    continue
+                return {
+                    "account": row["name"],
+                    "account_type": at.upper(),
+                    "product": None if at == "broker" else product,
+                }
+        return None
+    except Exception as e:  # noqa: BLE001
+        _log(f"could not reverse account_id={account_id!r}: {e!r}")
+        return None
+
+
+def _option_for_suffix(options, suffix):
+    """The account's own spelling of `suffix`, or None if it offers no match.
+
+    Compared through gateway_rule._SUFFIX_ALIASES so a display name maps to
+    the short form the rule keys on ("BINANCE SMART CHAIN" -> bsc).
+    """
+    import gateway_rule
+
+    want = str(suffix).strip().lower()
+    for o in options or []:
+        raw = str(o)
+        alias = gateway_rule._SUFFIX_ALIASES.get(raw, raw)
+        if raw.strip().lower() == want or str(alias).strip().lower() == want:
+            return raw
+    return None
+
+
+def _fetch_by_id(cur, account_type, row_id):
+    """{name, options} for a row id in the account table `account_type` names.
+
+    `options` is the sub-account list the gateway suffix must belong to:
+    `products` for an exchange, deposit chains for a wallet, nothing for a
+    broker. Kept here rather than in t2x_mysql because that module looks
+    accounts up by NAME; this is the only by-id path.
+    """
+    import json
+
+    if account_type == "exchange":
+        cur.execute(
+            "SELECT name, products FROM account_exchange "
+            " WHERE id = %s AND deletedAt IS NULL", (row_id,)
+        )
+        r = cur.fetchone()
+        if not r:
+            return None
+        opts = [p.strip() for p in str(r[1] or "").split(",") if p.strip()]
+        return {"name": r[0], "options": opts}
+
+    if account_type == "broker":
+        cur.execute(
+            "SELECT name FROM account_broker "
+            " WHERE id = %s AND deletedAt IS NULL", (row_id,)
+        )
+        r = cur.fetchone()
+        return {"name": r[0], "options": []} if r else None
+
+    if account_type == "wallet":
+        cur.execute(
+            "SELECT name, deposits FROM account_wallet "
+            " WHERE id = %s AND deletedAt IS NULL", (row_id,)
+        )
+        r = cur.fetchone()
+        if not r:
+            return None
+        try:
+            arr = r[1] if isinstance(r[1], list) else json.loads(r[1] or "[]")
+        except (ValueError, TypeError):
+            arr = []
+        seen, opts = set(), []
+        for d in arr or []:
+            ch = (d or {}).get("chain")
+            if ch and ch not in seen:
+                seen.add(ch)
+                opts.append(ch)
+        return {"name": r[0], "options": opts}
+
+    return None
+
+
 def stamp(payload: dict) -> None:
     """Set `payload['account_id']` in place, for a single booking leg.
 
@@ -94,6 +228,11 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "invalid JSON on stdin",
                           "detail": str(e)}))
         return 2
+    # Reverse mode: {"account_id": "3001"} -> account + product.
+    if params.get("account_id") and not params.get("account"):
+        hit = reverse(params.get("account_id"))
+        print(json.dumps({"ok": True, "resolved": hit}))
+        return 0
     account_id = resolve(
         params.get("account"),
         params.get("account_type"),

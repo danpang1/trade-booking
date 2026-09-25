@@ -5653,6 +5653,9 @@ const BULK_FIELD_DEFS = {
     { key: "status", label: "Status" },
     { key: "counterparty", label: "Counterparty" },
     { key: "account", label: "Account" },
+    // Paste a gateway id and the account + product fill themselves in.
+    // Sets all three fields, so it is the same edit as picking the pair.
+    { key: "account_id", label: "Account ID" },
     { key: "value_date", label: "Value Date" },
     { key: "portfolio", label: "Portfolio" },
     { key: "linked_loans", label: "Linked Loans" },
@@ -5662,6 +5665,9 @@ const BULK_FIELD_DEFS = {
     { key: "status", label: "Status" },
     { key: "counterparty", label: "Counterparty" },
     { key: "account", label: "Account" },
+    // Paste a gateway id and the account + product fill themselves in.
+    // Sets all three fields, so it is the same edit as picking the pair.
+    { key: "account_id", label: "Account ID" },
     { key: "value_date", label: "Value Date" },
     { key: "portfolio", label: "Portfolio" },
     { key: "quote_asset", label: "Quote Asset" },
@@ -5747,6 +5753,19 @@ function buildBulkAmendPayload(row, enabled, vals) {
   if (has("account")) {
     p.account = vals.account;
     p.account_type = bulkAccountType(vals.account);
+    // Carry the product with it. Without this the row keeps its previous
+    // product, and account_id (derived from account + product on amend)
+    // would be built from a new account and a stale sub-account — wrong,
+    // or null when the old product is not valid for the new account.
+    p.product = vals.account_product || null;
+  }
+  if (has("account_id")) {
+    // The id IS the (account, product) pair — the editor resolves it before
+    // it gets here, so all three move together and the server's re-derive
+    // returns the same id.
+    p.account = vals.account_id_resolved?.account ?? p.account;
+    p.account_type = vals.account_id_resolved?.account_type ?? p.account_type;
+    p.product = vals.account_id_resolved?.product ?? null;
   }
   if (has("portfolio")) {
     const port = PORTFOLIOS.find((x) => String(x.number) === String(vals.portfolio));
@@ -5780,6 +5799,58 @@ function buildBulkAmendPayload(row, enabled, vals) {
 }
 
 // Modal: pick fields + values, preview, then apply to every selected row.
+// Account ID input that resolves the id back to its account + product.
+// The id is derived data, so this is really a shortcut for picking the pair:
+// it is only accepted once the server confirms what it maps to, which stops a
+// typo'd id being applied to a batch of trades.
+function BulkAccountIdEditor({ value, onChange }) {
+  const [state, setState] = useState("idle");   // idle | loading | ok | bad
+  const [hit, setHit] = useState(null);
+
+  useEffect(() => {
+    const id = String(value || "").trim();
+    if (!id) { setState("idle"); setHit(null); onChange(value, null); return; }
+    let cancelled = false;
+    setState("loading");
+    api(`/api/accounts/account-id?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        const r = j?.resolved || null;
+        setHit(r);
+        setState(r ? "ok" : "bad");
+        onChange(id, r);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHit(null); setState("bad"); onChange(id, null);
+      });
+    return () => { cancelled = true; };
+    // onChange is recreated each render; depending on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(e.target.value, null)}
+        placeholder="e.g. 3001"
+        className="w-full px-2 py-1.5 text-[12px] font-mono"
+        style={{ background: "#ffffff", border: "1px solid var(--rule)", color: "var(--ink)" }}
+      />
+      <div className="text-[10px] font-mono" style={{ color: state === "bad" ? "#b3261e" : "var(--ink-3)" }}>
+        {state === "loading" ? "resolving…"
+          : state === "ok" ? `→ ${hit.account}${hit.product ? ` · ${hit.product}` : ""} (${hit.account_type})`
+          : state === "bad" ? "no account matches that id — nothing will be applied"
+          : "account and product will be filled in from the id"}
+      </div>
+    </div>
+  );
+}
+
 function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
   const [enabled, setEnabled] = useState(() => new Set());
   const [vals, setVals] = useState({});
@@ -5821,6 +5892,21 @@ function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
     const v = vals[k];
     if (k === "linked_loans") return Array.isArray(v);   // [] = clear links (allowed)
     if (k === "comment") return v != null;               // "" = blank the comment (allowed)
+    if (k === "account_id") {
+      // Only a SERVER-RESOLVED id may be applied. A typo would otherwise go
+      // onto every selected trade, and the id is the one field a human
+      // cannot eyeball for correctness.
+      return !!vals.account_id_resolved;
+    }
+    if (k === "account") {
+      if (!v) return false;
+      // If the account offers products/chains, one must be chosen — account
+      // and product are applied together.
+      const acct = bulkAllAccounts().find((a) => a.name === v);
+      const type = bulkAccountType(v);
+      const opts = type === "WALLET" ? (acct?.chains || []) : (acct?.products || []);
+      return opts.length === 0 || !!vals.account_product;
+    }
     return v != null && v !== "";
   };
   const enabledKeys = [...enabled];
@@ -5835,6 +5921,15 @@ function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
       return port ? `${port.number} — ${port.name}` : String(v);
     }
     if (k === "comment") return v === "" ? "(blank)" : String(v);
+    if (k === "account_id") {
+      const r = vals.account_id_resolved;
+      return r
+        ? `${v} → ${r.account}${r.product ? ` · ${r.product}` : ""}`
+        : String(v);
+    }
+    if (k === "account") {
+      return vals.account_product ? `${v} · ${vals.account_product}` : String(v);
+    }
     return String(v);
   };
 
@@ -5875,8 +5970,41 @@ function BulkEditDealsModal({ batchType, rows, onClose, onApplied, BB }) {
     if (k === "counterparty") return (
       <CounterpartyPicker value={vals.counterparty || ""} onChange={(v) => setVal("counterparty", v)} options={COUNTERPARTIES} />
     );
-    if (k === "account") return (
-      <AccountPicker value={vals.account || ""} onChange={(v) => setVal("account", v)} options={bulkAllAccounts()} />
+    if (k === "account") {
+      // Account and product move together — see bulkRowToPayload. Picking an
+      // account without its sub-account would leave the row's old product
+      // attached and derive a wrong account_id.
+      const acct = bulkAllAccounts().find((a) => a.name === vals.account);
+      const type = bulkAccountType(vals.account);
+      const opts = type === "WALLET" ? (acct?.chains || []) : (acct?.products || []);
+      const lbl = type === "WALLET" ? "chain" : "product";
+      return (
+        <div className="flex flex-col gap-1">
+          <AccountPicker
+            value={vals.account || ""}
+            onChange={(v) => { setVal("account", v); setVal("account_product", ""); }}
+            options={bulkAllAccounts()}
+          />
+          {opts.length > 0 && (
+            <Select
+              value={vals.account_product || ""}
+              onChange={(e) => setVal("account_product", e.target.value)}
+            >
+              <option value="">{`— select ${lbl} —`}</option>
+              {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+            </Select>
+          )}
+        </div>
+      );
+    }
+    if (k === "account_id") return (
+      <BulkAccountIdEditor
+        value={vals.account_id || ""}
+        onChange={(v, resolved) => {
+          setVal("account_id", v);
+          setVal("account_id_resolved", resolved);
+        }}
+      />
     );
     if (k === "portfolio") return (
       <PortfolioPicker value={vals.portfolio || ""} onChange={(v) => setVal("portfolio", v)} options={visiblePortfolios()} />

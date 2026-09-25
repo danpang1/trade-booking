@@ -1118,10 +1118,13 @@ const server = createServer(async (req, res) => {
   // insert/amend — this is a preview, not the source of truth.
   if (req.method === "GET" && req.url.startsWith("/api/accounts/account-id")) {
     const u = new URL(req.url, "http://localhost");
+    // Two directions through one script: `account`+`product` -> id for the
+    // booking form, or `id` -> account+product for the bulk editor.
     const stdin = JSON.stringify({
       account: u.searchParams.get("account") || null,
       account_type: u.searchParams.get("type") || null,
       product: u.searchParams.get("product") || null,
+      account_id: u.searchParams.get("id") || null,
     });
     const { code, json } = await spawnPython(ACCOUNT_ID_RESOLVE_SCRIPT, stdin);
     res.statusCode = httpStatusFor(code, json);
