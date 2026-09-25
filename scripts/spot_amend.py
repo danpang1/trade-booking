@@ -109,7 +109,7 @@ def main() -> int:
                     user_id=payload.get("user_id") or "unknown",
                 )
         print(json.dumps({"ok": True, "rows": [row], "attachments": inserted_atts}))
-        _dual_write_manual_trade_amend(row)
+        _dual_write_manual_trade_amend(row, payload)
         return 0
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
@@ -118,14 +118,15 @@ def main() -> int:
         conn.close()
 
 
-def _dual_write_manual_trade_amend(row: dict) -> None:
+def _dual_write_manual_trade_amend(row: dict, payload: dict) -> None:
     """Best-effort manual_* mirror for any amend (incl. cancel): closes the prior
     open manual_trade version and inserts the new one (SCD2). Never affects the
-    primary amend — all errors (incl. import) swallowed."""
+    primary amend — all errors (incl. import) swallowed. `product` (gateway
+    sub-account selector) is merged from the payload — not a trades_spot column."""
     try:
         import manual_write
 
-        manual_write.write_manual_trade_amend(row)
+        manual_write.write_manual_trade_amend({**row, "product": payload.get("product")})
     except Exception as e:  # noqa: BLE001
         print(f"manual dual-write: skip manual_trade amend: {e!r}", file=sys.stderr)
 

@@ -22,26 +22,63 @@ from pathlib import Path
 
 import pymysql
 
+# Rows come back { name, venue, portfolio } for every account_* table; exchange
+# rows additionally carry `products` (the gateway product options → account_id
+# sub-account suffix) and wallet rows carry `chains` (from the wallet's
+# `deposits` JSON). The form uses these to render the per-account Product/Chain
+# picker; see t2x_mysql.resolve_account_id + gateway_rule.py.
+_ACTIVE_FILTER = (
+    "WHERE deletedAt IS NULL AND (status IS NULL OR status='ACTIVE') "
+    "  AND (type IS NULL OR type NOT LIKE '%SHADOW%')"
+)
+
 REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 OUT = REPO / "public" / "refdata" / "accounts.json"
 
 # Per-table SELECT: each account_* table uses a different column for the
 # venue label. Keep the output row shape uniform so the frontend doesn't
-# care which table a row came from.
+# care which table a row came from. exchange/wallet get their own fetchers
+# (products / chains); broker + bank use the generic one.
 TABLES = [
-    ("exchange", "account_exchange", "exchangeName"),
-    ("wallet", "account_wallet", "walletType"),
     ("broker", "account_broker", "exchangeName"),
     ("bank", "account_bank", "bankName"),
 ]
+
+
+def _parse_simple_array(v) -> list[str]:
+    """TypeORM `simple-array` text ('spot,usdt_future') -> ['spot','usdt_future']."""
+    if not v:
+        return []
+    return [s.strip() for s in str(v).split(",") if s.strip()]
+
+
+def _chains_from_deposits(v) -> list[str]:
+    """account_wallet.deposits JSON -> ordered, de-duped list of `chain` values.
+
+    Mirrors how T2X derives a wallet's gateway account ids
+    (generateTradingAccountId(aw.id, 'wallet', d["chain"]) over deposits).
+    """
+    if not v:
+        return []
+    try:
+        arr = v if isinstance(v, list) else json.loads(v)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(arr, list):
+        return []
+    seen: dict[str, None] = {}
+    for d in arr:
+        if isinstance(d, dict) and d.get("chain"):
+            seen.setdefault(str(d["chain"]).strip(), None)
+    return list(seen)
 
 
 def _load_mysql_creds() -> dict[str, str]:
     """Env vars (T2X_RO_MYSQL_*) take precedence; .env file parsed as fallback."""
     env_creds = {
         k: os.environ[f"T2X_RO_MYSQL_{k.upper()}"]
-        for k in ("host", "username", "password")
+        for k in ("host", "port", "username", "password")
         if f"T2X_RO_MYSQL_{k.upper()}" in os.environ
     }
     if all(k in env_creds for k in ("host", "username", "password")):
@@ -72,13 +109,44 @@ def _load_mysql_creds() -> dict[str, str]:
 def _fetch(cur, table: str, venue_col: str) -> list[dict]:
     cur.execute(
         f"SELECT name, {venue_col} AS venue, linkedPortfolioName AS portfolio "
-        f"FROM {table} "
-        f"WHERE deletedAt IS NULL AND (status IS NULL OR status='ACTIVE') "
-        f"  AND (type IS NULL OR type NOT LIKE '%SHADOW%') "
-        f"ORDER BY name"
+        f"FROM {table} {_ACTIVE_FILTER} ORDER BY name"
     )
     return [
         {"name": r[0], "venue": r[1] or "", "portfolio": r[2] or ""}
+        for r in cur.fetchall()
+    ]
+
+
+def _fetch_exchange(cur) -> list[dict]:
+    """Exchange accounts + their `products` (drives the Product picker / suffix)."""
+    cur.execute(
+        f"SELECT name, exchangeName AS venue, linkedPortfolioName AS portfolio, products "
+        f"FROM account_exchange {_ACTIVE_FILTER} ORDER BY name"
+    )
+    return [
+        {
+            "name": r[0],
+            "venue": r[1] or "",
+            "portfolio": r[2] or "",
+            "products": _parse_simple_array(r[3]),
+        }
+        for r in cur.fetchall()
+    ]
+
+
+def _fetch_wallet(cur) -> list[dict]:
+    """Wallet accounts + their `chains` (from deposits; drives the Chain picker)."""
+    cur.execute(
+        f"SELECT name, walletType AS venue, linkedPortfolioName AS portfolio, deposits "
+        f"FROM account_wallet {_ACTIVE_FILTER} ORDER BY name"
+    )
+    return [
+        {
+            "name": r[0],
+            "venue": r[1] or "",
+            "portfolio": r[2] or "",
+            "chains": _chains_from_deposits(r[3]),
+        }
         for r in cur.fetchall()
     ]
 
@@ -87,6 +155,7 @@ def main() -> None:
     creds = _load_mysql_creds()
     conn = pymysql.connect(
         host=creds["host"],
+        port=int(creds.get("port", "3306")),
         user=creds["username"],
         password=creds["password"],
         database="reference_data",
@@ -95,6 +164,8 @@ def main() -> None:
     out: dict[str, list[dict]] = {}
     try:
         cur = conn.cursor()
+        out["exchange"] = _fetch_exchange(cur)
+        out["wallet"] = _fetch_wallet(cur)
         for key, table, venue_col in TABLES:
             out[key] = _fetch(cur, table, venue_col)
         # counterparty_settlement_crypto: CP-owned wallets (test wallets,

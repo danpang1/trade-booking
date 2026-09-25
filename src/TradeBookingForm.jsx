@@ -5639,6 +5639,35 @@ function bulkAllAccounts() {
   return [...ACCOUNTS_EXCHANGE, ...ACCOUNTS_WALLET, ...ACCOUNTS_BROKER, ...ACCOUNTS_BANK];
 }
 
+// Split a stored account ("ECT001@BINANCE_SPOT") back into its base name +
+// product/chain. trades_* bake the gateway product into the account name as
+// "<name>_<PRODUCT>"; we recover the base by matching known account names
+// (longest match wins, so a base name that itself contains "_" is handled).
+// No match — a legacy row with no product suffix, or an unknown account — yields
+// an empty product (base = the stored string), i.e. the picker shows blank.
+function splitAccountProduct(full, accountType) {
+  if (!full) return { name: full || "", product: "" };
+  const pool =
+    accountType === "WALLET" ? ACCOUNTS_WALLET
+    : accountType === "BROKER" ? ACCOUNTS_BROKER
+    : accountType === "BANK" ? ACCOUNTS_BANK
+    : accountType === "EXCHANGE" ? ACCOUNTS_EXCHANGE
+    : bulkAllAccounts();
+  let best = null;
+  for (const a of pool) {
+    if (full === a.name) return { name: a.name, product: "" };
+    if (full.startsWith(a.name + "_") && (!best || a.name.length > best.name.length)) {
+      const raw = full.slice(a.name.length + 1);
+      // Return the account's canonical option (exact case) so it matches the
+      // Product/Chain dropdown, regardless of the stored suffix's case.
+      const opts = accountType === "WALLET" ? (a.chains || []) : (a.products || []);
+      const canon = opts.find((o) => o.toLowerCase() === raw.toLowerCase());
+      best = { name: a.name, product: canon || raw };
+    }
+  }
+  return best || { name: full, product: "" };
+}
+
 // Build a full amend payload for one row, overriding only the enabled
 // fields. The row carries the complete DB record (from /recent), so
 // untouched fields pass straight through. expected_effective_start drives
@@ -10714,6 +10743,7 @@ export default function TradeBookingForm() {
         counterparty: p.counterparty ?? cur.counterparty,
         account_name: p.account ?? cur.account_name,
         account_venue_type: p.account_type ?? cur.account_venue_type,
+        product: p.product ?? cur.product,
         base_asset: p.base_asset ?? cur.base_asset,
         base_amount:
           p.base_amount != null ? String(Math.abs(parseFloat(p.base_amount) || 0)) : cur.base_amount,
@@ -10756,6 +10786,7 @@ export default function TradeBookingForm() {
       // so the load effect inverts that mapping to repopulate the dropdowns.
       account_name: p.account ?? cur.account_name,
       account_venue_type: p.account_type ?? cur.account_venue_type,
+      product: p.product ?? cur.product,
     }));
     // draftId was already set at the top (optimistic open) — just flip
     // the loading flag so the banner switches from "Loading…" to
@@ -10958,6 +10989,11 @@ export default function TradeBookingForm() {
     fee_amount: "",
     account_venue_type: "EXCHANGE",
     account_name: "",
+    // Gateway sub-account selector: PRODUCT for EXCHANGE accounts
+    // (spot/usdt_future/…), CHAIN for WALLET accounts (ethereum/solana/…).
+    // Drives the account_id suffix in the manual-booking dual-write
+    // (t2x_mysql.resolve_account_id / gateway_rule.py). Broker is fixed.
+    product: "",
     counterparty: "",
     // FUTURE
     fut_direction: "LONG",
@@ -11405,6 +11441,53 @@ export default function TradeBookingForm() {
     return pool.filter((a) => a.portfolio === ptf.name);
   }, [form.portfolio, form.account_venue_type]);
 
+  // The selected account's full object (accountOptions only keeps names in
+  // form state) — carries products[] (EXCHANGE) / chains[] (WALLET).
+  const selectedAccount = useMemo(
+    () => accountOptions.find((o) => o.name === form.account_name) || null,
+    [accountOptions, form.account_name]
+  );
+  // Gateway sub-account options for the picked account: PRODUCT for exchange,
+  // CHAIN for wallet, none for broker/bank. Drives the account_id suffix.
+  const productFieldApplies =
+    form.account_venue_type === "EXCHANGE" ||
+    form.account_venue_type === "WALLET";
+  const productFieldLabel =
+    form.account_venue_type === "WALLET" ? "Chain" : "Product";
+  const productOptions = useMemo(() => {
+    if (form.account_venue_type === "EXCHANGE")
+      return selectedAccount?.products || [];
+    if (form.account_venue_type === "WALLET")
+      return selectedAccount?.chains || [];
+    return [];
+  }, [form.account_venue_type, selectedAccount]);
+  // Shared Product (exchange) / Chain (wallet) picker for the SPOT + CASHFLOW
+  // forms. Hidden for broker/bank (no sub-account choice). The chosen value is
+  // sent as `product` and selects the account_id suffix in the dual-write.
+  const lc = productFieldLabel.toLowerCase();
+  const productField = productFieldApplies ? (
+    <Field label={productFieldLabel} required span={4}>
+      <Select
+        value={form.product}
+        onChange={(e) => set("product", e.target.value)}
+        disabled={!form.account_name}
+      >
+        <option value="">
+          {!form.account_name
+            ? "— select account first —"
+            : productOptions.length === 0
+            ? `— no ${lc} for this account —`
+            : `— select ${lc} —`}
+        </option>
+        {productOptions.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  ) : null;
+
   // INTER PTF FUNDING mirror-leg accounts. For mirror trades, the counterparty
   // field holds the counterparty portfolio's number — the leg-2 account belongs
   // to THAT portfolio, not the booking portfolio. BANK matches on entity (see
@@ -11528,6 +11611,7 @@ export default function TradeBookingForm() {
         counterparty_id: formatCID(COUNTERPARTY_IDS[form.counterparty]),
         account: form.account_name || null,
         account_type: form.account_venue_type,
+        product: form.product || null,
         asset: form.cf_asset,
         amount: cfSignedAmount,
         fee_asset: form.fee_asset,
@@ -11668,6 +11752,7 @@ export default function TradeBookingForm() {
         counterparty_id: formatCID(COUNTERPARTY_IDS[form.counterparty]),
         account: form.account_name || null,
         account_type: form.account_venue_type,
+        product: form.product || null,
         base_asset: form.base_asset,
         base_amount: parseFloat(form.base_amount) || 0,
         quote_asset: form.quote_asset,
@@ -11942,8 +12027,9 @@ export default function TradeBookingForm() {
       entity_row: row.entity || "",
       counterparty_id_row: row.counterparty_id || "",
       counterparty: row.counterparty || "",
-      account_name: row.account || "",
+      account_name: splitAccountProduct(row.account, row.account_type).name || "",
       account_venue_type: row.account_type || "",
+      product: splitAccountProduct(row.account, row.account_type).product,
       cf_asset: row.asset,
       // Form input is the positive magnitude; sign is derived from
       // direction at submit time (see outputRecord CASHFLOW branch).
@@ -12047,8 +12133,9 @@ export default function TradeBookingForm() {
       entity_row: row.entity || "",
       counterparty_id_row: row.counterparty_id || "",
       counterparty: row.counterparty || "",
-      account_name: row.account || "",
+      account_name: splitAccountProduct(row.account, row.account_type).name || "",
       account_venue_type: row.account_type || "",
+      product: splitAccountProduct(row.account, row.account_type).product,
       base_asset: row.base_asset,
       base_amount: row.base_amount == null ? "" : String(row.base_amount),
       quote_asset: row.quote_asset,
@@ -12149,6 +12236,7 @@ export default function TradeBookingForm() {
       counterparty: form.counterparty,
       account: form.account_name || null,
       account_type: form.account_venue_type || null,
+      product: form.product || null,
       asset: form.cf_asset,
       amount: cfSignedAmount,
       network: form.network || null,
@@ -12262,6 +12350,7 @@ export default function TradeBookingForm() {
       fee_amount: "",
       account_venue_type: "EXCHANGE",
       account_name: "",
+      product: "",
       account_id: "",
       tx_id: "",
       tx_hash: "",
@@ -12301,6 +12390,7 @@ export default function TradeBookingForm() {
       fee_amount: "",
       account_venue_type: "EXCHANGE",
       account_name: "",
+      product: "",
       network: "",
       tx_hash: "",
     },
@@ -13452,7 +13542,7 @@ export default function TradeBookingForm() {
                   onChange={(e) =>
                     // Clear account_name when switching tables so a stale value
                     // from another venue type doesn't linger.
-                    setMany({ account_venue_type: e.target.value, account_name: "" })
+                    setMany({ account_venue_type: e.target.value, account_name: "", product: "" })
                   }
                 >
                   {ACCOUNT_VENUE_TYPES.map((v) => (
@@ -13465,7 +13555,7 @@ export default function TradeBookingForm() {
               <Field label="Account Name" required span={8}>
                 <AccountPicker
                   value={form.account_name}
-                  onChange={(v) => set("account_name", v)}
+                  onChange={(v) => setMany({ account_name: v, product: "" })}
                   options={accountOptions}
                   placeholder={
                     !form.portfolio
@@ -13476,6 +13566,8 @@ export default function TradeBookingForm() {
                   }
                 />
               </Field>
+
+              {productField}
 
               {/* Tx hash (optional) */}
               <Field label="Tx Hash (optional)" span={12}>
@@ -13759,7 +13851,7 @@ export default function TradeBookingForm() {
                 <Select
                   value={form.account_venue_type}
                   onChange={(e) =>
-                    setMany({ account_venue_type: e.target.value, account_name: "" })
+                    setMany({ account_venue_type: e.target.value, account_name: "", product: "" })
                   }
                 >
                   {ACCOUNT_VENUE_TYPES.map((v) => (
@@ -13772,7 +13864,7 @@ export default function TradeBookingForm() {
               <Field label="Account Name" required span={8}>
                 <AccountPicker
                   value={form.account_name}
-                  onChange={(v) => set("account_name", v)}
+                  onChange={(v) => setMany({ account_name: v, product: "" })}
                   options={accountOptions}
                   placeholder={
                     !form.portfolio
@@ -13783,6 +13875,8 @@ export default function TradeBookingForm() {
                   }
                 />
               </Field>
+
+              {productField}
 
               {form.cf_type === "INTER PTF FUNDING" && form.cf_mirror && (
                 <>
