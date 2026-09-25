@@ -2473,7 +2473,12 @@ const AccountPicker = ({ value, onChange, options, placeholder = "— select acc
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  const selected = options.find((o) => o.name === value);
+  // Fall back to showing the raw value when it isn't in the current
+  // portfolio+venue pool — a legacy / system-ingested account (e.g. one with no
+  // product suffix, or booked before it existed in refdata) must still render
+  // as-is rather than collapsing to the "no accounts…" placeholder.
+  const selected =
+    options.find((o) => o.name === value) || (value ? { name: value } : null);
   const q = search.trim().toLowerCase();
   const filtered = q
     ? options.filter(
@@ -11466,7 +11471,7 @@ export default function TradeBookingForm() {
   // sent as `product` and selects the account_id suffix in the dual-write.
   const lc = productFieldLabel.toLowerCase();
   const productField = productFieldApplies ? (
-    <Field label={productFieldLabel} required span={4}>
+    <Field label={productFieldLabel} required={productOptions.length > 0} span={4}>
       <Select
         value={form.product}
         onChange={(e) => set("product", e.target.value)}
