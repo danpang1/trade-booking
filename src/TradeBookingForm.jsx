@@ -7708,6 +7708,39 @@ function FundingSankey({ capital, internalLoanUsd, vipLoanUsd, itdPnl, collatera
   );
 }
 
+// ─── DashboardSection — collapsible band. The title row is the same
+// uppercase mono label the Dashboard already used, now a toggle for the
+// whole band. `defaultOpen` sets the first render; nothing is persisted, so
+// a reload returns every band to its default. Collapsed content is
+// unmounted, which is safe because all fetching and editable state lives
+// in Dashboard itself — reopening a band never refetches.
+function DashboardSection({ title, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section style={{ marginBottom: 28, maxWidth: 1100 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          background: "none", border: "none",
+          borderBottom: "1px solid var(--rule)",
+          cursor: "pointer", padding: "6px 0", textAlign: "left",
+          marginBottom: open ? 12 : 0,
+          fontSize: 11, color: "var(--ink-3)",
+          letterSpacing: "0.06em", textTransform: "uppercase",
+          fontFamily: "var(--font-mono)",
+        }}
+      >
+        <span style={{ fontSize: 10, width: 10, color: "var(--ink-4)" }}>{open ? "▾" : "▸"}</span>
+        <span>{title}</span>
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
 // ─── Dashboard — landing surface, currently hosts the loan composition
 // donut. Marked WIP in the header so users know more widgets are coming.
 // Fetches its own loan + rates data so the view is independent of any
@@ -7961,54 +7994,20 @@ function Dashboard() {
           Work in progress
         </span>
       </div>
-      <div style={{
-        fontSize: 11, color: "var(--ink-3)",
-        letterSpacing: "0.06em", textTransform: "uppercase",
-        marginBottom: 16, fontFamily: "var(--font-mono)",
-      }}>
-        Loan composition · live exposure by type and asset
-      </div>
 
+      {/* Loan fetch failure stays at page level: a collapsed band would hide
+          it, and the Funding table's Internal Loan figure depends on it. */}
       {error && (
         <div className="px-3 py-2 mb-3 text-[12px]" style={{
           background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00",
         }}>Error: {error}</div>
       )}
 
-      {(loading && rows.length === 0) ? (
-        <div style={{
-          color: "var(--ink-3)", fontFamily: "var(--font-mono)", fontSize: 11,
-        }}>Loading live loans…</div>
-      ) : (
-        <LoanCompositionChart
-          exposureByType={exposureByType}
-          rates={rates}
-        />
-      )}
-
-      <div style={{
-        fontSize: 10, color: "var(--ink-4)", fontStyle: "italic",
-        fontFamily: "var(--font-mono)",
-        marginTop: 8, maxWidth: 1100,
-      }}>
-        {ratesMeta
-          ? `Rates: ${ratesMeta.source} · COB ${ratesMeta.cob}`
-          : ratesError
-            ? `Rates: unavailable — ${ratesError}`
-            : "Rates: loading…"}
-      </div>
-
       {/* ─── Funding & Deployment — how the book is funded (Capital +
           internal loans + Binance VIP loan) and the running balance after
           inception-to-date PnL. Capital and ITD PnL are operator-editable
           (shared store); Internal + VIP loan are live. ─── */}
-      <div style={{
-        fontSize: 11, color: "var(--ink-3)",
-        letterSpacing: "0.06em", textTransform: "uppercase",
-        marginTop: 32, marginBottom: 12, fontFamily: "var(--font-mono)",
-      }}>
-        Funding &amp; Deployment · capital, loans &amp; ITD PnL
-      </div>
+      <DashboardSection title="Funding &amp; Deployment · capital, loans &amp; ITD PnL" defaultOpen>
       {/* Table and Sankey side by side; both read the same derived figures,
           so an edit to Capital / ITD PnL / Illiquid redraws the flows. */}
       <div style={{
@@ -8137,19 +8136,41 @@ function Dashboard() {
           Save failed: {saveErr}
         </div>
       )}
+      </DashboardSection>
+
+      {/* ─── Loan composition — nested donut of live exposure by loan type
+          and asset. Collapsed by default: it is context, not the headline. ─── */}
+      <DashboardSection title="Loan composition · live exposure by type and asset">
+
+      {(loading && rows.length === 0) ? (
+        <div style={{
+          color: "var(--ink-3)", fontFamily: "var(--font-mono)", fontSize: 11,
+        }}>Loading live loans…</div>
+      ) : (
+        <LoanCompositionChart
+          exposureByType={exposureByType}
+          rates={rates}
+        />
+      )}
+
+      <div style={{
+        fontSize: 10, color: "var(--ink-4)", fontStyle: "italic",
+        fontFamily: "var(--font-mono)",
+        marginTop: 8, maxWidth: 1100,
+      }}>
+        {ratesMeta
+          ? `Rates: ${ratesMeta.source} · COB ${ratesMeta.cob}`
+          : ratesError
+            ? `Rates: unavailable — ${ratesError}`
+            : "Rates: loading…"}
+      </div>
+      </DashboardSection>
 
       {/* ─── Volume metrics — placeholder cards for Spot + Perps.
           Data source is the trades booked in Deal Enquiry (trades_spot
           / trades_future), NOT an external API. Layout previews the
           shape (24h / 7d / MTD) so users see what's coming. ─── */}
-      <div style={{
-        fontSize: 11, color: "var(--ink-3)",
-        letterSpacing: "0.06em", textTransform: "uppercase",
-        marginTop: 32, marginBottom: 12,
-        fontFamily: "var(--font-mono)",
-      }}>
-        Trade volume · spot & perps
-      </div>
+      <DashboardSection title="Trade volume · spot &amp; perps">
       <div style={{
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
@@ -8251,6 +8272,7 @@ function Dashboard() {
           </div>
         ))}
       </div>
+      </DashboardSection>
     </div>
   );
 }
