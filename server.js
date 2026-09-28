@@ -37,6 +37,11 @@ const SPOT_AMEND_BATCH_SCRIPT     = resolve(__dirname, "scripts", "spot_amend_ba
 const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
+const TRANSFER_INSERT_SCRIPT  = resolve(__dirname, "scripts", "transfer_insert.py");
+const TRANSFER_AMEND_SCRIPT   = resolve(__dirname, "scripts", "transfer_amend.py");
+const TRANSFER_RECENT_SCRIPT  = resolve(__dirname, "scripts", "transfer_recent.py");
+const TRANSFER_GET_SCRIPT     = resolve(__dirname, "scripts", "transfer_get.py");
+const TRANSFER_HISTORY_SCRIPT = resolve(__dirname, "scripts", "transfer_history.py");
 const EXPORT_BLOTTER_SCRIPT = resolve(__dirname, "scripts", "export_blotter.py");
 const LOAN_EXPORT_SCRIPT    = resolve(__dirname, "scripts", "loan_export.py");
 const ACCOUNT_ID_RESOLVE_SCRIPT = resolve(__dirname, "scripts", "account_id_resolve.py");
@@ -1350,6 +1355,75 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ── Transfers ────────────────────────────────────────────────────
+  // trades_transfer: asset movements, never P&L. Same route shape as
+  // spot/cashflow; an INTERNAL transfer posts a 2-leg list to /insert.
+
+  // POST /api/transfer/insert
+  if (req.url === "/api/transfer/insert" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(TRANSFER_INSERT_SCRIPT, stampScope(stampedBody, req));
+    const dealRefs = ((json && json.rows) || []).map((r) => r.deal_ref).join(",");
+    console.log(`[transfer] insert ${dealRefs || "FAIL"} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[transfer:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // POST /api/transfer/amend
+  if (req.url === "/api/transfer/amend" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(TRANSFER_AMEND_SCRIPT, stampScope(stampedBody, req));
+    const dealRef = (json && json.rows && json.rows[0] && json.rows[0].deal_ref) || "FAIL";
+    console.log(`[transfer] amend ${dealRef} (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[transfer:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/transfer/recent?limit=N
+  if (req.method === "GET" && req.url.startsWith("/api/transfer/recent")) {
+    const url = new URL(req.url, "http://localhost");
+    const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+    const stdin = withScope(req, { limit: Number.isNaN(limit) ? 20 : limit });
+    const { code, json } = await spawnPython(TRANSFER_RECENT_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/transfer/:deal_ref/history  (before the bare :deal_ref route)
+  if (req.method === "GET" && /^\/api\/transfer\/[^/]+\/history$/.test(req.url)) {
+    const segments = req.url.split("/");
+    const dealRef = decodeURIComponent(segments[segments.length - 2]);
+    const stdin = withScope(req, { deal_ref: dealRef });
+    const { code, json } = await spawnPython(TRANSFER_HISTORY_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
+  // GET /api/transfer/:deal_ref
+  if (req.method === "GET" && /^\/api\/transfer\/[^/]+$/.test(req.url)) {
+    const dealRef = decodeURIComponent(req.url.split("/").pop());
+    const stdin = withScope(req, { deal_ref: dealRef });
+    const { code, json } = await spawnPython(TRANSFER_GET_SCRIPT, stdin);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // GET /api/exports/blotter.csv?from=&to=&type=&portfolio=...
   // Streams a CSV download of live cashflow + spot trades in the
   // 18-column MO blotter layout. Spot trades are exploded into 2-3
@@ -1446,6 +1520,11 @@ server.listen(PORT, () => {
   console.log(`[server]   GET  /api/spot/recent          — list N recent live rows`);
   console.log(`[server]   GET  /api/spot/:deal_ref       — fetch one live row`);
   console.log(`[server]   GET  /api/spot/:deal_ref/history — all SCD2 versions`);
+  console.log(`[server]   POST /api/transfer/insert      — book a transfer (1 row, or 2 legs if INTERNAL)`);
+  console.log(`[server]   POST /api/transfer/amend       — amend one transfer leg`);
+  console.log(`[server]   GET  /api/transfer/recent      — list N recent live rows`);
+  console.log(`[server]   GET  /api/transfer/:deal_ref   — fetch one live row`);
+  console.log(`[server]   GET  /api/transfer/:deal_ref/history — all SCD2 versions`);
   console.log(`[server]   GET  /api/exports/blotter.csv  — full blotter CSV (cashflow + spot)`);
   console.log(`[server]   GET  /api/loan/export          — all live loans + mappings for export`);
   scheduleHourlyRefdataSync();

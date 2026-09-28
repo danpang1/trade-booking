@@ -78,6 +78,13 @@ eq("binance vip-loan ltv is admin-only",
   classifyRoute("GET", "/api/binance/vip-loan/ltv"), "admin-only");
 eq("funding settings write is admin-only",
   classifyRoute("POST", "/api/funding/settings"), "admin-only");
+// trades_transfer has no portfolio column: nothing to scope on.
+eq("transfer insert is admin-only",
+  classifyRoute("POST", "/api/transfer/insert"), "admin-only");
+eq("transfer recent is admin-only",
+  classifyRoute("GET", "/api/transfer/recent"), "admin-only");
+eq("transfer history is admin-only",
+  classifyRoute("GET", "/api/transfer/MTR00000001/history"), "admin-only");
 
 // ── unscoped ──────────────────────────────────────────────────────
 eq("whoami is unscoped", classifyRoute("GET", "/api/auth/me"), "unscoped");

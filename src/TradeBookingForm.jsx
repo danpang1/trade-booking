@@ -247,7 +247,14 @@ const ENTITIES = [
 // holds a portfolio number, not a refdata counterparty).
 const formatCID = (id) => (id == null ? null : "CID" + String(id).padStart(6, "0"));
 
-const CATEGORIES = ["SPOT", "FUTURE", "CASHFLOW", "LOAN"];
+const CATEGORIES = ["SPOT", "FUTURE", "CASHFLOW", "LOAN", "TRANSFER"];
+
+// TRANSFER — an asset MOVEMENT, never P&L. Lives in trades_transfer, its
+// own table, so the P&L engine (which reads trades_cashflow) never sees
+// one. One row per transfer with both ends on it: EXTERNAL has one end
+// ours and the other a counterparty (direction says which); INTERNAL has
+// both ends ours and is booked OUTGOING from the source.
+const TRANSFER_TYPES = ["EXTERNAL", "INTERNAL"];
 const VENUE_TYPES = ["CEX", "DEX", "OnChain", "OTC", "Internal", "RWA"];
 
 // FUTURE constants
@@ -647,16 +654,17 @@ const TRADE_ID_PREFIX = {
   FUTURE: "MFP",
   CASHFLOW: "MCF",
   LOAN: "MLA",
+  TRANSFER: "MTR",
 };
 
 const genTradeId = (category = "SPOT") => {
   // New trades show only the prefix as a placeholder. The numeric portion
   // is allocated server-side from trade_seq_<product> when the trade is
   // saved, so the deal_ref is only meaningful after submit.
-  // CASHFLOW uses no separator (MCF + 8-digit pad); other products keep
-  // the legacy dash-then-number convention.
+  // CASHFLOW and TRANSFER use no separator (MCF/MTR + 8-digit pad); other
+  // products keep the legacy dash-then-number convention.
   const prefix = TRADE_ID_PREFIX[category] || "MFX";
-  return category === "CASHFLOW" ? prefix : `${prefix}-`;
+  return category === "CASHFLOW" || category === "TRANSFER" ? prefix : `${prefix}-`;
 };
 const isoNow = () => new Date().toISOString();
 // Current time formatted for <input type="datetime-local"> ("YYYY-MM-DDTHH:mm")
@@ -2639,6 +2647,7 @@ const SIDEBAR_CATEGORIES = [
   { key: "FUTURE", label: "Futures" },
   { key: "CASHFLOW", label: "Cashflow" },
   { key: "LOAN", label: "Loan" },
+  { key: "TRANSFER", label: "Transfer" },
 ];
 
 // Horizontal product tab strip rendered at the top of the Create Deal modal.
@@ -2945,6 +2954,14 @@ const AUDIT_DIFF_FIELDS_CASHFLOW = [
   // current-mappings snapshot from the LEFT JOIN. A diff would always
   // be empty. The current state is shown on the initial-booking line.
 ];
+const AUDIT_DIFF_FIELDS_TRANSFER = [
+  "transfer_type", "direction",
+  "source_account_name", "source_product", "source_account_id",
+  "dest_account_name", "dest_product", "dest_account_id",
+  "asset", "amount", "fee_asset", "fee_amount",
+  "initiated_datetime", "completed_datetime", "network", "ext_transfer_id",
+  "status", "user_id", "updated_by", "comment",
+];
 const AUDIT_DIFF_FIELDS_LOAN = [
   "direction", "loan_type", "counterparty",
   "principal_asset", "principal_amount",
@@ -3019,10 +3036,12 @@ function HistoryModal({ open, dealRef, state, onClose }) {
   const product =
     rows[0]?.txn_type === "LOAN" ? "LOAN"
     : rows[0]?.txn_type === "SPOT" ? "SPOT"
+    : rows[0]?.txn_type === "TRANSFER" ? "TRANSFER"
     : "CASHFLOW";
   const diffFields =
     product === "LOAN" ? AUDIT_DIFF_FIELDS_LOAN
     : product === "SPOT" ? AUDIT_DIFF_FIELDS_SPOT
+    : product === "TRANSFER" ? AUDIT_DIFF_FIELDS_TRANSFER
     : AUDIT_DIFF_FIELDS_CASHFLOW;
   // Build per-version diff: for each row (except the first), compute which
   // diffFields changed vs the prior row.
@@ -5107,6 +5126,13 @@ function summarizeDeal(r) {
       r.counterparty ? `from ${String(r.counterparty).toUpperCase()}` : "",
     ]);
   }
+  if (r.txn_type === "TRANSFER") {
+    const amt = Math.abs(parseFloat(r.amount) || 0);
+    const fmtAmt = amt.toLocaleString("en-US", { maximumFractionDigits: 5 });
+    const end = (name, product) => `${name || "?"}${product ? ` (${product})` : ""}`;
+    return `${r.transfer_type || "TRANSFER"} ${fmtAmt} ${(r.asset || "").toUpperCase()} `
+      + `${end(r.source_account_name, r.source_product)} → ${end(r.dest_account_name, r.dest_product)}`;
+  }
   if (r.txn_type === "SPOT") {
     const baseAmt = Math.abs(parseFloat(r.base_amount) || 0);
     const fmtBase = baseAmt.toLocaleString("en-US", { maximumFractionDigits: 5 });
@@ -5422,6 +5448,7 @@ function filtersDifferFromDefault(filters, initial) {
 // INTER PTF FUNDING, ...); a spot row has no cashflow_type, so it falls
 // back to txn_type ("SPOT"). Users think in one list, not two columns.
 function dealTypeOf(r) {
+  if (r.txn_type === "TRANSFER") return `${r.transfer_type || ""} TRANSFER`.trim();
   return String(r.cashflow_type || r.txn_type || "").trim();
 }
 
@@ -6541,13 +6568,21 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       // cashflow + spot rows (re-sorted by effective_start desc in
       // filteredRows). The `mappings` array on each cashflow still
       // shows linked loans inline (chip in the Details column).
-      const [cfRes, spotRes] = await Promise.all([
+      // Transfers are admin-only (trades_transfer has no portfolio column
+      // to scope on), so a non-admin gets a 403 there: treated as "none"
+      // rather than failing the whole enquiry.
+      const [cfRes, spotRes, trRes] = await Promise.all([
         api("/api/cashflow/recent?limit=2000").then((r) => r.json()),
         api("/api/spot/recent?limit=2000").then((r) => r.json()),
+        api("/api/transfer/recent?limit=2000").then((r) => r.json()).catch(() => ({ ok: false })),
       ]);
       if (!cfRes.ok) throw new Error(cfRes.error || "cashflow fetch failed");
       if (!spotRes.ok) throw new Error(spotRes.error || "spot fetch failed");
-      setRows([...(cfRes.rows || []), ...(spotRes.rows || [])]);
+      setRows([
+        ...(cfRes.rows || []),
+        ...(spotRes.rows || []),
+        ...(trRes && trRes.ok ? (trRes.rows || []) : []),
+      ]);
       setLastFetchedAt(new Date());
     } catch (e) {
       setError(String(e));
@@ -6968,8 +7003,9 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       type="checkbox"
                       checked={selectedRefs.has(r.deal_ref)}
                       onChange={() => toggleRowSel(r)}
-                      disabled={batchType != null && r.txn_type !== batchType}
-                      title={batchType != null && r.txn_type !== batchType ? `Clear selection to switch to ${r.txn_type}` : "Select for bulk edit"}
+                      disabled={(batchType != null && r.txn_type !== batchType) || r.txn_type === "TRANSFER"}
+                      title={r.txn_type === "TRANSFER" ? "Transfers have no bulk edit yet — open the deal to amend it"
+                        : batchType != null && r.txn_type !== batchType ? `Clear selection to switch to ${r.txn_type}` : "Select for bulk edit"}
                     />
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
@@ -7072,7 +7108,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       );
                     })()}
                   </td>
-                  <td className="px-3 py-1.5 whitespace-nowrap">{r.cashflow_type || r.loan_type || (r.txn_type === "SPOT" ? r.direction : "") || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.cashflow_type || r.loan_type || (r.txn_type === "SPOT" ? r.direction : "") || (r.txn_type === "TRANSFER" ? `${r.transfer_type} · ${r.direction}` : "") || "—"}</td>
                   {/* CSV export should still emit asset/amount/fee_asset/fee_amount
                       as four separate columns per the audit schema, even though
                       the table only renders the fee pair. Loan rows have no
@@ -11407,6 +11443,19 @@ export default function TradeBookingForm() {
     // LOAN_RELATED_CF_TYPES. Persisted in loan_cashflow_map (not on
     // trades_cashflow) so it ships via _meta.loan_deal_refs.
     cf_loan_deal_refs: [],
+    // TRANSFER. "Our account" reuses account_venue_type / account_name /
+    // product; direction decides whether it is the source or the dest.
+    tr_type: "EXTERNAL",
+    tr_direction: "OUTGOING",
+    tr_asset: "USDT",
+    tr_amount: "",
+    // EXTERNAL: what identifies the counterparty end (wallet address,
+    // venue reference). Typed, never resolved.
+    tr_cpty_account_id: "",
+    // INTERNAL: the destination, one of our own accounts.
+    tr_dest_venue_type: "EXCHANGE",
+    tr_dest_account_name: "",
+    tr_dest_product: "",
     network: "",
     gas_fee: "",
     gas_asset: "ETH",
@@ -11961,6 +12010,36 @@ export default function TradeBookingForm() {
     return pool.filter((a) => a.portfolio === ptf.name);
   }, [form.counterparty, form.cf_mirror_account_venue_type]);
 
+  // TRANSFER destination (INTERNAL only): one of our own accounts, filtered
+  // by the same portfolio as the source so a cross-portfolio movement
+  // cannot be booked here (that is an INTER PTF FUNDING cashflow).
+  const destAccountOptions = useMemo(() => {
+    const ptf = PORTFOLIOS.find(
+      (p) => String(p.number) === String(form.portfolio)
+    );
+    if (!ptf) return [];
+    const pool =
+      form.tr_dest_venue_type === "EXCHANGE"
+        ? ACCOUNTS_EXCHANGE
+        : form.tr_dest_venue_type === "WALLET"
+        ? ACCOUNTS_WALLET
+        : form.tr_dest_venue_type === "BROKER"
+        ? ACCOUNTS_BROKER
+        : form.tr_dest_venue_type === "BANK"
+        ? ACCOUNTS_BANK
+        : [];
+    if (form.tr_dest_venue_type === "BANK") {
+      return pool.filter((a) => a.portfolio === ptf.entity);
+    }
+    return pool.filter((a) => a.portfolio === ptf.name);
+  }, [form.portfolio, form.tr_dest_venue_type]);
+  const destProductOptions = useMemo(() => {
+    const a = destAccountOptions.find((o) => o.name === form.tr_dest_account_name);
+    if (form.tr_dest_venue_type === "EXCHANGE") return a?.products || [];
+    if (form.tr_dest_venue_type === "WALLET") return a?.chains || [];
+    return [];
+  }, [destAccountOptions, form.tr_dest_account_name, form.tr_dest_venue_type]);
+
   // INTER PTF FUNDING auto-comment. Produces strings like:
   //   OUTGOING: "PTF 8888 TREASURY FUNDS PTF 8041 CENTRAL RISK BOOK 1000 USDT"
   //   INCOMING: "PTF 8041 CENTRAL RISK BOOK RETURNED PTF 8888 TREASURY 1000 USDT"
@@ -12113,6 +12192,56 @@ export default function TradeBookingForm() {
         ];
       }
       return cfRecord;
+    }
+
+    // ─── TRANSFER: flat, schema-aligned to trades_transfer ─────────────
+    // One row, both ends on it. "Our account" is the form's account_*
+    // fields; for EXTERNAL the counterparty end is the Counterparty picker
+    // plus a typed far-side id, and direction decides which is source.
+    // INTERNAL is always OUTGOING from our source to our destination.
+    if (form.category === "TRANSFER") {
+      const internal = form.tr_type === "INTERNAL";
+      const direction = internal ? "OUTGOING" : form.tr_direction;
+      const magnitude = Math.abs(parseFloat(form.tr_amount) || 0);
+      const own = {
+        name: form.account_name || null,
+        product: form.product || null,
+        id: null,  // resolved server-side from the gateway rule
+      };
+      const far = internal
+        ? { name: form.tr_dest_account_name || null, product: form.tr_dest_product || null, id: null }
+        : { name: form.counterparty || null, product: null, id: form.tr_cpty_account_id || null };
+      const outgoing = direction === "OUTGOING";
+      const src = outgoing ? own : far;
+      const dst = outgoing ? far : own;
+      return {
+        deal_ref: form.trade_id,
+        txn_type: "TRANSFER",
+        transfer_type: form.tr_type,
+        direction,
+        source_account_name: src.name,
+        source_product: src.product,
+        source_account_id: src.id,
+        dest_account_name: dst.name,
+        dest_product: dst.product,
+        dest_account_id: dst.id,
+        asset: form.tr_asset,
+        amount: outgoing ? -magnitude : magnitude,
+        fee_asset: form.fee_asset,
+        fee_amount: parseFloat(form.fee_amount) || 0,
+        initiated_datetime: form.trade_date,
+        completed_datetime: form.value_date || null,
+        network: form.network || null,
+        ext_transfer_id: form.external_trade_id || null,
+        effective_start: null,
+        effective_end: null,
+        user_id: form.created_by || null,
+        status: form.status,
+        comment: form.notes || null,
+        _meta: {
+          attachments: form.attachments.map(({ _file, ...rest }) => rest),
+        },
+      };
     }
 
     // ─── LOAN: flat, schema-aligned to trades_loan ──────────────────────
@@ -12323,6 +12452,21 @@ export default function TradeBookingForm() {
         e.push("Notional amount must be > 0");
       if (!form.account_name) e.push("Account name is required");
     }
+    if (form.category === "TRANSFER") {
+      if (!form.tr_amount || parseFloat(form.tr_amount) <= 0)
+        e.push("Amount must be > 0");
+      if (!form.account_name) e.push("Our account is required");
+      if (form.tr_type === "INTERNAL") {
+        if (!form.tr_dest_account_name) e.push("Destination account is required");
+        else if (
+          form.tr_dest_account_name === form.account_name
+          && (!form.product || !form.tr_dest_product
+            || form.product.toUpperCase() === form.tr_dest_product.toUpperCase())
+        ) e.push("Same account both ends needs two different products (e.g. SPOT → FUNDING)");
+      } else if (!form.counterparty) {
+        e.push("Counterparty is required");
+      }
+    }
     if (form.category === "LOAN") {
       if (!form.counterparty) e.push("Counterparty required");
       if (!form.principal_amount || parseFloat(form.principal_amount) <= 0)
@@ -12435,7 +12579,11 @@ export default function TradeBookingForm() {
   async function openHistory(dealRef) {
     setHistoryModal({ dealRef, rows: [], loading: true, error: null });
     const product = productFromDealRef(dealRef);
-    const base = product === "LOAN" ? "loan" : product === "SPOT" ? "spot" : "cashflow";
+    const base =
+      product === "LOAN" ? "loan"
+      : product === "SPOT" ? "spot"
+      : product === "TRANSFER" ? "transfer"
+      : "cashflow";
     let res;
     try {
       res = await api(`/api/${base}/${encodeURIComponent(dealRef)}/history`);
@@ -12502,6 +12650,59 @@ export default function TradeBookingForm() {
       // Pre-fill the loan picker from joined mappings (server attaches
       // `mappings: [{counterpart_deal_ref, mapping_type, mapped_amount}]`).
       cf_loan_deal_refs: (row.mappings || []).map((m) => m.counterpart_deal_ref).filter(Boolean),
+    };
+  }
+
+  // Inverse of outputRecord for category="TRANSFER". Which end is ours is
+  // read from transfer_type + direction, the same rule the server uses;
+  // the account's venue type and portfolio (neither is stored) come from
+  // refdata, so the pickers open on the right lists.
+  function transferPayloadToFormState(row) {
+    const internal = row.transfer_type === "INTERNAL";
+    const outgoing = row.direction === "OUTGOING";
+    const own = internal || outgoing
+      ? { name: row.source_account_name, product: row.source_product }
+      : { name: row.dest_account_name, product: row.dest_product };
+    const far = internal || outgoing
+      ? { name: row.dest_account_name, product: row.dest_product, id: row.dest_account_id }
+      : { name: row.source_account_name, product: row.source_product, id: row.source_account_id };
+    const venueOf = (name) =>
+      ACCOUNTS_EXCHANGE.some((a) => a.name === name) ? "EXCHANGE"
+      : ACCOUNTS_WALLET.some((a) => a.name === name) ? "WALLET"
+      : ACCOUNTS_BROKER.some((a) => a.name === name) ? "BROKER"
+      : ACCOUNTS_BANK.some((a) => a.name === name) ? "BANK"
+      : "EXCHANGE";
+    const ownAcct = [...ACCOUNTS_EXCHANGE, ...ACCOUNTS_WALLET, ...ACCOUNTS_BROKER]
+      .find((a) => a.name === own.name);
+    const ptf = ownAcct ? PORTFOLIOS.find((p) => p.name === ownAcct.portfolio) : null;
+    return {
+      category: "TRANSFER",
+      trade_id: row.deal_ref,
+      tr_type: row.transfer_type,
+      tr_direction: row.direction,
+      portfolio: ptf ? String(ptf.number) : "",
+      portfolio_name_row: ptf ? ptf.name : "",
+      entity_row: ptf ? ptf.entity : "",
+      account_venue_type: venueOf(own.name),
+      account_name: own.name || "",
+      product: own.product || "",
+      counterparty: internal ? "" : (far.name || ""),
+      counterparty_id_row: "",
+      tr_cpty_account_id: internal ? "" : (far.id || ""),
+      tr_dest_venue_type: internal ? venueOf(far.name) : "EXCHANGE",
+      tr_dest_account_name: internal ? (far.name || "") : "",
+      tr_dest_product: internal ? (far.product || "") : "",
+      tr_asset: row.asset,
+      tr_amount: row.amount == null ? "" : String(Math.abs(parseFloat(row.amount))),
+      fee_asset: row.fee_asset || "",
+      fee_amount: row.fee_amount || "0",
+      trade_date: row.initiated_datetime,
+      value_date: row.completed_datetime || "",
+      network: row.network || "",
+      external_trade_id: row.ext_transfer_id || "",
+      created_by: row.user_id || user?.username || "",
+      status: row.status,
+      notes: row.comment || "",
     };
   }
 
@@ -12612,6 +12813,7 @@ export default function TradeBookingForm() {
   function productFromDealRef(dealRef) {
     if (typeof dealRef === "string" && dealRef.startsWith("MLA")) return "LOAN";
     if (typeof dealRef === "string" && dealRef.startsWith("MFX")) return "SPOT";
+    if (typeof dealRef === "string" && dealRef.startsWith("MTR")) return "TRANSFER";
     return "CASHFLOW";
   }
 
@@ -12630,10 +12832,12 @@ export default function TradeBookingForm() {
     const product =
       row.txn_type === "LOAN" ? "LOAN"
       : row.txn_type === "SPOT" ? "SPOT"
+      : row.txn_type === "TRANSFER" ? "TRANSFER"
       : "CASHFLOW";
     setMany(
       product === "LOAN" ? loanPayloadToFormState(row)
       : product === "SPOT" ? spotPayloadToFormState(row)
+      : product === "TRANSFER" ? transferPayloadToFormState(row)
       : payloadToFormState(row)
     );
     setAmendingDealRef(row.deal_ref);
@@ -12647,7 +12851,11 @@ export default function TradeBookingForm() {
   async function loadIntoForm(dealRef) {
     setFeedback(null);
     const product = productFromDealRef(dealRef);
-    const base = product === "LOAN" ? "loan" : product === "SPOT" ? "spot" : "cashflow";
+    const base =
+      product === "LOAN" ? "loan"
+      : product === "SPOT" ? "spot"
+      : product === "TRANSFER" ? "transfer"
+      : "cashflow";
     let res;
     try {
       res = await api(`/api/${base}/${encodeURIComponent(dealRef)}`);
@@ -12724,7 +12932,7 @@ export default function TradeBookingForm() {
   }
 
   const handleSubmit = async () => {
-    if (form.category !== "CASHFLOW" && form.category !== "LOAN" && form.category !== "SPOT") {
+    if (!["CASHFLOW", "LOAN", "SPOT", "TRANSFER"].includes(form.category)) {
       // FUTURE: not wired to backend yet — keep the existing JSON
       // preview behavior so that form still works.
       if (!canSubmit) return;
@@ -12738,6 +12946,7 @@ export default function TradeBookingForm() {
     const base =
       form.category === "LOAN" ? "loan"
       : form.category === "SPOT" ? "spot"
+      : form.category === "TRANSFER" ? "transfer"
       : "cashflow";
     const endpoint = amendingDealRef
       ? `/api/${base}/amend`
@@ -12841,6 +13050,22 @@ export default function TradeBookingForm() {
       product: "",
       network: "",
       tx_hash: "",
+    },
+    TRANSFER: {
+      tr_type: "EXTERNAL",
+      tr_direction: "OUTGOING",
+      tr_asset: "USDT",
+      tr_amount: "",
+      tr_cpty_account_id: "",
+      tr_dest_venue_type: "EXCHANGE",
+      tr_dest_account_name: "",
+      tr_dest_product: "",
+      fee_asset: "USDT",
+      fee_amount: "",
+      account_venue_type: "EXCHANGE",
+      account_name: "",
+      product: "",
+      network: "",
     },
     LOAN: {
       loan_direction: "BORROW",
@@ -12989,6 +13214,23 @@ export default function TradeBookingForm() {
           rec.value_date ? `value ${rec.value_date}` : null,
           rec.trade_date ? `trade ${fmtDate(rec.trade_date)}` : null,
           isMirror ? `mirror trade · ${outputRecord.length} legs` : null,
+        ].filter(Boolean),
+      };
+    }
+
+    if (rec.txn_type === "TRANSFER") {
+      const amt = Math.abs(parseFloat(rec.amount) || 0);
+      const feeAmt = Math.abs(parseFloat(rec.fee_amount) || 0);
+      const end = (name, product) => `${name || "—"}${product ? ` (${product})` : ""}`;
+      return {
+        headline: `${rec.transfer_type || "Transfer"} · ${fmt(amt)} ${rec.asset || ""} · ${end(rec.source_account_name, rec.source_product)} → ${end(rec.dest_account_name, rec.dest_product)}`,
+        detail: [
+          rec.direction ? `${rec.direction.toLowerCase()} from our book's view` : null,
+          feeAmt > 0 ? `fee ${fmt(feeAmt, 5)} ${rec.fee_asset || ""}` : null,
+          rec.network ? `network ${rec.network}` : null,
+          rec.ext_transfer_id ? `ext id ${rec.ext_transfer_id}` : null,
+          rec.initiated_datetime ? `initiated ${fmtDate(rec.initiated_datetime)}` : null,
+          rec.completed_datetime ? `completed ${fmtDate(rec.completed_datetime)}` : "not yet completed",
         ].filter(Boolean),
       };
     }
@@ -13614,6 +13856,8 @@ export default function TradeBookingForm() {
                 ? "Cashflow Summary"
                 : form.category === "LOAN"
                 ? "Loan Summary"
+                : form.category === "TRANSFER"
+                ? "Transfer Summary"
                 : "Trade Summary"
             }
             accent={BB.amber}
@@ -13630,9 +13874,9 @@ export default function TradeBookingForm() {
                 }}
               />
             </Field>
-            <Field label={form.category === "LOAN" ? "Order ID" : "External Trade ID (optional)"} span={6}>
+            <Field label={form.category === "LOAN" ? "Order ID" : form.category === "TRANSFER" ? "Ext Transfer ID (tx id / venue transfer id)" : "External Trade ID (optional)"} span={6}>
               <Input
-                placeholder={form.category === "LOAN" ? "" : "exchange order id / counterparty ref / 0x…"}
+                placeholder={form.category === "LOAN" ? "" : form.category === "TRANSFER" ? "0x… tx hash, or the venue's transfer id" : "exchange order id / counterparty ref / 0x…"}
                 value={form.external_trade_id}
                 onChange={(e) => set("external_trade_id", e.target.value)}
               />
@@ -13704,15 +13948,19 @@ export default function TradeBookingForm() {
               </>
             ) : (
               <>
-                <Field label="Trade Date · UTC" required span={4}>
+                <Field label={form.category === "TRANSFER" ? "Initiated · UTC" : "Trade Date · UTC"} required span={4}>
                   <DateTimePicker24
                     value={form.trade_date}
                     onChange={(v) => set("trade_date", v)}
-                    syncLabel="Sync → Value Date"
+                    syncLabel={form.category === "TRANSFER" ? "Sync → Completed" : "Sync → Value Date"}
                     onSync={(v) => set("value_date", v)}
                   />
                 </Field>
-                <Field label="Value Date · UTC" required span={4}>
+                <Field
+                  label={form.category === "TRANSFER" ? "Completed · UTC (blank until it lands)" : "Value Date · UTC"}
+                  required={form.category !== "TRANSFER"}
+                  span={4}
+                >
                   <DateTimePicker24
                     value={form.value_date}
                     onChange={(v) => set("value_date", v)}
@@ -13868,9 +14116,14 @@ export default function TradeBookingForm() {
                 }}
               />
             </Field>
+            {form.category === "TRANSFER" && form.tr_type === "INTERNAL" ? (
+              // Both ends of an internal transfer are our accounts; the
+              // destination is picked in Transfer Details, not here.
+              <div className="col-span-6" />
+            ) : (
             <Field
-              label="Counterparty"
-              required={form.category === "LOAN"}
+              label={form.category === "TRANSFER" ? "Counterparty (far side)" : "Counterparty"}
+              required={form.category === "LOAN" || form.category === "TRANSFER"}
               span={6}
               headerExtra={
                 form.category === "SPOT" ? (
@@ -13938,6 +14191,7 @@ export default function TradeBookingForm() {
                 />
               )}
             </Field>
+            )}
             <Field label="Status" required span={6}>
               <Select
                 value={form.status}
@@ -14253,6 +14507,220 @@ export default function TradeBookingForm() {
                   value={form.fut_pnl_realized}
                   onChange={(v) => set("fut_pnl_realized", v)}
                 />
+              </Field>
+            </Section>
+          )}
+
+          {form.category === "TRANSFER" && (
+            <Section
+              title="Transfer Details"
+              kicker="Transfer · moves an asset between accounts · no P&L"
+              accent={form.tr_type === "INTERNAL" ? BB.magenta : (form.tr_direction === "INCOMING" ? BB.green : BB.red)}
+            >
+              {/* Type — EXTERNAL (one end is a counterparty) / INTERNAL (both ours) */}
+              <Field label="Transfer Type" required span={6}>
+                <div className="flex gap-2">
+                  {TRANSFER_TYPES.map((t) => {
+                    const active = form.tr_type === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setMany({
+                          tr_type: t,
+                          // The far side changes meaning: clear whichever
+                          // picker no longer applies.
+                          counterparty: "", counterparty_id_row: "", tr_cpty_account_id: "",
+                          tr_dest_account_name: "", tr_dest_product: "",
+                        })}
+                        className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
+                        style={{
+                          background: BB.surface2,
+                          color: active ? BB.text : BB.dim,
+                          border: `1px solid ${active ? BB.text : BB.border}`,
+                          boxShadow: active ? `inset 0 0 0 1px ${BB.text}` : "none",
+                          fontWeight: active ? 600 : 500,
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              {/* Direction — EXTERNAL only. INTERNAL is always OUTGOING from
+                  the source we pick below, so there is nothing to choose. */}
+              <Field label="Direction" required span={6}>
+                {form.tr_type === "INTERNAL" ? (
+                  <div className="text-[11px] font-mono py-1.5" style={{ color: BB.mute }}>
+                    OUTGOING from source → destination (internal, booked from the source)
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    {CASHFLOW_DIRECTIONS.map((d) => {
+                      const active = form.tr_direction === d;
+                      const tone = d === "INCOMING" ? BB.green : BB.red;
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => set("tr_direction", d)}
+                          className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
+                          style={{
+                            background: BB.surface2,
+                            color: active ? tone : BB.dim,
+                            border: `1px solid ${active ? tone : BB.border}`,
+                            boxShadow: active ? `inset 0 0 0 1px ${tone}` : "none",
+                            fontWeight: active ? 600 : 500,
+                          }}
+                        >
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </Field>
+
+              <Field label="Asset" required span={3}>
+                <AssetPicker
+                  value={form.tr_asset}
+                  onChange={(v) => {
+                    setForm((f) => ({
+                      ...f,
+                      tr_asset: v,
+                      fee_asset: f.fee_asset === f.tr_asset ? v : f.fee_asset,
+                      last_modified_at: isoNow(),
+                    }));
+                  }}
+                />
+              </Field>
+              <Field label="Amount" required span={3} hint="positive; sign follows direction">
+                <NumberInput value={form.tr_amount} onChange={(v) => set("tr_amount", v)} />
+              </Field>
+              <Field label="Fee Asset" span={3}>
+                <AssetPicker value={form.fee_asset} onChange={(v) => set("fee_asset", v)} />
+              </Field>
+              <Field label="Fee Amount" span={3} hint="paid by the source, on top">
+                <NumberInput value={form.fee_amount} onChange={(v) => set("fee_amount", v)} />
+              </Field>
+
+              {/* Our account — the source (OUTGOING / INTERNAL) or the
+                  destination (INCOMING). Same pickers as the other books. */}
+              <Field
+                label={
+                  form.tr_type === "INTERNAL" ? "Source Account Type"
+                  : form.tr_direction === "OUTGOING" ? "Source Account Type (ours)"
+                  : "Destination Account Type (ours)"
+                }
+                required span={4}
+              >
+                <Select
+                  value={form.account_venue_type}
+                  onChange={(e) =>
+                    setMany({ account_venue_type: e.target.value, account_name: "", product: "" })
+                  }
+                >
+                  {ACCOUNT_VENUE_TYPES.map((v) => (
+                    <option key={v.key} value={v.key}>
+                      {v.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
+                label={
+                  form.tr_type === "INTERNAL" ? "Source Account"
+                  : form.tr_direction === "OUTGOING" ? "Source Account (ours)"
+                  : "Destination Account (ours)"
+                }
+                required span={8}
+              >
+                <AccountPicker
+                  value={form.account_name}
+                  onChange={(v) => setMany({ account_name: v, product: "" })}
+                  options={accountOptions}
+                  placeholder={
+                    !form.portfolio
+                      ? "— select portfolio first —"
+                      : accountOptions.length === 0
+                      ? "— no accounts for this portfolio + venue —"
+                      : "— select account —"
+                  }
+                />
+              </Field>
+              {productField}
+              {accountIdField}
+
+              {form.tr_type === "INTERNAL" ? (
+                <>
+                  <Field label="Destination Account Type" required span={4}>
+                    <Select
+                      value={form.tr_dest_venue_type}
+                      onChange={(e) =>
+                        setMany({ tr_dest_venue_type: e.target.value, tr_dest_account_name: "", tr_dest_product: "" })
+                      }
+                    >
+                      {ACCOUNT_VENUE_TYPES.map((v) => (
+                        <option key={v.key} value={v.key}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Destination Account" required span={8}>
+                    <AccountPicker
+                      value={form.tr_dest_account_name}
+                      onChange={(v) => setMany({ tr_dest_account_name: v, tr_dest_product: "" })}
+                      options={destAccountOptions}
+                      placeholder={
+                        !form.portfolio
+                          ? "— select portfolio first —"
+                          : destAccountOptions.length === 0
+                          ? "— no accounts for this portfolio + venue —"
+                          : "— select account —"
+                      }
+                    />
+                  </Field>
+                  {(form.tr_dest_venue_type === "EXCHANGE" || form.tr_dest_venue_type === "WALLET") && (
+                    <Field
+                      label={form.tr_dest_venue_type === "WALLET" ? "Destination Chain" : "Destination Product"}
+                      span={4}
+                      hint={form.tr_dest_account_name === form.account_name ? "must differ from the source product" : undefined}
+                    >
+                      <Select
+                        value={form.tr_dest_product}
+                        onChange={(e) => set("tr_dest_product", e.target.value)}
+                        disabled={!form.tr_dest_account_name}
+                      >
+                        <option value="">— select —</option>
+                        {destProductOptions.map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
+                </>
+              ) : (
+                <Field
+                  label={`Counterparty ${form.tr_direction === "OUTGOING" ? "Destination" : "Source"} ID (wallet address / venue ref)`}
+                  span={12}
+                >
+                  <Input
+                    placeholder="0x… wallet address, venue account reference — as given by the counterparty"
+                    value={form.tr_cpty_account_id}
+                    onChange={(e) => set("tr_cpty_account_id", e.target.value)}
+                  />
+                </Field>
+              )}
+
+              <Field label="Network" span={4}>
+                <Select value={form.network} onChange={(e) => set("network", e.target.value)}>
+                  <option value="">— off-chain / venue internal —</option>
+                  {NETWORKS.map((x) => (
+                    <option key={x}>{x}</option>
+                  ))}
+                </Select>
               </Field>
             </Section>
           )}
@@ -14908,7 +15376,9 @@ export default function TradeBookingForm() {
               {isSubmitting
                 ? "Submitting…"
                 : amendingDealRef ? `Update ${amendingDealRef}` : (
-                  form.category === "CASHFLOW" ? "Book Cashflow" : "Generate Output"
+                  form.category === "CASHFLOW" ? "Book Cashflow"
+                  : form.category === "TRANSFER" ? "Book Transfer"
+                  : "Generate Output"
                 )}
             </button>
             {amendingDealRef && (
