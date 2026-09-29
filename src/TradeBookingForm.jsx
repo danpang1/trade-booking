@@ -12928,7 +12928,7 @@ export default function TradeBookingForm() {
     // keeps the typed wallet address / venue reference and a NULL product.
     if (form.category === "TRANSFER") {
       const internal = form.tr_type === "INTERNAL";
-      const direction = internal ? "OUTGOING" : form.tr_direction;
+      const direction = form.tr_direction;
       const magnitude = Math.abs(parseFloat(form.tr_amount) || 0);
       const ownSides = internal ? ["src", "dst"] : direction === "OUTGOING" ? ["src"] : ["dst"];
       const end = (side) => {
@@ -15354,13 +15354,11 @@ export default function TradeBookingForm() {
                   })}
                 </div>
               </Field>
-              {/* direction — INTERNAL is always OUTGOING from source to dest */}
+              {/* direction — the row reads from its source account: OUTGOING
+                  the source loses |amount|, INCOMING it gains. For INTERNAL
+                  either side can be booked; the mirror covers the other. */}
               <Field label="Direction" required span={6}>
-                {form.tr_type === "INTERNAL" ? (
-                  <div className="text-[11px] font-mono py-1.5" style={{ color: BB.mute }}>
-                    OUTGOING · source → destination (both ours){form.tr_mirror !== false ? " · books the INCOMING mirror on the destination too" : " · one leg only, no mirror"}
-                  </div>
-                ) : (
+                <>
                   <div className="flex gap-2">
                     {CASHFLOW_DIRECTIONS.map((d) => {
                       const active = form.tr_direction === d;
@@ -15371,9 +15369,12 @@ export default function TradeBookingForm() {
                           type="button"
                           onClick={() => setMany({
                             tr_direction: d,
-                            // Swaps which end is ours: start both over.
-                            tr_src_account_name: "", tr_src_product: "", tr_src_account_id: "",
-                            tr_dst_account_name: "", tr_dst_product: "", tr_dst_account_id: "",
+                            // EXTERNAL: swaps which end is ours, start both
+                            // over. INTERNAL: both ends stay ours, keep them.
+                            ...(form.tr_type === "INTERNAL" ? {} : {
+                              tr_src_account_name: "", tr_src_product: "", tr_src_account_id: "",
+                              tr_dst_account_name: "", tr_dst_product: "", tr_dst_account_id: "",
+                            }),
                           })}
                           className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
                           style={{
@@ -15389,7 +15390,15 @@ export default function TradeBookingForm() {
                       );
                     })}
                   </div>
-                )}
+                  {form.tr_type === "INTERNAL" && (
+                    <div className="text-[10px] font-mono mt-1" style={{ color: BB.mute }}>
+                      {form.tr_direction === "INCOMING"
+                        ? "booked from the receiver: source gains, destination is the sender"
+                        : "booked from the sender: source loses, destination is the receiver"}
+                      {form.tr_mirror !== false ? " · mirror leg booked on the other account" : " · one leg only, no mirror"}
+                    </div>
+                  )}
+                </>
               </Field>
 
               {/* Portfolio — filters the own-account pickers below; not a column */}

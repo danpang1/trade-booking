@@ -51,8 +51,9 @@ Read from `transfer_type` + `direction`, never from a name lookup:
 | EXTERNAL | INCOMING | counterparty | ours |
 
 An `INTERNAL` transfer is **two rows**, like an INTER PTF FUNDING cashflow pair.
-The operator books it from the sender: `OUTGOING`, amount negative. The insert
-adds the mirror automatically (`transfer_db.mirror_leg`): ends swapped,
+The operator books either side: `OUTGOING` from the sender (source loses,
+amount negative) or `INCOMING` from the receiver (source gains, amount
+positive). The insert adds the mirror automatically (`transfer_db.mirror_leg`): ends swapped,
 `INCOMING`, amount positive, everything else shared. Each row reads from the
 point of view of its `source_account_name`, so a per-account position sums
 `source_*` rows only. The two legs are independent deal_refs (amend each on its
