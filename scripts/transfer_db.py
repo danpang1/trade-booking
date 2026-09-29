@@ -46,7 +46,9 @@ REQUIRED_FIELDS_AMEND = REQUIRED_FIELDS_INSERT + ("deal_ref",)
 
 VALID_TRANSFER_TYPES = {"INTERNAL", "EXTERNAL"}
 VALID_DIRECTIONS = cashflow_db.VALID_DIRECTIONS
-VALID_STATUSES = cashflow_db.VALID_STATUSES
+# A movement is either still moving or it has landed; there is no
+# PROCESSED / SETTLED distinction for a transfer.
+VALID_STATUSES = {"PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"}
 VALID_NETWORKS = cashflow_db.VALID_NETWORKS
 
 # refdata accounts.json kind -> the account_type the gateway rule wants.

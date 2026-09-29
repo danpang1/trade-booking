@@ -254,7 +254,7 @@ const CATEGORIES = ["SPOT", "FUTURE", "CASHFLOW", "LOAN", "TRANSFER"];
 // one. One row per transfer with both ends on it: EXTERNAL has one end
 // ours and the other a counterparty (direction says which); INTERNAL has
 // both ends ours and is booked OUTGOING from the source.
-const TRANSFER_TYPES = ["EXTERNAL", "INTERNAL"];
+const TRANSFER_TYPES = ["INTERNAL", "EXTERNAL"];
 const VENUE_TYPES = ["CEX", "DEX", "OnChain", "OTC", "Internal", "RWA"];
 
 // FUTURE constants
@@ -309,10 +309,16 @@ const TRADE_STATUSES = [
 // as a terminal state when a loan is reversed pre-maturity. Default LIVE on
 // a fresh booking.
 const LOAN_STATUSES = ["LIVE", "MATURED", "CANCELLED"];
+// TRANSFER lifecycle: a movement is either still moving or it has landed.
+// Default COMPLETED — most transfers are booked after the fact.
+const TRANSFER_STATUSES = ["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const statusOptionsFor = (category) =>
-  category === "LOAN" ? LOAN_STATUSES : TRADE_STATUSES;
+  category === "LOAN" ? LOAN_STATUSES
+  : category === "TRANSFER" ? TRANSFER_STATUSES
+  : TRADE_STATUSES;
 const defaultStatusFor = (category) =>
   category === "LOAN"   ? "LIVE"
+  : category === "TRANSFER" ? "COMPLETED"
   : category === "FUTURE" ? "SETTLED"
   : "CONFIRMED";
 const VENUES = {
@@ -5220,6 +5226,7 @@ const CASHFLOW_STATUS_STYLES = {
   CONFIRMED: { bg: "#eef0f6", border: "#c8cde0", color: "#1f63ea" },
   PROCESSED: { bg: "#eaf2ee", border: "#a3c4ad", color: "#22593c" },
   SETTLED:   { bg: "#eef5e9", border: "#7ea66a", color: "#1f4a1f" },
+  COMPLETED: { bg: "#eef5e9", border: "#7ea66a", color: "#1f4a1f" },  // transfers
   CANCELLED: { bg: "#fff0eb", border: "#e08a6a", color: "#7a1f00" },
 };
 const LOAN_STATUS_STYLES = {
@@ -7157,6 +7164,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                         CONFIRMED: { bg: "var(--status-confirmed-bg)", fg: "var(--status-confirmed)" },
                         PROCESSED: { bg: "var(--status-processed-bg)", fg: "var(--status-processed)" },
                         SETTLED:   { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
+                        COMPLETED: { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
                         CANCELLED: { bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)" },
                       };
                       const e = tokens[s] || { bg: "var(--paper-2)", fg: "var(--ink-3)" };
@@ -8383,7 +8391,7 @@ const TRANSFER_ENQUIRY_INITIAL_FILTERS = {
   completed_to: "",
   types: [],       // [] = all
   directions: [],  // [] = all
-  statuses: TRADE_STATUSES.filter((s) => s !== "CANCELLED"),
+  statuses: TRANSFER_STATUSES.filter((s) => s !== "CANCELLED"),
   dynamic: { deal_ref: "" },
 };
 
@@ -8666,7 +8674,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
             <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
               <span>Status</span>
               <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
-                {TRADE_STATUSES.map((s) =>
+                {TRANSFER_STATUSES.map((s) =>
                   chipBtn(filters.statuses.includes(s), s, () => toggleIn("statuses", s), CASHFLOW_STATUS_STYLES[s])
                 )}
               </div>
@@ -8796,6 +8804,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
                 CONFIRMED: { bg: "var(--status-confirmed-bg)", fg: "var(--status-confirmed)" },
                 PROCESSED: { bg: "var(--status-processed-bg)", fg: "var(--status-processed)" },
                 SETTLED:   { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
+                COMPLETED: { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
                 CANCELLED: { bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)" },
               };
               const st = statusTokens[r.status] || { bg: "var(--paper-2)", fg: "var(--ink-3)" };
@@ -12029,7 +12038,7 @@ export default function TradeBookingForm() {
     // tr_src_* / tr_dst_* (name, product, id) plus a venue-type picker for
     // each so the right refdata pool is offered. Which end is ours follows
     // transfer_type + direction; the other end is a counterparty.
-    tr_type: "EXTERNAL",
+    tr_type: "INTERNAL",
     tr_direction: "OUTGOING",
     tr_src_venue_type: "EXCHANGE",
     tr_src_account_name: "",
@@ -13253,7 +13262,7 @@ export default function TradeBookingForm() {
     if (!formSnapshotRef.current) {
       formSnapshotRef.current = { form, categoryCache };
     }
-    setForm({ ...initial(), category: "TRANSFER" });
+    setForm({ ...initial(), ...initialSharedForCategory("TRANSFER"), category: "TRANSFER" });
     setCategoryCache({});
     setAmendingDealRef(null);
     setCreateDealOpen(true);
@@ -13715,7 +13724,7 @@ export default function TradeBookingForm() {
       tx_hash: "",
     },
     TRANSFER: {
-      tr_type: "EXTERNAL",
+      tr_type: "INTERNAL",
       tr_direction: "OUTGOING",
       tr_src_venue_type: "EXCHANGE",
       tr_src_account_name: "",

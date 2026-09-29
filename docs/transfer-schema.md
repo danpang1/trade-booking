@@ -33,7 +33,7 @@ Column order approved 2026-09-28. DDL: `scripts/apply_schema_transfer.py`.
 | 19 | `effective_start` | TIMESTAMPTZ NOT NULL | SCD Type 2 |
 | 20 | `effective_end` | TIMESTAMPTZ | |
 | 21 | `user_id` | TEXT NOT NULL | Created By — never changes |
-| 22 | `status` | TEXT NOT NULL | PENDING / CONFIRMED / PROCESSED / SETTLED / CANCELLED |
+| 22 | `status` | TEXT NOT NULL | PENDING / CONFIRMED / COMPLETED / CANCELLED |
 | 23 | `comment` | TEXT | |
 | 24 | `updated_by` | TEXT | who made this version |
 

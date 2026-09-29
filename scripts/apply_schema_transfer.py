@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS trades_transfer (
   effective_end       TIMESTAMPTZ,
   user_id             TEXT           NOT NULL,
   status              TEXT           NOT NULL
-                        CHECK (status IN
-                          ('PENDING','CONFIRMED','PROCESSED','SETTLED','CANCELLED')),
+                        CONSTRAINT trades_transfer_status_check CHECK (status IN
+                          ('PENDING','CONFIRMED','COMPLETED','CANCELLED')),
   comment             TEXT,
   updated_by          TEXT,
   PRIMARY KEY (id),

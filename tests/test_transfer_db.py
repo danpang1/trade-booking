@@ -208,3 +208,12 @@ def test_row_to_payload_adds_enquiry_aliases():
         cols, ("MTR00000002", "INTERNAL", "OUTGOING", "WALLET_CRB_EVM_02", "ETHEREUM", "WALLET_CRB_EVM_03", "t0", None))
     assert out["account"] == "WALLET_CRB_EVM_02 · ETHEREUM"
     assert out["counterparty"] == "WALLET_CRB_EVM_03"
+
+
+def test_transfer_statuses_are_their_own_set():
+    # A transfer either is still moving or has landed: COMPLETED is the
+    # terminal good state, and the cashflow-only PROCESSED / SETTLED are out.
+    transfer_db.validate_payload(_internal(status="COMPLETED"), mode="insert")
+    for bad in ("SETTLED", "PROCESSED"):
+        with pytest.raises(transfer_db.ValidationError, match="status must be one of"):
+            transfer_db.validate_payload(_internal(status=bad), mode="insert")
