@@ -8448,15 +8448,6 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
   const pageStart = totalRows === 0 ? 0 : (page - 1) * pageSize + 1;
   const pageEnd = Math.min(page * pageSize, totalRows);
 
-  // Headline strip: what is still in flight is the number an operator
-  // actually watches on this page.
-  const kpis = useMemo(() => {
-    const live = rows.filter((r) => r.status !== "CANCELLED");
-    const inFlight = live.filter((r) => !r.completed_datetime);
-    const internal = live.filter((r) => r.transfer_type === "INTERNAL").length;
-    return { live: live.length, inFlight: inFlight.length, internal, external: live.length - internal };
-  }, [rows]);
-
   const exportCsv = useCallback(() => {
     const csv = rowsToCsv(filteredRows, TRANSFER_CSV_COLUMNS);
     downloadCsv(`transfer-enquiry-${todayStampLocal()}.csv`, csv);
@@ -8545,39 +8536,6 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
           style={{ background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00" }}
         >Error: {error}</div>
       )}
-
-      {/* KPI strip — same tile grammar as Loan Enquiry */}
-      <div
-        className="mb-3"
-        style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}
-      >
-        {[
-          { accent: "var(--ink)",           label: "Live transfers",   value: kpis.live,     sub: "excluding CANCELLED" },
-          { accent: "var(--signal-warn)",   label: "In flight",        value: kpis.inFlight, sub: "no completed time yet" },
-          { accent: "var(--signal-link)",   label: "Internal",         value: kpis.internal, sub: "between our own accounts" },
-          { accent: "var(--signal-buy)",    label: "External",         value: kpis.external, sub: "one end is a counterparty" },
-        ].map((t) => (
-          <div
-            key={t.label}
-            style={{
-              background: "var(--paper)",
-              border: "1px solid var(--rule)",
-              borderLeft: `3px solid ${t.accent}`,
-              borderRadius: 3,
-              padding: "8px 12px",
-              fontFamily: "var(--font-mono)",
-              minHeight: 64,
-              display: "flex", flexDirection: "column", justifyContent: "space-between",
-            }}
-          >
-            <div className="text-[10px] uppercase tracking-[0.06em]" style={{ color: "var(--ink-3)" }}>{t.label}</div>
-            <div className="text-[20px] font-semibold" style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>
-              {loading && rows.length === 0 ? "…" : t.value}
-            </div>
-            <div className="text-[10px]" style={{ color: "var(--ink-3)" }}>{t.sub}</div>
-          </div>
-        ))}
-      </div>
 
       {/* ─── Filters card ─── */}
       <div
