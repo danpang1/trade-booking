@@ -94,8 +94,19 @@ definitions:
     # consumed by other repos' builds (e.g. colossus_slack_bot) so they need
     # no access to this repo. Tagged with the plugin.json version: bump it
     # to publish a plugin change.
+    #
+    # Only runs when plugin/ changed. ECR tags are immutable, so running it
+    # on every push republishes the same tag and fails the pipeline for a
+    # commit that never touched the plugin. With the gate, the only way to
+    # hit the immutable-tag error is a plugin change without a version
+    # bump, which is exactly when it should fail.
     - step: &pluginImageBuildAndPublish
         name: Build and publish tokka-mo plugin image
+        condition:
+          changesets:
+            includePaths:
+              - "plugin/**"
+              - "docker/Dockerfile.plugin"
         runs-on:
           - 'self.hosted'
           - 'linux'
