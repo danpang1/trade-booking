@@ -14274,14 +14274,21 @@ export default function TradeBookingForm() {
                   onClick={() => { setAppView("booking"); setView("LOAN_ENQUIRY"); }}
                 />
                 <NavTabRow
-                  label="Transfer Enquiry"
-                  active={appView === "booking" && view === "TRANSFER_ENQUIRY"}
-                  onClick={() => { setAppView("booking"); setView("TRANSFER_ENQUIRY"); }}
-                />
-                <NavTabRow
                   label={`Approvals${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
                   active={appView === "pending"}
                   onClick={() => setAppView("pending")}
+                />
+
+                {/* Transfers are their own band: a movement book, not a
+                    trade one. */}
+                <div
+                  className="mx-5 my-2"
+                  style={{ borderTop: `1px dashed #d9d4c7` }}
+                />
+                <NavTabRow
+                  label="Transfer Enquiry"
+                  active={appView === "booking" && view === "TRANSFER_ENQUIRY"}
+                  onClick={() => { setAppView("booking"); setView("TRANSFER_ENQUIRY"); }}
                 />
 
                 {/* Separator — Dashboard sits in its own band between the
