@@ -12040,11 +12040,11 @@ export default function TradeBookingForm() {
     // transfer_type + direction; the other end is a counterparty.
     tr_type: "INTERNAL",
     tr_direction: "OUTGOING",
-    tr_src_venue_type: "EXCHANGE",
+    tr_src_venue_type: "",
     tr_src_account_name: "",
     tr_src_product: "",
     tr_src_account_id: "",
-    tr_dst_venue_type: "EXCHANGE",
+    tr_dst_venue_type: "",
     tr_dst_account_name: "",
     tr_dst_product: "",
     tr_dst_account_id: "",
@@ -12616,18 +12616,28 @@ export default function TradeBookingForm() {
   // and is never written (trades_transfer has no portfolio column). Blank
   // means every account of the venue type. BANK accounts hang off the
   // entity, the rest off the portfolio name, as in accountOptions.
+  // Both Account Type and Portfolio start blank and work as filters:
+  // blank type = every account of every type; blank portfolio = every
+  // portfolio. Picking an account name fills both in from refdata.
   const trAccountPool = (venueType) => {
     const pool =
       venueType === "EXCHANGE" ? ACCOUNTS_EXCHANGE
       : venueType === "WALLET" ? ACCOUNTS_WALLET
       : venueType === "BROKER" ? ACCOUNTS_BROKER
       : venueType === "BANK" ? ACCOUNTS_BANK
-      : [];
+      : bulkAllAccounts();
     const ptf = PORTFOLIOS.find((x) => String(x.number) === String(form.portfolio));
     if (!ptf) return pool;
-    return venueType === "BANK"
-      ? pool.filter((a) => a.portfolio === ptf.entity)
-      : pool.filter((a) => a.portfolio === ptf.name);
+    // BANK accounts hang off the entity, the rest off the portfolio name.
+    return pool.filter((a) => a.portfolio === ptf.name || a.portfolio === ptf.entity);
+  };
+  // The portfolio an own account belongs to, by exact name. A BANK
+  // account only names its entity, which several portfolios share, so it
+  // does not fill the portfolio in.
+  const trPortfolioNumberOf = (name) => {
+    const acct = bulkAllAccounts().find((a) => a.name === name);
+    const ptf = acct && PORTFOLIOS.find((x) => x.name === acct.portfolio);
+    return ptf ? String(ptf.number) : "";
   };
   const transferEnd = (side) => {
     const own = trOwnSides.includes(side);
@@ -12649,11 +12659,12 @@ export default function TradeBookingForm() {
         </div>
         {own ? (
           <>
-            <Field label={`${label} Account Type`} required span={3}>
+            <Field label={`${label} Account Type`} span={3} hint="filter · fills in from the account">
               <Select
                 value={vt}
                 onChange={(e) => setMany({ [k("venue_type")]: e.target.value, ...clearEnd })}
               >
+                <option value="">— any —</option>
                 {ACCOUNT_VENUE_TYPES.map((v) => (
                   <option key={v.key} value={v.key}>{v.label}</option>
                 ))}
@@ -12662,9 +12673,14 @@ export default function TradeBookingForm() {
             <Field label={`${label} Account Name`} required span={5}>
               <AccountPicker
                 value={form[k("account_name")]}
-                onChange={(v) => setMany({ ...clearEnd, [k("account_name")]: v })}
+                onChange={(v) => setMany({
+                  ...clearEnd,
+                  [k("account_name")]: v,
+                  [k("venue_type")]: bulkAccountType(v) || vt,
+                  portfolio: form.portfolio || trPortfolioNumberOf(v),
+                })}
                 options={pool}
-                placeholder={pool.length === 0 ? (form.portfolio ? "— no accounts of this type in this portfolio —" : "— no accounts of this type —") : "— select account —"}
+                placeholder={pool.length === 0 ? (form.portfolio ? "— no accounts of this type in this portfolio —" : "— no accounts of this type —") : vt ? "— select account —" : "— select account (any type) —"}
               />
             </Field>
             <Field label={`${label} Product`} required={productApplies && products.length > 0} span={4}>
@@ -13361,7 +13377,7 @@ export default function TradeBookingForm() {
   // pool is offered when the row is reopened; a counterparty end is left
   // on the default since its picker ignores it.
   function transferPayloadToFormState(row) {
-    const venueOf = (name) => bulkAccountType(name) || "EXCHANGE";
+    const venueOf = (name) => bulkAccountType(name) || "";
     // Portfolio is only a picker filter; seed it from whichever own end
     // is in refdata so the reopened row's account is inside the pool.
     const ownNames =
@@ -13749,11 +13765,11 @@ export default function TradeBookingForm() {
     TRANSFER: {
       tr_type: "INTERNAL",
       tr_direction: "OUTGOING",
-      tr_src_venue_type: "EXCHANGE",
+      tr_src_venue_type: "",
       tr_src_account_name: "",
       tr_src_product: "",
       tr_src_account_id: "",
-      tr_dst_venue_type: "EXCHANGE",
+      tr_dst_venue_type: "",
       tr_dst_account_name: "",
       tr_dst_product: "",
       tr_dst_account_id: "",
@@ -15297,7 +15313,7 @@ export default function TradeBookingForm() {
               </Field>
 
               {/* Portfolio — filters the own-account pickers below; not a column */}
-              <Field label="Portfolio" span={6} hint="filters the account lists · not stored on the transfer">
+              <Field label="Portfolio" span={6} hint="filter · fills in from the account · not stored">
                 <PortfolioPicker
                   value={form.portfolio}
                   onChange={(v) => setMany({
