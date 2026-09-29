@@ -8322,6 +8322,51 @@ function Dashboard() {
   );
 }
 
+// ─── OwnAccountIdPreview — read-only gateway id for one end of a transfer.
+// Same lookup the shared Account ID field does, but per end: a transfer has
+// up to two of our accounts on it. The stored value (when amending) shows
+// until the account or product is changed; then the live resolution does.
+// A preview only — the server resolves again on save.
+function OwnAccountIdPreview({ name, venueType, product, productApplies, stored, BB }) {
+  const [st, setSt] = useState({ state: "idle", value: "" });
+  useEffect(() => {
+    if (!name || (productApplies && !product)) {
+      setSt({ state: "idle", value: "" });
+      return;
+    }
+    let cancelled = false;
+    setSt({ state: "loading", value: "" });
+    const qs = new URLSearchParams({ account: name, type: venueType || "", product: product || "" });
+    api(`/api/accounts/account-id?${qs.toString()}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        setSt({ state: j?.account_id ? "ok" : "none", value: j?.account_id || "" });
+      })
+      .catch(() => { if (!cancelled) setSt({ state: "error", value: "" }); });
+    return () => { cancelled = true; };
+  }, [name, venueType, product, productApplies]);
+  const value = st.value || (st.state === "idle" ? (stored || "") : "");
+  const placeholder = {
+    idle: "—",
+    loading: "resolving…",
+    none: "no gateway id for this account — books as blank",
+    error: "could not resolve — books as blank",
+  }[st.state] || "—";
+  return (
+    <input
+      type="text"
+      readOnly
+      tabIndex={-1}
+      value={value}
+      placeholder={placeholder}
+      title="Gateway account id, derived from the account and product. Recorded with the transfer; not editable."
+      className="w-full px-2 py-1.5 text-[12px] font-mono"
+      style={{ background: "#f3f1ea", border: `1px solid ${BB.border}`, color: BB.mute, cursor: "default" }}
+    />
+  );
+}
+
 // ─── TransferEnquiry — separate view for trades_transfer rows ─────────
 // Parallel to LoanEnquiry: its own filter card and grid over the transfer
 // book only. Deal Enquiry still merges transfers into the mixed table;
@@ -11980,19 +12025,22 @@ export default function TradeBookingForm() {
     // LOAN_RELATED_CF_TYPES. Persisted in loan_cashflow_map (not on
     // trades_cashflow) so it ships via _meta.loan_deal_refs.
     cf_loan_deal_refs: [],
-    // TRANSFER. "Our account" reuses account_venue_type / account_name /
-    // product; direction decides whether it is the source or the dest.
+    // TRANSFER. One field per trades_transfer column: the two ends are
+    // tr_src_* / tr_dst_* (name, product, id) plus a venue-type picker for
+    // each so the right refdata pool is offered. Which end is ours follows
+    // transfer_type + direction; the other end is a counterparty.
     tr_type: "EXTERNAL",
     tr_direction: "OUTGOING",
+    tr_src_venue_type: "EXCHANGE",
+    tr_src_account_name: "",
+    tr_src_product: "",
+    tr_src_account_id: "",
+    tr_dst_venue_type: "EXCHANGE",
+    tr_dst_account_name: "",
+    tr_dst_product: "",
+    tr_dst_account_id: "",
     tr_asset: "USDT",
     tr_amount: "",
-    // EXTERNAL: what identifies the counterparty end (wallet address,
-    // venue reference). Typed, never resolved.
-    tr_cpty_account_id: "",
-    // INTERNAL: the destination, one of our own accounts.
-    tr_dest_venue_type: "EXCHANGE",
-    tr_dest_account_name: "",
-    tr_dest_product: "",
     network: "",
     gas_fee: "",
     gas_asset: "ETH",
@@ -12547,35 +12595,119 @@ export default function TradeBookingForm() {
     return pool.filter((a) => a.portfolio === ptf.name);
   }, [form.counterparty, form.cf_mirror_account_venue_type]);
 
-  // TRANSFER destination (INTERNAL only): one of our own accounts, filtered
-  // by the same portfolio as the source so a cross-portfolio movement
-  // cannot be booked here (that is an INTER PTF FUNDING cashflow).
-  const destAccountOptions = useMemo(() => {
-    const ptf = PORTFOLIOS.find(
-      (p) => String(p.number) === String(form.portfolio)
+  // TRANSFER ends. trades_transfer has no portfolio column, so our own
+  // accounts are offered unscoped: every refdata account of the chosen
+  // venue type. Which ends are ours follows the type + direction; the
+  // other end is a counterparty (name from refdata, product NULL, id typed).
+  const trOwnSides =
+    form.tr_type === "INTERNAL" ? ["src", "dst"]
+    : form.tr_direction === "OUTGOING" ? ["src"]
+    : ["dst"];
+  const trAccountPool = (venueType) =>
+    venueType === "EXCHANGE" ? ACCOUNTS_EXCHANGE
+    : venueType === "WALLET" ? ACCOUNTS_WALLET
+    : venueType === "BROKER" ? ACCOUNTS_BROKER
+    : venueType === "BANK" ? ACCOUNTS_BANK
+    : [];
+  const transferEnd = (side) => {
+    const own = trOwnSides.includes(side);
+    const k = (f) => `tr_${side}_${f}`;
+    const label = side === "src" ? "Source" : "Destination";
+    const vt = form[k("venue_type")];
+    const pool = own ? trAccountPool(vt) : [];
+    const acct = pool.find((a) => a.name === form[k("account_name")]);
+    const products = vt === "EXCHANGE" ? (acct?.products || []) : vt === "WALLET" ? (acct?.chains || []) : [];
+    const productApplies = own && (vt === "EXCHANGE" || vt === "WALLET");
+    const clearEnd = { [k("account_name")]: "", [k("product")]: "", [k("account_id")]: "" };
+    return (
+      <Fragment key={side}>
+        <div
+          className="col-span-12 text-[10px] uppercase tracking-[0.2em] font-mono pt-2"
+          style={{ color: own ? BB.text : BB.mute, borderTop: `1px dashed ${BB.border}` }}
+        >
+          {label} · {own ? "our account" : "counterparty"}
+        </div>
+        {own ? (
+          <>
+            <Field label={`${label} Account Type`} required span={3}>
+              <Select
+                value={vt}
+                onChange={(e) => setMany({ [k("venue_type")]: e.target.value, ...clearEnd })}
+              >
+                {ACCOUNT_VENUE_TYPES.map((v) => (
+                  <option key={v.key} value={v.key}>{v.label}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={`${label} Account Name`} required span={5}>
+              <AccountPicker
+                value={form[k("account_name")]}
+                onChange={(v) => setMany({ ...clearEnd, [k("account_name")]: v })}
+                options={pool}
+                placeholder={pool.length === 0 ? "— no accounts of this type —" : "— select account —"}
+              />
+            </Field>
+            <Field label={`${label} Product`} required={productApplies && products.length > 0} span={4}>
+              <Select
+                value={form[k("product")]}
+                onChange={(e) => set(k("product"), e.target.value)}
+                disabled={!productApplies || !form[k("account_name")]}
+              >
+                <option value="">
+                  {!productApplies
+                    ? "— n/a for this account type —"
+                    : !form[k("account_name")]
+                    ? "— select account first —"
+                    : products.length === 0
+                    ? "— none for this account —"
+                    : "— select —"}
+                </option>
+                {products.map((x) => (
+                  <option key={x} value={x}>{x}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={`${label} Account ID`} span={12} hint="resolved from account + product on save">
+              <OwnAccountIdPreview
+                name={form[k("account_name")]}
+                venueType={vt}
+                product={form[k("product")]}
+                productApplies={productApplies}
+                stored={form[k("account_id")]}
+                BB={BB}
+              />
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label={`${label} Account Name`} required span={5} hint="counterparty">
+              <CounterpartyPicker
+                value={form[k("account_name")]}
+                onChange={(v) => set(k("account_name"), v)}
+                options={COUNTERPARTIES}
+              />
+            </Field>
+            <Field label={`${label} Product`} span={3}>
+              <Input
+                value=""
+                readOnly
+                tabIndex={-1}
+                placeholder="— null for a counterparty —"
+                style={{ background: "#ece7dd", color: BB.dim, cursor: "not-allowed" }}
+              />
+            </Field>
+            <Field label={`${label} Account ID`} span={4} hint="wallet address / venue ref">
+              <Input
+                placeholder="0x… or the venue's reference"
+                value={form[k("account_id")]}
+                onChange={(e) => set(k("account_id"), e.target.value)}
+              />
+            </Field>
+          </>
+        )}
+      </Fragment>
     );
-    if (!ptf) return [];
-    const pool =
-      form.tr_dest_venue_type === "EXCHANGE"
-        ? ACCOUNTS_EXCHANGE
-        : form.tr_dest_venue_type === "WALLET"
-        ? ACCOUNTS_WALLET
-        : form.tr_dest_venue_type === "BROKER"
-        ? ACCOUNTS_BROKER
-        : form.tr_dest_venue_type === "BANK"
-        ? ACCOUNTS_BANK
-        : [];
-    if (form.tr_dest_venue_type === "BANK") {
-      return pool.filter((a) => a.portfolio === ptf.entity);
-    }
-    return pool.filter((a) => a.portfolio === ptf.name);
-  }, [form.portfolio, form.tr_dest_venue_type]);
-  const destProductOptions = useMemo(() => {
-    const a = destAccountOptions.find((o) => o.name === form.tr_dest_account_name);
-    if (form.tr_dest_venue_type === "EXCHANGE") return a?.products || [];
-    if (form.tr_dest_venue_type === "WALLET") return a?.chains || [];
-    return [];
-  }, [destAccountOptions, form.tr_dest_account_name, form.tr_dest_venue_type]);
+  };
 
   // INTER PTF FUNDING auto-comment. Produces strings like:
   //   OUTGOING: "PTF 8888 TREASURY FUNDS PTF 8041 CENTRAL RISK BOOK 1000 USDT"
@@ -12732,25 +12864,25 @@ export default function TradeBookingForm() {
     }
 
     // ─── TRANSFER: flat, schema-aligned to trades_transfer ─────────────
-    // One row, both ends on it. "Our account" is the form's account_*
-    // fields; for EXTERNAL the counterparty end is the Counterparty picker
-    // plus a typed far-side id, and direction decides which is source.
-    // INTERNAL is always OUTGOING from our source to our destination.
+    // One row, both ends on it, every key a trades_transfer column. Our
+    // ends are stamped server-side (transfer_db.stamp_account_ids) from the
+    // account + product, so their id is sent blank; the counterparty end
+    // keeps the typed wallet address / venue reference and a NULL product.
     if (form.category === "TRANSFER") {
       const internal = form.tr_type === "INTERNAL";
       const direction = internal ? "OUTGOING" : form.tr_direction;
       const magnitude = Math.abs(parseFloat(form.tr_amount) || 0);
-      const own = {
-        name: form.account_name || null,
-        product: form.product || null,
-        id: null,  // resolved server-side from the gateway rule
+      const ownSides = internal ? ["src", "dst"] : direction === "OUTGOING" ? ["src"] : ["dst"];
+      const end = (side) => {
+        const own = ownSides.includes(side);
+        return {
+          name: form[`tr_${side}_account_name`] || null,
+          product: own ? (form[`tr_${side}_product`] || null) : null,
+          id: own ? null : (form[`tr_${side}_account_id`] || null),
+        };
       };
-      const far = internal
-        ? { name: form.tr_dest_account_name || null, product: form.tr_dest_product || null, id: null }
-        : { name: form.counterparty || null, product: null, id: form.tr_cpty_account_id || null };
-      const outgoing = direction === "OUTGOING";
-      const src = outgoing ? own : far;
-      const dst = outgoing ? far : own;
+      const src = end("src");
+      const dst = end("dst");
       return {
         deal_ref: form.trade_id,
         txn_type: "TRANSFER",
@@ -12763,7 +12895,7 @@ export default function TradeBookingForm() {
         dest_product: dst.product,
         dest_account_id: dst.id,
         asset: form.tr_asset,
-        amount: outgoing ? -magnitude : magnitude,
+        amount: direction === "OUTGOING" ? -magnitude : magnitude,
         fee_asset: form.fee_asset,
         fee_amount: parseFloat(form.fee_amount) || 0,
         initiated_datetime: form.trade_date,
@@ -12964,7 +13096,8 @@ export default function TradeBookingForm() {
   const errors = useMemo(() => {
     const e = [];
     if (!form.created_by) e.push("Created by is required");
-    if (!form.portfolio) e.push("Portfolio is required");
+    // trades_transfer has no portfolio column.
+    if (!form.portfolio && form.category !== "TRANSFER") e.push("Portfolio is required");
     if (form.category === "SPOT") {
       if (!form.base_amount || parseFloat(form.base_amount) <= 0)
         e.push("Base amount must be > 0");
@@ -12992,17 +13125,15 @@ export default function TradeBookingForm() {
     if (form.category === "TRANSFER") {
       if (!form.tr_amount || parseFloat(form.tr_amount) <= 0)
         e.push("Amount must be > 0");
-      if (!form.account_name) e.push("Our account is required");
-      if (form.tr_type === "INTERNAL") {
-        if (!form.tr_dest_account_name) e.push("Destination account is required");
-        else if (
-          form.tr_dest_account_name === form.account_name
-          && (!form.product || !form.tr_dest_product
-            || form.product.toUpperCase() === form.tr_dest_product.toUpperCase())
-        ) e.push("Same account both ends needs two different products (e.g. SPOT → FUNDING)");
-      } else if (!form.counterparty) {
-        e.push("Counterparty is required");
-      }
+      if (!form.tr_src_account_name) e.push("Source account name is required");
+      if (!form.tr_dst_account_name) e.push("Destination account name is required");
+      if (
+        form.tr_type === "INTERNAL"
+        && form.tr_src_account_name
+        && form.tr_src_account_name === form.tr_dst_account_name
+        && (!form.tr_src_product || !form.tr_dst_product
+          || form.tr_src_product.toUpperCase() === form.tr_dst_product.toUpperCase())
+      ) e.push("Same account both ends needs two different products (e.g. SPOT → FUNDING)");
     }
     if (form.category === "LOAN") {
       if (!form.counterparty) e.push("Counterparty required");
@@ -13205,45 +13336,25 @@ export default function TradeBookingForm() {
     };
   }
 
-  // Inverse of outputRecord for category="TRANSFER". Which end is ours is
-  // read from transfer_type + direction, the same rule the server uses;
-  // the account's venue type and portfolio (neither is stored) come from
-  // refdata, so the pickers open on the right lists.
+  // Inverse of outputRecord for category="TRANSFER": one form field per
+  // column. The venue-type pickers are recovered from refdata so the right
+  // pool is offered when the row is reopened; a counterparty end is left
+  // on the default since its picker ignores it.
   function transferPayloadToFormState(row) {
-    const internal = row.transfer_type === "INTERNAL";
-    const outgoing = row.direction === "OUTGOING";
-    const own = internal || outgoing
-      ? { name: row.source_account_name, product: row.source_product }
-      : { name: row.dest_account_name, product: row.dest_product };
-    const far = internal || outgoing
-      ? { name: row.dest_account_name, product: row.dest_product, id: row.dest_account_id }
-      : { name: row.source_account_name, product: row.source_product, id: row.source_account_id };
-    const venueOf = (name) =>
-      ACCOUNTS_EXCHANGE.some((a) => a.name === name) ? "EXCHANGE"
-      : ACCOUNTS_WALLET.some((a) => a.name === name) ? "WALLET"
-      : ACCOUNTS_BROKER.some((a) => a.name === name) ? "BROKER"
-      : ACCOUNTS_BANK.some((a) => a.name === name) ? "BANK"
-      : "EXCHANGE";
-    const ownAcct = [...ACCOUNTS_EXCHANGE, ...ACCOUNTS_WALLET, ...ACCOUNTS_BROKER]
-      .find((a) => a.name === own.name);
-    const ptf = ownAcct ? PORTFOLIOS.find((p) => p.name === ownAcct.portfolio) : null;
+    const venueOf = (name) => bulkAccountType(name) || "EXCHANGE";
     return {
       category: "TRANSFER",
       trade_id: row.deal_ref,
       tr_type: row.transfer_type,
       tr_direction: row.direction,
-      portfolio: ptf ? String(ptf.number) : "",
-      portfolio_name_row: ptf ? ptf.name : "",
-      entity_row: ptf ? ptf.entity : "",
-      account_venue_type: venueOf(own.name),
-      account_name: own.name || "",
-      product: own.product || "",
-      counterparty: internal ? "" : (far.name || ""),
-      counterparty_id_row: "",
-      tr_cpty_account_id: internal ? "" : (far.id || ""),
-      tr_dest_venue_type: internal ? venueOf(far.name) : "EXCHANGE",
-      tr_dest_account_name: internal ? (far.name || "") : "",
-      tr_dest_product: internal ? (far.product || "") : "",
+      tr_src_venue_type: venueOf(row.source_account_name),
+      tr_src_account_name: row.source_account_name || "",
+      tr_src_product: row.source_product || "",
+      tr_src_account_id: row.source_account_id || "",
+      tr_dst_venue_type: venueOf(row.dest_account_name),
+      tr_dst_account_name: row.dest_account_name || "",
+      tr_dst_product: row.dest_product || "",
+      tr_dst_account_id: row.dest_account_id || "",
       tr_asset: row.asset,
       tr_amount: row.amount == null ? "" : String(Math.abs(parseFloat(row.amount))),
       fee_asset: row.fee_asset || "",
@@ -13606,17 +13717,18 @@ export default function TradeBookingForm() {
     TRANSFER: {
       tr_type: "EXTERNAL",
       tr_direction: "OUTGOING",
+      tr_src_venue_type: "EXCHANGE",
+      tr_src_account_name: "",
+      tr_src_product: "",
+      tr_src_account_id: "",
+      tr_dst_venue_type: "EXCHANGE",
+      tr_dst_account_name: "",
+      tr_dst_product: "",
+      tr_dst_account_id: "",
       tr_asset: "USDT",
       tr_amount: "",
-      tr_cpty_account_id: "",
-      tr_dest_venue_type: "EXCHANGE",
-      tr_dest_account_name: "",
-      tr_dest_product: "",
       fee_asset: "USDT",
       fee_amount: "",
-      account_venue_type: "EXCHANGE",
-      account_name: "",
-      product: "",
       network: "",
     },
     LOAN: {
@@ -14653,6 +14765,8 @@ export default function TradeBookingForm() {
                 )}
               </>
             )}
+            {form.category !== "TRANSFER" && (
+            <>
             <Field label="Portfolio" required span={6}>
               <PortfolioPicker
                 value={form.portfolio}
@@ -14682,14 +14796,13 @@ export default function TradeBookingForm() {
                 }}
               />
             </Field>
-            {form.category === "TRANSFER" && form.tr_type === "INTERNAL" ? (
-              // Both ends of an internal transfer are our accounts; the
-              // destination is picked in Transfer Details, not here.
-              <div className="col-span-6" />
-            ) : (
+            </>
+            )}
+            {/* A transfer names both of its ends in Transfer Details. */}
+            {form.category !== "TRANSFER" && (
             <Field
-              label={form.category === "TRANSFER" ? "Counterparty (far side)" : "Counterparty"}
-              required={form.category === "LOAN" || form.category === "TRANSFER"}
+              label="Counterparty"
+              required={form.category === "LOAN"}
               span={6}
               headerExtra={
                 form.category === "SPOT" ? (
@@ -15080,10 +15193,10 @@ export default function TradeBookingForm() {
           {form.category === "TRANSFER" && (
             <Section
               title="Transfer Details"
-              kicker="Transfer · moves an asset between accounts · no P&L"
+              kicker="Transfer · trades_transfer · one row, both ends · no P&L"
               accent={form.tr_type === "INTERNAL" ? BB.magenta : (form.tr_direction === "INCOMING" ? BB.green : BB.red)}
             >
-              {/* Type — EXTERNAL (one end is a counterparty) / INTERNAL (both ours) */}
+              {/* transfer_type */}
               <Field label="Transfer Type" required span={6}>
                 <div className="flex gap-2">
                   {TRANSFER_TYPES.map((t) => {
@@ -15094,10 +15207,9 @@ export default function TradeBookingForm() {
                         type="button"
                         onClick={() => setMany({
                           tr_type: t,
-                          // The far side changes meaning: clear whichever
-                          // picker no longer applies.
-                          counterparty: "", counterparty_id_row: "", tr_cpty_account_id: "",
-                          tr_dest_account_name: "", tr_dest_product: "",
+                          // Which ends are ours changes: start both over.
+                          tr_src_account_name: "", tr_src_product: "", tr_src_account_id: "",
+                          tr_dst_account_name: "", tr_dst_product: "", tr_dst_account_id: "",
                         })}
                         className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
                         style={{
@@ -15114,12 +15226,11 @@ export default function TradeBookingForm() {
                   })}
                 </div>
               </Field>
-              {/* Direction — EXTERNAL only. INTERNAL is always OUTGOING from
-                  the source we pick below, so there is nothing to choose. */}
-              <Field label="Direction" required span={6}>
+              {/* direction — INTERNAL is always OUTGOING from source to dest */}
+              <Field label="Direction" required span={6} hint="incoming = +amount · outgoing = −amount">
                 {form.tr_type === "INTERNAL" ? (
                   <div className="text-[11px] font-mono py-1.5" style={{ color: BB.mute }}>
-                    OUTGOING from source → destination (internal, booked from the source)
+                    OUTGOING · source → destination (both ours)
                   </div>
                 ) : (
                   <div className="flex gap-2">
@@ -15130,7 +15241,12 @@ export default function TradeBookingForm() {
                         <button
                           key={d}
                           type="button"
-                          onClick={() => set("tr_direction", d)}
+                          onClick={() => setMany({
+                            tr_direction: d,
+                            // Swaps which end is ours: start both over.
+                            tr_src_account_name: "", tr_src_product: "", tr_src_account_id: "",
+                            tr_dst_account_name: "", tr_dst_product: "", tr_dst_account_id: "",
+                          })}
                           className="px-4 py-1.5 text-[11px] tracking-[0.2em] uppercase font-mono transition-colors"
                           style={{
                             background: BB.surface2,
@@ -15148,6 +15264,18 @@ export default function TradeBookingForm() {
                 )}
               </Field>
 
+              {/* source_account_name / source_product / source_account_id */}
+              {transferEnd("src")}
+              {/* dest_account_name / dest_product / dest_account_id */}
+              {transferEnd("dst")}
+
+              <div
+                className="col-span-12 text-[10px] uppercase tracking-[0.2em] font-mono pt-2"
+                style={{ color: BB.mute, borderTop: `1px dashed ${BB.border}` }}
+              >
+                Amounts
+              </div>
+              {/* asset / amount / fee_asset / fee_amount */}
               <Field label="Asset" required span={3}>
                 <AssetPicker
                   value={form.tr_asset}
@@ -15161,7 +15289,7 @@ export default function TradeBookingForm() {
                   }}
                 />
               </Field>
-              <Field label="Amount" required span={3} hint="positive; sign follows direction">
+              <Field label="Amount" required span={3} hint="positive; stored signed by direction">
                 <NumberInput value={form.tr_amount} onChange={(v) => set("tr_amount", v)} />
               </Field>
               <Field label="Fee Asset" span={3}>
@@ -15170,116 +15298,7 @@ export default function TradeBookingForm() {
               <Field label="Fee Amount" span={3} hint="paid by the source, on top">
                 <NumberInput value={form.fee_amount} onChange={(v) => set("fee_amount", v)} />
               </Field>
-
-              {/* Our account — the source (OUTGOING / INTERNAL) or the
-                  destination (INCOMING). Same pickers as the other books. */}
-              <Field
-                label={
-                  form.tr_type === "INTERNAL" ? "Source Account Type"
-                  : form.tr_direction === "OUTGOING" ? "Source Account Type (ours)"
-                  : "Destination Account Type (ours)"
-                }
-                required span={4}
-              >
-                <Select
-                  value={form.account_venue_type}
-                  onChange={(e) =>
-                    setMany({ account_venue_type: e.target.value, account_name: "", product: "" })
-                  }
-                >
-                  {ACCOUNT_VENUE_TYPES.map((v) => (
-                    <option key={v.key} value={v.key}>
-                      {v.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field
-                label={
-                  form.tr_type === "INTERNAL" ? "Source Account"
-                  : form.tr_direction === "OUTGOING" ? "Source Account (ours)"
-                  : "Destination Account (ours)"
-                }
-                required span={8}
-              >
-                <AccountPicker
-                  value={form.account_name}
-                  onChange={(v) => setMany({ account_name: v, product: "" })}
-                  options={accountOptions}
-                  placeholder={
-                    !form.portfolio
-                      ? "— select portfolio first —"
-                      : accountOptions.length === 0
-                      ? "— no accounts for this portfolio + venue —"
-                      : "— select account —"
-                  }
-                />
-              </Field>
-              {productField}
-              {accountIdField}
-
-              {form.tr_type === "INTERNAL" ? (
-                <>
-                  <Field label="Destination Account Type" required span={4}>
-                    <Select
-                      value={form.tr_dest_venue_type}
-                      onChange={(e) =>
-                        setMany({ tr_dest_venue_type: e.target.value, tr_dest_account_name: "", tr_dest_product: "" })
-                      }
-                    >
-                      {ACCOUNT_VENUE_TYPES.map((v) => (
-                        <option key={v.key} value={v.key}>
-                          {v.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Destination Account" required span={8}>
-                    <AccountPicker
-                      value={form.tr_dest_account_name}
-                      onChange={(v) => setMany({ tr_dest_account_name: v, tr_dest_product: "" })}
-                      options={destAccountOptions}
-                      placeholder={
-                        !form.portfolio
-                          ? "— select portfolio first —"
-                          : destAccountOptions.length === 0
-                          ? "— no accounts for this portfolio + venue —"
-                          : "— select account —"
-                      }
-                    />
-                  </Field>
-                  {(form.tr_dest_venue_type === "EXCHANGE" || form.tr_dest_venue_type === "WALLET") && (
-                    <Field
-                      label={form.tr_dest_venue_type === "WALLET" ? "Destination Chain" : "Destination Product"}
-                      span={4}
-                      hint={form.tr_dest_account_name === form.account_name ? "must differ from the source product" : undefined}
-                    >
-                      <Select
-                        value={form.tr_dest_product}
-                        onChange={(e) => set("tr_dest_product", e.target.value)}
-                        disabled={!form.tr_dest_account_name}
-                      >
-                        <option value="">— select —</option>
-                        {destProductOptions.map((p) => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
-                      </Select>
-                    </Field>
-                  )}
-                </>
-              ) : (
-                <Field
-                  label={`Counterparty ${form.tr_direction === "OUTGOING" ? "Destination" : "Source"} ID (wallet address / venue ref)`}
-                  span={12}
-                >
-                  <Input
-                    placeholder="0x… wallet address, venue account reference — as given by the counterparty"
-                    value={form.tr_cpty_account_id}
-                    onChange={(e) => set("tr_cpty_account_id", e.target.value)}
-                  />
-                </Field>
-              )}
-
+              {/* network */}
               <Field label="Network" span={4}>
                 <Select value={form.network} onChange={(e) => set("network", e.target.value)}>
                   <option value="">— off-chain / venue internal —</option>
