@@ -8322,6 +8322,576 @@ function Dashboard() {
   );
 }
 
+// ─── TransferEnquiry — separate view for trades_transfer rows ─────────
+// Parallel to LoanEnquiry: its own filter card and grid over the transfer
+// book only. Deal Enquiry still merges transfers into the mixed table;
+// this page is where the movement columns (both ends, network, the
+// venue's own id) get their own headings instead of being squeezed into
+// "Counterparty" / "Account". Booking goes through the same Create Deal
+// drawer as every other product (category TRANSFER) — the "+ Book
+// Transfer" button up top opens it pre-set, and clicking a deal_ref opens
+// that row in amend mode. Admin-only, like the /api/transfer routes.
+const TRANSFER_ENQUIRY_INITIAL_FILTERS = {
+  initiated_from: "",
+  initiated_to: "",
+  completed_from: "",
+  completed_to: "",
+  types: [],       // [] = all
+  directions: [],  // [] = all
+  statuses: TRADE_STATUSES.filter((s) => s !== "CANCELLED"),
+  dynamic: { deal_ref: "" },
+};
+
+const TRANSFER_DYNAMIC_FIELDS = [
+  { key: "deal_ref",            label: "Deal Reference",   get: (r) => r.deal_ref || "" },
+  { key: "asset",               label: "Asset",            get: (r) => r.asset || "" },
+  { key: "source_account_name", label: "Source Account",   get: (r) => r.source_account_name || "" },
+  { key: "source_product",      label: "Source Product",   get: (r) => r.source_product || "" },
+  { key: "source_account_id",   label: "Source ID",        get: (r) => r.source_account_id || "" },
+  { key: "dest_account_name",   label: "Dest Account",     get: (r) => r.dest_account_name || "" },
+  { key: "dest_product",        label: "Dest Product",     get: (r) => r.dest_product || "" },
+  { key: "dest_account_id",     label: "Dest ID",          get: (r) => r.dest_account_id || "" },
+  // Either end — "which transfers touched TK818@BINANCE" without caring
+  // whether it was the source or the destination.
+  { key: "any_account",         label: "Any Account",      get: (r) => `${r.source_account_name || ""} ${r.dest_account_name || ""}` },
+  { key: "network",             label: "Network",          get: (r) => r.network || "" },
+  { key: "ext_transfer_id",     label: "Ext Transfer ID",  get: (r) => r.ext_transfer_id || "" },
+  { key: "fee_asset",           label: "Fee Asset",        get: (r) => r.fee_asset || "" },
+  { key: "user_id",             label: "Booked By",        get: (r) => r.user_id || "" },
+  { key: "comment",             label: "Comment",          get: (r) => r.comment || "" },
+];
+
+// Every real column, in table order, so the export is the row.
+const TRANSFER_CSV_COLUMNS = [
+  { header: "Updated Date",        key: "effective_start" },
+  { header: "Deal Reference",      key: "deal_ref" },
+  { header: "Transfer Type",       key: "transfer_type" },
+  { header: "Direction",           key: "direction" },
+  { header: "Source Account",      key: "source_account_name" },
+  { header: "Source Product",      key: "source_product" },
+  { header: "Source Account ID",   key: "source_account_id" },
+  { header: "Dest Account",        key: "dest_account_name" },
+  { header: "Dest Product",        key: "dest_product" },
+  { header: "Dest Account ID",     key: "dest_account_id" },
+  { header: "Asset",               key: "asset" },
+  { header: "Amount",              key: "amount" },
+  { header: "Fee Asset",           key: "fee_asset" },
+  { header: "Fee Amount",          key: "fee_amount" },
+  { header: "Initiated",           key: "initiated_datetime" },
+  { header: "Completed",           key: "completed_datetime" },
+  { header: "Network",             key: "network" },
+  { header: "Ext Transfer ID",     key: "ext_transfer_id" },
+  { header: "Booked By",           key: "user_id" },
+  { header: "Updated By",          key: "updated_by" },
+  { header: "Status",              key: "status" },
+  { header: "Comment",             key: "comment" },
+  { header: "Month Year",          get: (r) => fmtMonthYearUtc(r.initiated_datetime) },
+];
+
+function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState(null);
+  const [filters, setFilters] = useState(TRANSFER_ENQUIRY_INITIAL_FILTERS);
+  const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+  const clearFilters = () => setFilters(TRANSFER_ENQUIRY_INITIAL_FILTERS);
+  const filtersActive = filtersDifferFromDefault(filters, TRANSFER_ENQUIRY_INITIAL_FILTERS);
+  const hasDateFilter = !!(filters.initiated_from || filters.initiated_to || filters.completed_from || filters.completed_to);
+  const [showDates, setShowDates] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  useEffect(() => { setPage(1); }, [filters, pageSize]);
+
+  const toggleIn = (key, v) =>
+    setFilter(key, filters[key].includes(v) ? filters[key].filter((x) => x !== v) : [...filters[key], v]);
+
+  const filteredRows = useMemo(() => {
+    const filtered = rows.filter((r) => {
+      if (filters.types.length > 0 && !filters.types.includes(String(r.transfer_type || ""))) return false;
+      if (filters.directions.length > 0 && !filters.directions.includes(String(r.direction || ""))) return false;
+      if (filters.statuses.length > 0 && !filters.statuses.includes(String(r.status || ""))) return false;
+      if (!dynamicFilterMatch(r, filters.dynamic, TRANSFER_DYNAMIC_FIELDS)) return false;
+      // Same 19-char lexicographic compare as Deal Enquiry: the stored
+      // value is ISO with a TZ suffix, the picker gives YYYY-MM-DDTHH:MM:SS.
+      const init = String(r.initiated_datetime || "").slice(0, 19);
+      if (filters.initiated_from && init && init < filters.initiated_from) return false;
+      if (filters.initiated_to && init && init > filters.initiated_to) return false;
+      const done = String(r.completed_datetime || "").slice(0, 19);
+      // A completed-date filter only ever matches transfers that have landed.
+      if ((filters.completed_from || filters.completed_to) && !done) return false;
+      if (filters.completed_from && done < filters.completed_from) return false;
+      if (filters.completed_to && done > filters.completed_to) return false;
+      return true;
+    });
+    // Newest amendment first, then newest initiation — mirrors Deal Enquiry.
+    return [...filtered].sort((a, b) => {
+      const aUpd = String(a.effective_start || "").slice(0, 19);
+      const bUpd = String(b.effective_start || "").slice(0, 19);
+      if (aUpd < bUpd) return 1;
+      if (aUpd > bUpd) return -1;
+      const aI = String(a.initiated_datetime || "");
+      const bI = String(b.initiated_datetime || "");
+      if (aI < bI) return 1;
+      if (aI > bI) return -1;
+      return 0;
+    });
+  }, [rows, filters]);
+
+  const totalRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
+    [filteredRows, page, pageSize]
+  );
+  const pageStart = totalRows === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = Math.min(page * pageSize, totalRows);
+
+  // Headline strip: what is still in flight is the number an operator
+  // actually watches on this page.
+  const kpis = useMemo(() => {
+    const live = rows.filter((r) => r.status !== "CANCELLED");
+    const inFlight = live.filter((r) => !r.completed_datetime);
+    const internal = live.filter((r) => r.transfer_type === "INTERNAL").length;
+    return { live: live.length, inFlight: inFlight.length, internal, external: live.length - internal };
+  }, [rows]);
+
+  const exportCsv = useCallback(() => {
+    const csv = rowsToCsv(filteredRows, TRANSFER_CSV_COLUMNS);
+    downloadCsv(`transfer-enquiry-${todayStampLocal()}.csv`, csv);
+  }, [filteredRows]);
+
+  const fetchRecent = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api("/api/transfer/recent?limit=2000").then((r) => r.json());
+      if (!res.ok) throw new Error(res.error || "transfer fetch failed");
+      setRows(res.rows || []);
+      setLastFetchedAt(new Date());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { fetchRecent(); }, [fetchRecent, refreshSignal]);
+
+  const chipBtn = (on, label, onClick, sty) => (
+    <button
+      key={label}
+      type="button"
+      onClick={onClick}
+      className="px-1.5 py-0.5 text-[10px] tracking-[0.18em] uppercase"
+      style={{
+        background: on ? (sty?.bg || "var(--paper-2)") : "#ffffff",
+        border: `1px solid ${on ? (sty?.border || "var(--ink)") : "#e0dbd0"}`,
+        color: on ? (sty?.color || "var(--ink)") : "#a39e90",
+        cursor: "pointer",
+        transition: "all 120ms ease",
+      }}
+      title={on ? `Hide ${label}` : `Show ${label}`}
+    >{label}</button>
+  );
+
+  const endCell = (name, product, id) => (
+    <td className="px-3 py-1.5 whitespace-nowrap">
+      {name ? (
+        <HoverTip text={id ? `id: ${id}` : "no account id"}>
+          {name}{product ? <span style={{ opacity: 0.7 }}> · {product}</span> : null}
+        </HoverTip>
+      ) : "—"}
+    </td>
+  );
+
+  const fmtAmt = (v) => {
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return "—";
+    return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
+  };
+
+  return (
+    <div className="px-5 pt-4 pb-8">
+      <div className="mb-3 flex items-end justify-between gap-4 flex-wrap">
+        <div
+          className="text-[26px] font-semibold"
+          style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
+        >Transfer Enquiry</div>
+        <button
+          type="button"
+          onClick={onBook}
+          className="py-2 px-4 text-[11px] font-medium uppercase tracking-[0.22em] transition-colors font-mono"
+          style={{
+            background: BB.text,
+            color: "#f2efe8",
+            border: `1px solid ${BB.text}`,
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = BB.orange;
+            e.currentTarget.style.borderColor = BB.orange;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = BB.text;
+            e.currentTarget.style.borderColor = BB.text;
+          }}
+        >+ Book Transfer</button>
+      </div>
+
+      {error && (
+        <div
+          className="px-3 py-2 mb-3 text-[12px]"
+          style={{ background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00" }}
+        >Error: {error}</div>
+      )}
+
+      {/* KPI strip — same tile grammar as Loan Enquiry */}
+      <div
+        className="mb-3"
+        style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}
+      >
+        {[
+          { accent: "var(--ink)",           label: "Live transfers",   value: kpis.live,     sub: "excluding CANCELLED" },
+          { accent: "var(--signal-warn)",   label: "In flight",        value: kpis.inFlight, sub: "no completed time yet" },
+          { accent: "var(--signal-link)",   label: "Internal",         value: kpis.internal, sub: "between our own accounts" },
+          { accent: "var(--signal-buy)",    label: "External",         value: kpis.external, sub: "one end is a counterparty" },
+        ].map((t) => (
+          <div
+            key={t.label}
+            style={{
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              borderLeft: `3px solid ${t.accent}`,
+              borderRadius: 3,
+              padding: "8px 12px",
+              fontFamily: "var(--font-mono)",
+              minHeight: 64,
+              display: "flex", flexDirection: "column", justifyContent: "space-between",
+            }}
+          >
+            <div className="text-[10px] uppercase tracking-[0.06em]" style={{ color: "var(--ink-3)" }}>{t.label}</div>
+            <div className="text-[20px] font-semibold" style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>
+              {loading && rows.length === 0 ? "…" : t.value}
+            </div>
+            <div className="text-[10px]" style={{ color: "var(--ink-3)" }}>{t.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ─── Filters card ─── */}
+      <div
+        className="mb-3"
+        style={{ background: "var(--paper)", border: "1px solid var(--rule)", fontFamily: "var(--font-mono)" }}
+      >
+        <div
+          className="flex items-center justify-between"
+          style={{ padding: "8px 16px", borderBottom: "1px solid var(--rule)" }}
+        >
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[10px] tracking-[0.06em] uppercase" style={{ color: "var(--ink-3)", fontWeight: 500 }}>Filters</span>
+            {filtersActive && (
+              <span className="text-[9px] tracking-[0.06em] uppercase" style={{ color: "var(--signal-warn)" }}>· Active</span>
+            )}
+          </div>
+          <div className="flex items-center gap-5">
+            <button
+              type="button"
+              onClick={() => setShowDates((s) => !s)}
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
+              style={{ background: "transparent", color: "var(--ink)", border: "none", padding: "4px 0", cursor: "pointer" }}
+            >
+              {showDates ? "− Hide dates" : "+ Date filters"}
+              {!showDates && hasDateFilter && (
+                <span style={{ color: "var(--signal-warn)", marginLeft: 4 }}>· Active</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!filtersActive}
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: filtersActive ? "var(--ink)" : "var(--ink-4)",
+                border: "none", padding: "4px 0",
+                cursor: filtersActive ? "pointer" : "not-allowed",
+              }}
+            >× Clear all</button>
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={totalRows === 0}
+              title={totalRows === 0 ? "No rows to export" : `Download ${totalRows} row${totalRows === 1 ? "" : "s"} as CSV`}
+              className="text-[10px] tracking-[0.06em] uppercase transition-colors"
+              style={{
+                background: "transparent",
+                color: totalRows === 0 ? "var(--ink-4)" : "var(--ink)",
+                border: "none", padding: "4px 0",
+                cursor: totalRows === 0 ? "not-allowed" : "pointer",
+              }}
+            >↓ CSV</button>
+          </div>
+        </div>
+
+        <div style={{ padding: "10px 16px 12px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "auto auto 1fr",
+              columnGap: 24,
+              rowGap: 10,
+              alignItems: "start",
+              marginBottom: 10,
+            }}
+          >
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Type</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {TRANSFER_TYPES.map((t) => chipBtn(filters.types.includes(t), t, () => toggleIn("types", t)))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Direction</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {chipBtn(filters.directions.includes("INCOMING"), "INCOMING", () => toggleIn("directions", "INCOMING"),
+                  { bg: "var(--signal-buy-bg)", border: "var(--signal-buy)", color: "var(--signal-buy)" })}
+                {chipBtn(filters.directions.includes("OUTGOING"), "OUTGOING", () => toggleIn("directions", "OUTGOING"),
+                  { bg: "var(--signal-sell-bg)", border: "var(--signal-sell)", color: "var(--signal-sell)" })}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase" style={{ color: "#6a665c" }}>
+              <span>Status</span>
+              <div className="flex flex-wrap gap-1" style={{ minHeight: 32, alignItems: "center" }}>
+                {TRADE_STATUSES.map((s) =>
+                  chipBtn(filters.statuses.includes(s), s, () => toggleIn("statuses", s), CASHFLOW_STATUS_STYLES[s])
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DynamicFilterRows
+            fields={TRANSFER_DYNAMIC_FIELDS}
+            values={filters.dynamic}
+            onChange={(v) => setFilter("dynamic", v)}
+          />
+        </div>
+
+        {showDates && (
+          <div style={{ padding: "10px 16px 12px", borderTop: "1px solid #f3f1ec" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 24, rowGap: 10 }}>
+              {[
+                { label: "Initiated · From → To", fromKey: "initiated_from", toKey: "initiated_to" },
+                { label: "Completed · From → To", fromKey: "completed_from", toKey: "completed_to" },
+              ].map((f) => (
+                <div
+                  key={f.fromKey}
+                  className="flex flex-col gap-1 text-[10px] tracking-[0.18em] uppercase"
+                  style={{ color: "#6a665c" }}
+                >
+                  <span>{f.label}</span>
+                  <div className="flex items-center gap-2">
+                    <DateTimePicker24 value={filters[f.fromKey]} onChange={(v) => setFilter(f.fromKey, v)} />
+                    <span style={{ color: "#a39e90" }}>→</span>
+                    <DateTimePicker24 value={filters[f.toKey]} onChange={(v) => setFilter(f.toKey, v)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Grid ─── */}
+      <div className="overflow-x-auto" style={{ border: `1px solid ${BB.border}` }}>
+        <table className="w-full text-[12px]" style={{ fontFamily: "var(--font-mono)", borderCollapse: "collapse", minWidth: "100%" }}>
+          <thead className="sticky top-0 z-10">
+            <tr
+              className="text-[10px] uppercase tracking-[0.06em] font-medium"
+              style={{ background: "var(--paper-2)", color: "var(--ink-3)", borderBottom: "1px solid var(--rule)" }}
+            >
+              <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Refresh">
+                <button
+                  type="button"
+                  onClick={fetchRecent}
+                  disabled={loading}
+                  title={
+                    loading ? "Refreshing…"
+                    : lastFetchedAt ? `Refresh table · last updated ${fmtUtcTime(lastFetchedAt)}`
+                    : "Refresh table"
+                  }
+                  className="inline-flex items-center justify-center align-middle transition-colors"
+                  style={{
+                    width: 22, height: 22, borderRadius: 0,
+                    border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                    background: "transparent",
+                    color: BB?.dim || "#6a665c",
+                    cursor: loading ? "wait" : "pointer", lineHeight: 1,
+                    opacity: loading ? 0.5 : 1,
+                  }}
+                >
+                  <span aria-hidden className={loading ? "animate-spin" : ""} style={{ fontSize: 12, lineHeight: 1 }}>↻</span>
+                </button>
+              </th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Updated Date</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Deal Reference</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Type</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Direction</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Source</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Destination</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Asset</th>
+              <th className="px-3 py-1.5 text-right whitespace-nowrap">Amount</th>
+              <th className="px-3 py-1.5 text-right whitespace-nowrap">Fee</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Initiated</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Completed</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Network</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Ext Transfer ID</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Booked By</th>
+              <th className="px-3 py-1.5 text-left whitespace-nowrap">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={16} className="px-3 py-8 text-center opacity-70">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="inline-block animate-spin"
+                      style={{
+                        width: 14, height: 14,
+                        border: "2px solid rgba(0,0,0,0.12)",
+                        borderTopColor: "rgba(0,0,0,0.6)",
+                        borderRadius: "50%",
+                      }}
+                    />
+                    <span>Loading transfers…</span>
+                  </span>
+                </td>
+              </tr>
+            )}
+            {!loading && filteredRows.length === 0 && (
+              <tr>
+                <td colSpan={16} className="px-3 py-6 text-center opacity-60">
+                  {rows.length === 0
+                    ? "No transfers booked yet — use + Book Transfer above."
+                    : filtersActive
+                    ? "No rows match the current filters."
+                    : "No rows."}
+                </td>
+              </tr>
+            )}
+            {pagedRows.map((r, idx) => {
+              const altBg = idx % 2 ? "rgba(0,0,0,0.015)" : "var(--paper)";
+              const amt = parseFloat(r.amount);
+              const amtColor = amt > 0 ? "var(--signal-buy)" : amt < 0 ? "var(--signal-sell)" : "var(--ink)";
+              const dirSty = r.direction === "INCOMING"
+                ? { bg: "var(--signal-buy-bg)", fg: "var(--signal-buy)" }
+                : { bg: "var(--signal-sell-bg)", fg: "var(--signal-sell)" };
+              const statusTokens = {
+                PENDING:   { bg: "var(--status-pending-bg)",   fg: "var(--status-pending)"   },
+                CONFIRMED: { bg: "var(--status-confirmed-bg)", fg: "var(--status-confirmed)" },
+                PROCESSED: { bg: "var(--status-processed-bg)", fg: "var(--status-processed)" },
+                SETTLED:   { bg: "var(--status-settled-bg)",   fg: "var(--status-settled)"   },
+                CANCELLED: { bg: "var(--status-cancelled-bg)", fg: "var(--status-cancelled)" },
+              };
+              const st = statusTokens[r.status] || { bg: "var(--paper-2)", fg: "var(--ink-3)" };
+              const pill = (bg, fg, text) => (
+                <span
+                  className="px-1.5 py-0.5 text-[10px] tracking-[0.06em] uppercase font-semibold"
+                  style={{ background: bg, border: `1px solid ${fg}`, color: fg, borderRadius: 2, lineHeight: 1.2 }}
+                >{text || "—"}</span>
+              );
+              return (
+                <tr
+                  key={r.deal_ref}
+                  style={{ background: altBg, borderTop: "1px solid var(--rule)" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = altBg}
+                >
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    <button
+                      type="button"
+                      title="View audit trail"
+                      onClick={() => onHistory(r.deal_ref)}
+                      className="inline-flex items-center justify-center align-middle transition-colors"
+                      style={{
+                        width: 22, height: 22, borderRadius: 0,
+                        border: `1px solid ${BB?.border || "#d9d4c7"}`,
+                        background: "transparent",
+                        color: BB?.dim || "#6a665c",
+                        cursor: "pointer", lineHeight: 1,
+                      }}
+                    ><History size={12} strokeWidth={1.75} /></button>
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    <HoverTip text={r.effective_start}>{fmtTs(r.effective_start)}</HoverTip>
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    <button
+                      type="button"
+                      title="Open in form to amend"
+                      onClick={() => onSelect(r)}
+                      className="align-middle"
+                      style={{
+                        background: "transparent", border: "none", padding: 0,
+                        color: "var(--signal-link)", cursor: "pointer", font: "inherit",
+                        borderBottom: "1px dotted var(--signal-link)",
+                      }}
+                    >{r.deal_ref}</button>
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.transfer_type || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{pill(dirSty.bg, dirSty.fg, r.direction)}</td>
+                  {endCell(r.source_account_name, r.source_product, r.source_account_id)}
+                  {endCell(r.dest_account_name, r.dest_product, r.dest_account_id)}
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.asset || "—"}</td>
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap" style={{ color: amtColor, fontVariantNumeric: "tabular-nums" }}>
+                    {fmtAmt(r.amount)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {r.fee_amount && parseFloat(r.fee_amount) !== 0
+                      ? <>
+                          {fmtAmt(Math.abs(parseFloat(r.fee_amount)))}
+                          {" "}<span style={{ opacity: 0.7 }}>{r.fee_asset || ""}</span>
+                        </>
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    <HoverTip text={r.initiated_datetime}>{fmtTs(r.initiated_datetime)}</HoverTip>
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    {r.completed_datetime
+                      ? <HoverTip text={r.completed_datetime}>{fmtTs(r.completed_datetime)}</HoverTip>
+                      : <span style={{ color: "var(--signal-warn)" }}>in flight</span>}
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.network || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap" style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {r.ext_transfer_id ? <HoverTip text={r.ext_transfer_id}>{r.ext_transfer_id}</HoverTip> : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{r.user_id || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{pill(st.bg, st.fg, r.status)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <EnquiryPaginationBar
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        setPage={setPage}
+        setPageSize={setPageSize}
+        pageStart={pageStart}
+        pageEnd={pageEnd}
+        totalRows={totalRows}
+        BB={BB}
+      />
+    </div>
+  );
+}
+
 // ─── LoanEnquiry — separate view for trades_loan rows ────────────────
 // Parallel to DealEnquiry but with loan-specific columns. Click the
 // deal_ref to amend; click 📜 to see SCD2 history.
@@ -12585,6 +13155,21 @@ export default function TradeBookingForm() {
     setCreateDealOpen(true);
   }
 
+  // "+ Book Transfer" on the Transfer Enquiry page: the same Create Deal
+  // drawer every product uses, opened with the category pre-set. The
+  // user's in-progress draft is snapshotted so closing the drawer hands
+  // it back, exactly as the loan-schedule "book interest" path does.
+  function openTransferBooking() {
+    setFeedback(null);
+    if (!formSnapshotRef.current) {
+      formSnapshotRef.current = { form, categoryCache };
+    }
+    setForm({ ...initial(), category: "TRANSFER" });
+    setCategoryCache({});
+    setAmendingDealRef(null);
+    setCreateDealOpen(true);
+  }
+
   async function openHistory(dealRef) {
     setHistoryModal({ dealRef, rows: [], loading: true, error: null });
     const product = productFromDealRef(dealRef);
@@ -13571,6 +14156,11 @@ export default function TradeBookingForm() {
                   onClick={() => { setAppView("booking"); setView("LOAN_ENQUIRY"); }}
                 />
                 <NavTabRow
+                  label="Transfer Enquiry"
+                  active={appView === "booking" && view === "TRANSFER_ENQUIRY"}
+                  onClick={() => { setAppView("booking"); setView("TRANSFER_ENQUIRY"); }}
+                />
+                <NavTabRow
                   label={`Approvals${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
                   active={appView === "pending"}
                   onClick={() => setAppView("pending")}
@@ -13729,6 +14319,15 @@ export default function TradeBookingForm() {
               // Amend button that re-routes to the form.
               onSelect={(row) => openLoanSchedule(row.deal_ref)}
               onHistory={(dealRef) => openHistory(dealRef)}
+              refreshSignal={dealEnquiryRefreshSignal}
+            />
+          )}
+          {appView === "booking" && view === "TRANSFER_ENQUIRY" && isAdmin && (
+            <TransferEnquiry
+              BB={BB}
+              onSelect={(row) => loadRowIntoForm(row)}
+              onHistory={(dealRef) => openHistory(dealRef)}
+              onBook={openTransferBooking}
               refreshSignal={dealEnquiryRefreshSignal}
             />
           )}
