@@ -125,9 +125,36 @@ def test_internal_ok():
     transfer_db.validate_payload(_internal(), mode="insert")
 
 
-def test_internal_is_always_outgoing():
-    with pytest.raises(transfer_db.ValidationError, match="booked OUTGOING"):
-        transfer_db.validate_payload(_internal(direction="INCOMING", amount="250"), mode="insert")
+def test_internal_incoming_leg_is_valid():
+    # The mirror half of an internal pair: INCOMING on the receiver.
+    transfer_db.validate_payload(
+        _internal(direction="INCOMING", amount="250",
+                  source_account_name="WALLET_CRB_EVM_03", source_product="BINANCE SMART CHAIN",
+                  dest_account_name="WALLET_CRB_EVM_02", dest_product="ETHEREUM"),
+        mode="insert",
+    )
+
+
+def test_mirror_leg_swaps_ends_flips_direction_and_sign():
+    p = _internal(source_account_id="1001", dest_account_id="1002", ext_transfer_id="0xabc", comment="c")
+    m = transfer_db.mirror_leg(p)
+    assert m["direction"] == "INCOMING" and m["amount"] == "250"
+    assert (m["source_account_name"], m["source_product"], m["source_account_id"]) == ("WALLET_CRB_EVM_03", "BINANCE SMART CHAIN", "1002")
+    assert (m["dest_account_name"], m["dest_product"], m["dest_account_id"]) == ("WALLET_CRB_EVM_02", "ETHEREUM", "1001")
+    for k in ("asset", "fee_asset", "fee_amount", "initiated_datetime", "completed_datetime",
+              "network", "ext_transfer_id", "user_id", "status", "comment"):
+        assert m.get(k) == p.get(k), k
+    assert "_meta" not in m
+    transfer_db.validate_payload(m, mode="insert")
+    # Mirroring the mirror gives the original leg back.
+    back = transfer_db.mirror_leg(m)
+    assert back["direction"] == "OUTGOING" and back["amount"] == "-250"
+    assert back["source_account_name"] == p["source_account_name"]
+
+
+def test_mirror_leg_rejects_external():
+    with pytest.raises(transfer_db.ValidationError, match="INTERNAL"):
+        transfer_db.mirror_leg(_external())
 
 
 def test_internal_both_ends_must_be_ours():

@@ -15296,7 +15296,7 @@ export default function TradeBookingForm() {
               <Field label="Direction" required span={6}>
                 {form.tr_type === "INTERNAL" ? (
                   <div className="text-[11px] font-mono py-1.5" style={{ color: BB.mute }}>
-                    OUTGOING · source → destination (both ours)
+                    OUTGOING · source → destination (both ours) · books the INCOMING mirror on the destination too
                   </div>
                 ) : (
                   <div className="flex gap-2">

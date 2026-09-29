@@ -5,10 +5,15 @@ both ends on it. A transfer changes where a position sits, never P&L; the
 P&L engine reads trades_cashflow and never this table, so "transfers do
 not affect P&L" is a property of where the row lives.
 
-  INTERNAL  both ends are our accounts. Booked OUTGOING from the source's
-            point of view, amount negative: the source loses |amount|, the
-            destination gains it. The form sets that; nobody picks a
-            direction for an internal transfer.
+  INTERNAL  both ends are our accounts, and the movement is TWO rows, like
+            an INTER PTF FUNDING cashflow pair: the leg the operator books
+            is OUTGOING from the sender (source = sender, amount negative)
+            and the insert adds its mirror, INCOMING on the receiver
+            (source = receiver, dest = sender, amount positive). Each row
+            reads from the point of view of its source_account_name, so a
+            per-account position sums source_* rows only. The two legs are
+            independent deal_refs (amend each on its own), tied by the
+            same ext_transfer_id / initiated_datetime. See mirror_leg().
   EXTERNAL  one end is ours, the other a counterparty. OUTGOING = source
             is ours, dest is the counterparty; INCOMING the reverse. The
             counterparty end's *_account_name is the counterparty name,
@@ -89,6 +94,26 @@ def own_sides(p: dict) -> tuple[str, ...]:
     return ("source",) if p.get("direction") == "OUTGOING" else ("dest",)
 
 
+def mirror_leg(p: dict) -> dict:
+    """The other half of an INTERNAL transfer: same movement seen from the
+    receiving account. Ends swap, direction flips, amount changes sign;
+    everything else (asset, fee, times, network, ext id, status, user,
+    comment) is shared. Only meaningful for INTERNAL.
+
+    Booked from either side: an INCOMING leg mirrors to the OUTGOING one.
+    """
+    if p.get("transfer_type") != "INTERNAL":
+        raise ValidationError("mirror_leg only applies to INTERNAL transfers")
+    m = {k: v for k, v in p.items() if k not in ("_meta", "deal_ref")}
+    for f in ("account_name", "product", "account_id"):
+        m[f"source_{f}"], m[f"dest_{f}"] = p.get(f"dest_{f}"), p.get(f"source_{f}")
+    outgoing = p.get("direction") == "OUTGOING"
+    m["direction"] = "INCOMING" if outgoing else "OUTGOING"
+    amt = abs(_amount(p))
+    m["amount"] = str(amt if outgoing else -amt)
+    return m
+
+
 def _amount(p: dict) -> Decimal:
     try:
         return Decimal(str(p["amount"]))
@@ -134,11 +159,9 @@ def _validate_one(p: dict, mode: str) -> None:
             raise ValidationError(
                 f"fee_amount must be numeric if set, got {p['fee_amount']!r}"
             ) from e
-    if p["transfer_type"] == "INTERNAL" and p["direction"] != "OUTGOING":
-        raise ValidationError(
-            "INTERNAL transfer is booked OUTGOING from the source account "
-            f"(amount negative), got {p['direction']}"
-        )
+    # INTERNAL is either leg of a mirror pair: OUTGOING on the sender or
+    # INCOMING on the receiver. The sign rule above already ties amount
+    # to direction; nothing more to check here.
 
     # Refdata-bound checks, failing open on an empty set exactly as
     # cashflow_db does (a refdata outage must not block the book).

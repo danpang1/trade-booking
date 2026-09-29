@@ -45,14 +45,18 @@ Read from `transfer_type` + `direction`, never from a name lookup:
 
 | transfer_type | direction | source | dest |
 |---|---|---|---|
-| INTERNAL | OUTGOING (always) | ours | ours |
+| INTERNAL | OUTGOING (leg as booked) | ours (sender) | ours (receiver) |
+| INTERNAL | INCOMING (mirror leg) | ours (receiver) | ours (sender) |
 | EXTERNAL | OUTGOING | ours | counterparty |
 | EXTERNAL | INCOMING | counterparty | ours |
 
-An `INTERNAL` transfer is booked from the source's point of view: `OUTGOING`,
-amount negative; the destination gains `|amount|`. Both ends must be in the same
-portfolio (the form filters the pickers); a movement between portfolios is an
-`INTER PTF FUNDING` cashflow, not a transfer. The same account at both ends is
+An `INTERNAL` transfer is **two rows**, like an INTER PTF FUNDING cashflow pair.
+The operator books it from the sender: `OUTGOING`, amount negative. The insert
+adds the mirror automatically (`transfer_db.mirror_leg`): ends swapped,
+`INCOMING`, amount positive, everything else shared. Each row reads from the
+point of view of its `source_account_name`, so a per-account position sums
+`source_*` rows only. The two legs are independent deal_refs (amend each on its
+own) and are tied by the same `ext_transfer_id` and `initiated_datetime`. The same account at both ends is
 allowed only with two different products (spot → funding, chain A → chain B).
 
 The counterparty end's name must be a refdata counterparty; our end's name a

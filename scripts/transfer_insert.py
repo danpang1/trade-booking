@@ -1,4 +1,6 @@
-"""Book a transfer: one row with both ends on it.
+"""Book a transfer: one row with both ends on it -- or, for an INTERNAL
+transfer, the pair: the leg as booked plus its mirror on the other
+account (transfer_db.mirror_leg), inserted in one transaction.
 
 Reads JSON from stdin -- a bare payload dict or the {payload, attachments}
 envelope server.js sends. Writes to stdout:
@@ -58,22 +60,26 @@ def main() -> int:
     # Gateway ids for our end(s), recorded with the row rather than
     # re-derived later; the counterparty end stays as typed.
     transfer_db.stamp_account_ids(payload)
+    legs = [payload]
+    if payload.get("transfer_type") == "INTERNAL":
+        legs.append(transfer_db.mirror_leg(payload))
 
     conn = transfer_db.connect()
     try:
         with conn:
             with conn.cursor() as cur:
-                row = _insert_one(cur, payload)
+                rows = [_insert_one(cur, leg) for leg in legs]
+                # Attachments hang off the leg as booked; the mirror gets none.
                 inserted_atts = attachments_db.insert_attachments(
                     cur,
-                    deal_ref=row["deal_ref"],
+                    deal_ref=rows[0]["deal_ref"],
                     attachments=attachments,
                     user_id=payload.get("user_id") or "unknown",
                 )
-        print(json.dumps({"ok": True, "rows": [row], "attachments": inserted_atts}))
+        print(json.dumps({"ok": True, "rows": rows, "attachments": inserted_atts}))
         print(
             "manual dual-write: no manual_transfer table in the tech DB yet - "
-            f"{row['deal_ref']} recorded in the MO book only",
+            f"{', '.join(r['deal_ref'] for r in rows)} recorded in the MO book only",
             file=sys.stderr,
         )
         return 0
