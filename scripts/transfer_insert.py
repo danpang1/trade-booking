@@ -47,10 +47,15 @@ def main() -> int:
     if isinstance(_raw, dict) and "payload" in _raw and isinstance(_raw["payload"], dict):
         payload = _raw["payload"]
         attachments = _raw.get("attachments") or []
+        meta = _raw.get("_meta") or payload.get("_meta") or {}
     else:
         payload = _raw
-        meta = payload.get("_meta") if isinstance(payload, dict) else None
-        attachments = (meta or {}).get("attachments") or []
+        meta = (payload.get("_meta") if isinstance(payload, dict) else None) or {}
+        attachments = meta.get("attachments") or []
+    # The mirror leg is on by default; the form's "Mirror leg" box (like
+    # the INTER PTF FUNDING "Mirror Trade" one) turns it off when the
+    # other side is booked separately or not at all.
+    want_mirror = meta.get("mirror", True) is not False
     try:
         transfer_db.validate_payload(payload, mode="insert")
     except transfer_db.ValidationError as e:
@@ -61,7 +66,7 @@ def main() -> int:
     # re-derived later; the counterparty end stays as typed.
     transfer_db.stamp_account_ids(payload)
     legs = [payload]
-    if payload.get("transfer_type") == "INTERNAL":
+    if payload.get("transfer_type") == "INTERNAL" and want_mirror:
         legs.append(transfer_db.mirror_leg(payload))
 
     conn = transfer_db.connect()

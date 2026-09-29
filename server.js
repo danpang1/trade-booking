@@ -1357,7 +1357,8 @@ const server = createServer(async (req, res) => {
 
   // ── Transfers ────────────────────────────────────────────────────
   // transfer: asset movements, never P&L. Same route shape as
-  // spot/cashflow; an INTERNAL transfer posts a 2-leg list to /insert.
+  // spot/cashflow; for an INTERNAL transfer the insert script adds the
+  // mirror leg itself unless the payload's _meta.mirror is false.
 
   // POST /api/transfer/insert
   if (req.url === "/api/transfer/insert" && req.method === "POST") {

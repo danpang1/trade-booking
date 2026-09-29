@@ -12054,6 +12054,9 @@ export default function TradeBookingForm() {
     // UI-only: lets the destination picker span every portfolio. Not a
     // column; the two ends' own portfolios say it after the fact.
     tr_cross_ptf: false,
+    // UI-only: book the INCOMING mirror on the destination (default), or
+    // just the one leg when the other side is booked elsewhere.
+    tr_mirror: true,
     tr_src_venue_type: "",
     tr_src_account_name: "",
     tr_src_product: "",
@@ -12964,6 +12967,7 @@ export default function TradeBookingForm() {
         comment: form.notes || null,
         _meta: {
           attachments: form.attachments.map(({ _file, ...rest }) => rest),
+          mirror: internal ? form.tr_mirror !== false : false,
         },
       };
     }
@@ -13419,6 +13423,7 @@ export default function TradeBookingForm() {
       tr_type: row.transfer_type,
       tr_direction: row.direction,
       tr_cross_ptf: crossPtf,
+      tr_mirror: true,
       portfolio: ptf ? String(ptf.number) : "",
       portfolio_name_row: "",
       tr_src_venue_type: venueOf(row.source_account_name),
@@ -13792,6 +13797,7 @@ export default function TradeBookingForm() {
       tr_type: "INTERNAL",
       tr_direction: "OUTGOING",
       tr_cross_ptf: false,
+      tr_mirror: true,
       tr_src_venue_type: "",
       tr_src_account_name: "",
       tr_src_product: "",
@@ -15285,6 +15291,20 @@ export default function TradeBookingForm() {
                 span={6}
                 headerExtra={
                   form.tr_type === "INTERNAL" ? (
+                    <span className="flex items-center gap-4">
+                    <label
+                      className="text-[10px] cursor-pointer flex items-center gap-1.5 font-mono"
+                      style={{ color: BB.text }}
+                      title="Also book the INCOMING leg on the destination account"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.tr_mirror !== false}
+                        onChange={(e) => set("tr_mirror", e.target.checked)}
+                        style={{ accentColor: BB.orange }}
+                      />
+                      Mirror leg
+                    </label>
                     <label
                       className="text-[10px] cursor-pointer flex items-center gap-1.5 font-mono"
                       style={{ color: BB.text }}
@@ -15302,6 +15322,7 @@ export default function TradeBookingForm() {
                       />
                       Cross-portfolio
                     </label>
+                    </span>
                   ) : null
                 }
               >
@@ -15337,7 +15358,7 @@ export default function TradeBookingForm() {
               <Field label="Direction" required span={6}>
                 {form.tr_type === "INTERNAL" ? (
                   <div className="text-[11px] font-mono py-1.5" style={{ color: BB.mute }}>
-                    OUTGOING · source → destination (both ours) · books the INCOMING mirror on the destination too
+                    OUTGOING · source → destination (both ours){form.tr_mirror !== false ? " · books the INCOMING mirror on the destination too" : " · one leg only, no mirror"}
                   </div>
                 ) : (
                   <div className="flex gap-2">

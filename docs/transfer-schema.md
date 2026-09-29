@@ -56,7 +56,9 @@ adds the mirror automatically (`transfer_db.mirror_leg`): ends swapped,
 `INCOMING`, amount positive, everything else shared. Each row reads from the
 point of view of its `source_account_name`, so a per-account position sums
 `source_*` rows only. The two legs are independent deal_refs (amend each on its
-own) and are tied by the same `ext_transfer_id` and `initiated_datetime`. The same account at both ends is
+own) and are tied by the same `ext_transfer_id` and `initiated_datetime`. The
+form's "Mirror leg" box (on by default, like the INTER PTF FUNDING "Mirror
+Trade" box) sends `_meta.mirror: false` to book the one leg only. The same account at both ends is
 allowed only with two different products (spot → funding, chain A → chain B).
 
 The counterparty end's name must be a refdata counterparty; our end's name a
