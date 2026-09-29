@@ -16,22 +16,47 @@ class MappingError(ValueError):
     """Invalid mapping payload — surfaces back to the API as a 400."""
 
 
-# cashflow_type + direction → mapping_type, when the operator doesn't
-# pass mapping_type explicitly. Anything not in this dict → NULL,
-# which the CHECK constraint still allows (manual mappings can be
-# untyped).
-def derive_mapping_type(cashflow_type: str | None, direction: str | None) -> str | None:
+# mapping_type for a linked cashflow, when the operator doesn't pass one
+# explicitly. Anything unrecognised → NULL, which the CHECK constraint
+# still allows (manual mappings can be untyped).
+#
+# A PRINCIPAL_DISBURSE is principal moving from lender to borrower and a
+# PRINCIPAL_REPAY the reverse, so for a principal cashflow the type comes
+# from the direction of the CASH against the direction of the LOAN, not
+# from the row's label:
+#
+#     loan BORROW : INCOMING = disburse   OUTGOING = repay
+#     loan LEND   : OUTGOING = disburse   INCOMING = repay
+#
+# The label used to decide on its own (LOAN → disburse, LOAN REPAYMENT →
+# repay). That is the borrower's view, and a lend booked as "LOAN
+# REPAYMENT OUTGOING" was filed as a repayment: its balance came out
+# negative and, after the LEND sign flip, showed as money owed to us with
+# the wrong sign. Without a loan direction (older callers, or a cashflow
+# validated before its loan is looked up) the label still decides.
+_PRINCIPAL_TYPES = ("LOAN", "LOAN REPAYMENT")
+
+
+def derive_mapping_type(
+    cashflow_type: str | None,
+    direction: str | None,
+    loan_direction: str | None = None,
+) -> str | None:
     ct = (cashflow_type or "").upper()
-    if ct == "LOAN":
-        return "PRINCIPAL_DISBURSE"
-    if ct == "LOAN REPAYMENT":
-        return "PRINCIPAL_REPAY"
     if ct in ("INTEREST EXPENSE", "INTEREST INCOME"):
         return "INTEREST"
-    # Collateral cashflow types aren't in the CASHFLOW_TYPES list yet;
-    # add them here when the form does. FEE / RETAINER / etc. map to
-    # nothing — the operator can still link manually.
-    return None
+    if ct not in _PRINCIPAL_TYPES:
+        # Collateral cashflow types aren't in the CASHFLOW_TYPES list
+        # yet; add them here when the form does. FEE / RETAINER / etc.
+        # map to nothing — the operator can still link manually.
+        return None
+    ld = (loan_direction or "").upper()
+    cd = (direction or "").upper()
+    if ld in ("BORROW", "LEND") and cd in ("INCOMING", "OUTGOING"):
+        cash_in = cd == "INCOMING"
+        disburse = cash_in if ld == "BORROW" else not cash_in
+        return "PRINCIPAL_DISBURSE" if disburse else "PRINCIPAL_REPAY"
+    return "PRINCIPAL_DISBURSE" if ct == "LOAN" else "PRINCIPAL_REPAY"
 
 
 def _norm_refs(refs) -> list[str]:
@@ -87,15 +112,18 @@ def set_mappings_for_cashflow(
         )
     refs = _norm_refs(loan_deal_refs)
 
-    # Validate referenced loans exist + are live. Single round-trip.
+    # Validate referenced loans exist + are live. Single round-trip; the
+    # loan's direction comes back with it because the mapping type
+    # depends on it (see derive_mapping_type).
+    loan_dirs: dict[str, str | None] = {}
     if refs:
         cur.execute(
-            "SELECT deal_ref FROM trades_loan "
+            "SELECT deal_ref, direction FROM trades_loan "
             "WHERE deal_ref = ANY(%s) AND effective_end IS NULL",
             (refs,),
         )
-        found = {r[0] for r in cur.fetchall()}
-        missing = [r for r in refs if r not in found]
+        loan_dirs = {r[0]: r[1] for r in cur.fetchall()}
+        missing = [r for r in refs if r not in loan_dirs]
         if missing:
             raise MappingError(
                 f"loan deal_refs not found or not live: {missing}"
@@ -111,8 +139,16 @@ def set_mappings_for_cashflow(
     if not refs:
         return []
 
-    mapping_type = derive_mapping_type(cashflow_type, direction)
-    rows = [(loan_ref, cashflow_deal_ref, mapping_type, None, user_id) for loan_ref in refs]
+    # One type per loan: the same cashflow linked to a BORROW and a LEND
+    # is a disbursement of one and a repayment of the other.
+    rows = [
+        (
+            loan_ref, cashflow_deal_ref,
+            derive_mapping_type(cashflow_type, direction, loan_direction=loan_dirs.get(loan_ref)),
+            None, user_id,
+        )
+        for loan_ref in refs
+    ]
     cur.executemany(
         "INSERT INTO loan_cashflow_map "
         "(loan_deal_ref, cashflow_deal_ref, mapping_type, mapped_amount, mapped_by) "

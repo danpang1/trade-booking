@@ -90,14 +90,24 @@ Book a normal CASHFLOW draft with the mapping in `_meta`:
 
 `_meta` is stripped before the row is written, and the mapping is inserted in
 the same transaction as the cashflow — they cannot come apart. The mapping type
-is derived for you:
+is derived for you. For principal cashflows (`LOAN`, `LOAN REPAYMENT`) it comes
+from the direction of the **cash against the direction of the loan**, not from
+the label — a disbursement is principal moving from lender to borrower:
 
-| cashflow_type | mapping_type |
-|---|---|
-| `LOAN` | `PRINCIPAL_DISBURSE` |
-| `LOAN REPAYMENT` | `PRINCIPAL_REPAY` |
-| `INTEREST EXPENSE` / `INTEREST INCOME` | `INTEREST` |
-| anything else | none (still linked, just untyped) |
+| loan direction | cashflow direction | mapping_type |
+|---|---|---|
+| `BORROW` | `INCOMING` | `PRINCIPAL_DISBURSE` |
+| `BORROW` | `OUTGOING` | `PRINCIPAL_REPAY` |
+| `LEND` | `OUTGOING` | `PRINCIPAL_DISBURSE` |
+| `LEND` | `INCOMING` | `PRINCIPAL_REPAY` |
+| any | `INTEREST EXPENSE` / `INTEREST INCOME` | `INTEREST` |
+| any | anything else | none (still linked, just untyped) |
+
+So on a LEND, Tokka paying the principal out is the disbursement and the
+counterparty paying it back is the repayment, whichever of `LOAN` /
+`LOAN REPAYMENT` the row is labelled. Prefer the label that matches anyway —
+`LOAN` for the disbursement, `LOAN REPAYMENT` for the repayment — so the
+cashflow reads correctly on its own.
 
 The MLA must exist and be **live**. Tagging a cancelled or superseded loan is
 rejected at write time — which is a real check, not a formality, since
