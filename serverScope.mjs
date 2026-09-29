@@ -32,7 +32,7 @@ export const ROUTE_RULES = [
   [/^\/api\/tokens(\/|$)/, "*", "admin-only"],
   [/^\/api\/binance\//, "*", "admin-only"],
   [/^\/api\/funding\/settings$/, "POST", "admin-only"],
-  // trades_transfer has no portfolio column, so there is nothing to scope
+  // transfer has no portfolio column, so there is nothing to scope
   // on: admin-only until scoping is rebuilt on account -> portfolio.
   [/^\/api\/transfer(\/|$)/, "*", "admin-only"],
 

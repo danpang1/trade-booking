@@ -1,4 +1,4 @@
-"""Validation contract for trades_transfer.
+"""Validation contract for transfer.
 
 One row per transfer, both ends on it. EXTERNAL: one end is ours and the
 other a refdata counterparty, which end being fixed by direction. INTERNAL:

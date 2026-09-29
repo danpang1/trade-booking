@@ -249,7 +249,7 @@ const formatCID = (id) => (id == null ? null : "CID" + String(id).padStart(6, "0
 
 const CATEGORIES = ["SPOT", "FUTURE", "CASHFLOW", "LOAN", "TRANSFER"];
 
-// TRANSFER — an asset MOVEMENT, never P&L. Lives in trades_transfer, its
+// TRANSFER — an asset MOVEMENT, never P&L. Lives in transfer, its
 // own table, so the P&L engine (which reads trades_cashflow) never sees
 // one. One row per transfer with both ends on it: EXTERNAL has one end
 // ours and the other a counterparty (direction says which); INTERNAL has
@@ -6584,7 +6584,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
       // cashflow + spot rows (re-sorted by effective_start desc in
       // filteredRows). The `mappings` array on each cashflow still
       // shows linked loans inline (chip in the Details column).
-      // Transfers are admin-only (trades_transfer has no portfolio column
+      // Transfers are admin-only (transfer has no portfolio column
       // to scope on), so a non-admin gets a 403 there: treated as "none"
       // rather than failing the whole enquiry.
       const [cfRes, spotRes, trRes] = await Promise.all([
@@ -8375,7 +8375,7 @@ function OwnAccountIdPreview({ name, venueType, product, productApplies, stored,
   );
 }
 
-// ─── TransferEnquiry — separate view for trades_transfer rows ─────────
+// ─── TransferEnquiry — separate view for transfer rows ─────────
 // Parallel to LoanEnquiry: its own filter card and grid over the transfer
 // book only. Deal Enquiry still merges transfers into the mixed table;
 // this page is where the movement columns (both ends, network, the
@@ -12034,7 +12034,7 @@ export default function TradeBookingForm() {
     // LOAN_RELATED_CF_TYPES. Persisted in loan_cashflow_map (not on
     // trades_cashflow) so it ships via _meta.loan_deal_refs.
     cf_loan_deal_refs: [],
-    // TRANSFER. One field per trades_transfer column: the two ends are
+    // TRANSFER. One field per transfer column: the two ends are
     // tr_src_* / tr_dst_* (name, product, id) plus a venue-type picker for
     // each so the right refdata pool is offered. Which end is ours follows
     // transfer_type + direction; the other end is a counterparty.
@@ -12604,7 +12604,7 @@ export default function TradeBookingForm() {
     return pool.filter((a) => a.portfolio === ptf.name);
   }, [form.counterparty, form.cf_mirror_account_venue_type]);
 
-  // TRANSFER ends. trades_transfer has no portfolio column, so our own
+  // TRANSFER ends. transfer has no portfolio column, so our own
   // accounts are offered unscoped: every refdata account of the chosen
   // venue type. Which ends are ours follows the type + direction; the
   // other end is a counterparty (name from refdata, product NULL, id typed).
@@ -12613,7 +12613,7 @@ export default function TradeBookingForm() {
     : form.tr_direction === "OUTGOING" ? ["src"]
     : ["dst"];
   // Portfolio is a picker-side filter only: it narrows the account pool
-  // and is never written (trades_transfer has no portfolio column). Blank
+  // and is never written (transfer has no portfolio column). Blank
   // means every account of the venue type. BANK accounts hang off the
   // entity, the rest off the portfolio name, as in accountOptions.
   // Both Account Type and Portfolio start blank and work as filters:
@@ -12899,8 +12899,8 @@ export default function TradeBookingForm() {
       return cfRecord;
     }
 
-    // ─── TRANSFER: flat, schema-aligned to trades_transfer ─────────────
-    // One row, both ends on it, every key a trades_transfer column. Our
+    // ─── TRANSFER: flat, schema-aligned to transfer ─────────────
+    // One row, both ends on it, every key a transfer column. Our
     // ends are stamped server-side (transfer_db.stamp_account_ids) from the
     // account + product, so their id is sent blank; the counterparty end
     // keeps the typed wallet address / venue reference and a NULL product.
@@ -13132,7 +13132,7 @@ export default function TradeBookingForm() {
   const errors = useMemo(() => {
     const e = [];
     if (!form.created_by) e.push("Created by is required");
-    // trades_transfer has no portfolio column.
+    // transfer has no portfolio column.
     if (!form.portfolio && form.category !== "TRANSFER") e.push("Portfolio is required");
     if (form.category === "SPOT") {
       if (!form.base_amount || parseFloat(form.base_amount) <= 0)
@@ -15248,7 +15248,7 @@ export default function TradeBookingForm() {
           {form.category === "TRANSFER" && (
             <Section
               title="Transfer Details"
-              kicker="Transfer · trades_transfer · one row, both ends · no P&L"
+              kicker="Transfer · one row, both ends · no P&L"
               accent={form.tr_type === "INTERNAL" ? BB.magenta : (form.tr_direction === "INCOMING" ? BB.green : BB.red)}
             >
               {/* transfer_type */}

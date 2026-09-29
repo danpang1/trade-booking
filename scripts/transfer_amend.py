@@ -45,7 +45,7 @@ def main() -> int:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE trades_transfer SET effective_end = NOW() "
+                    "UPDATE transfer SET effective_end = NOW() "
                     "WHERE deal_ref = %s AND effective_end IS NULL "
                     "RETURNING deal_ref",
                     (deal_ref,),
@@ -59,12 +59,12 @@ def main() -> int:
                     return 4
                 # Created By stays the original booker; the amender goes
                 # to updated_by.
-                authorship.apply_on_amend(cur, "trades_transfer", payload, deal_ref)
+                authorship.apply_on_amend(cur, "transfer", payload, deal_ref)
                 cols, vals = transfer_db.payload_to_columns(payload, deal_ref=deal_ref)
                 col_list = ", ".join(cols + ("effective_start", "effective_end"))
                 placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
                 cur.execute(
-                    f"INSERT INTO trades_transfer ({col_list}) "
+                    f"INSERT INTO transfer ({col_list}) "
                     f"VALUES ({placeholders}) RETURNING *",
                     vals,
                 )

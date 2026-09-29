@@ -27,7 +27,7 @@ def main() -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM trades_transfer "
+                "SELECT * FROM transfer "
                 " WHERE deal_ref = %s "
                 " ORDER BY effective_start ASC",
                 (deal_ref,),

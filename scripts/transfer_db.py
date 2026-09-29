@@ -1,6 +1,6 @@
 """Shared helper for transfer_insert/amend/recent/get/history scripts.
 
-trades_transfer holds MOVEMENTS of an asset: one row per transfer with
+transfer holds MOVEMENTS of an asset: one row per transfer with
 both ends on it. A transfer changes where a position sits, never P&L; the
 P&L engine reads trades_cashflow and never this table, so "transfers do
 not affect P&L" is a property of where the row lives.

@@ -1356,7 +1356,7 @@ const server = createServer(async (req, res) => {
   }
 
   // ── Transfers ────────────────────────────────────────────────────
-  // trades_transfer: asset movements, never P&L. Same route shape as
+  // transfer: asset movements, never P&L. Same route shape as
   // spot/cashflow; an INTERNAL transfer posts a 2-leg list to /insert.
 
   // POST /api/transfer/insert

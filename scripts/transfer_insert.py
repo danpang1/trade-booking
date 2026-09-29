@@ -28,7 +28,7 @@ def _insert_one(cur, payload: dict) -> dict:
     col_list = ", ".join(cols + ("effective_start", "effective_end"))
     placeholders = ", ".join(["%s"] * len(cols)) + ", NOW(), NULL"
     cur.execute(
-        f"INSERT INTO trades_transfer ({col_list}) VALUES ({placeholders}) RETURNING *",
+        f"INSERT INTO transfer ({col_list}) VALUES ({placeholders}) RETURNING *",
         vals,
     )
     out_cols = [d.name for d in cur.description]

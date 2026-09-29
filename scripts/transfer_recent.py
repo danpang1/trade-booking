@@ -1,7 +1,7 @@
 """List the N most recent live transfer rows for Deal Enquiry.
 
 Reads `{"limit": N}` from stdin (default 20, max 2000). Writes
-{"ok": true, "rows": [...]}. Not portfolio-scoped: trades_transfer has
+{"ok": true, "rows": [...]}. Not portfolio-scoped: transfer has
 no portfolio column and the route is admin-only.
 """
 from __future__ import annotations
@@ -32,9 +32,9 @@ def main() -> int:
             # so the UI can show the original booking moment.
             cur.execute(
                 "SELECT t.*, "
-                "       (SELECT MIN(effective_start) FROM trades_transfer "
+                "       (SELECT MIN(effective_start) FROM transfer "
                 "         WHERE deal_ref = t.deal_ref) AS first_effective_start "
-                "  FROM trades_transfer t "
+                "  FROM transfer t "
                 " WHERE t.effective_end IS NULL "
                 " ORDER BY t.initiated_datetime DESC, t.deal_ref DESC "
                 " LIMIT %s",

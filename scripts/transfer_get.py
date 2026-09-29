@@ -26,7 +26,7 @@ def main() -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM trades_transfer "
+                "SELECT * FROM transfer "
                 " WHERE deal_ref = %s AND effective_end IS NULL",
                 (deal_ref,),
             )

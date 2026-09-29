@@ -1,4 +1,4 @@
-# trades_transfer — schema and conventions
+# transfer — schema and conventions
 
 A **transfer** is a movement of an asset from one account to another. It changes
 *where* a position sits, never P&L. It has its own table so the P&L engine, which
