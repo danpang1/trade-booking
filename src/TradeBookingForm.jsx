@@ -2674,8 +2674,18 @@ const ProductTabs = ({ active, onChange, locked = false }) => (
       if (locked && !isActive) return null;
       const disabled = c.comingSoon || locked;
       return (
+        <Fragment key={c.key}>
+        {/* Transfer is a movement book, not a trade book: a rule sets it
+            apart from the four trade products. Hidden in amend mode,
+            where only the active tab is shown. */}
+        {c.key === "TRANSFER" && !locked && (
+          <span
+            aria-hidden
+            className="self-stretch mb-2"
+            style={{ borderLeft: "1px solid var(--rule-2)", marginLeft: -4, marginRight: -4 }}
+          />
+        )}
         <button
-          key={c.key}
           type="button"
           disabled={disabled}
           onClick={() => !disabled && onChange(c.key)}
@@ -2720,6 +2730,7 @@ const ProductTabs = ({ active, onChange, locked = false }) => (
             )}
           </span>
         </button>
+        </Fragment>
       );
     })}
   </div>
@@ -14534,10 +14545,10 @@ export default function TradeBookingForm() {
           style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
         >
           {(() => {
-            // Loans / cashflows aren't conversationally "trades", so we
-            // drop the "trade" suffix for those two; spot/future keep it.
+            // Loans / cashflows / transfers aren't conversationally
+            // "trades", so we drop the suffix for those; spot/future keep it.
             const cat = (form.category || "trade").toLowerCase();
-            const noun = (cat === "loan" || cat === "cashflow") ? cat : `${cat} trade`;
+            const noun = (cat === "loan" || cat === "cashflow" || cat === "transfer") ? cat : `${cat} trade`;
             if (amendingDealRef) return `Amend a ${noun}`;
             if (draftId) return `Review draft`;
             return `Book a ${noun}`;
