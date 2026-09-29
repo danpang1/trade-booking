@@ -3199,8 +3199,17 @@ function HistoryModal({ open, dealRef, state, onClose }) {
                           fontSize: 10, fontWeight: 600,
                           letterSpacing: "0.06em", textTransform: "uppercase",
                         }}>{marker.label}</span>
+                        {/* user_id is CREATED BY and stays the original
+                            booker on every version; the person who made
+                            THIS version is updated_by. Showing user_id on
+                            an edited version credited the edit to the
+                            creator. Versions from before updated_by existed
+                            carry the amender in user_id, so fall back. */}
                         <span style={{ fontSize: 11, color: "var(--ink)" }}>
-                          by <strong>{row.user_id || "—"}</strong>
+                          by <strong>{(!isInitial && row.updated_by) || row.user_id || "—"}</strong>
+                          {!isInitial && row.updated_by && row.updated_by !== row.user_id && (
+                            <span style={{ color: "var(--ink-3)" }}> · created by {row.user_id}</span>
+                          )}
                         </span>
                         {isLive && (
                           <span style={{
