@@ -6564,7 +6564,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
 
   const exportCsv = useCallback(() => {
     const csv = rowsToCsv(filteredRows, DEAL_CSV_COLUMNS);
-    downloadCsv(`deal-enquiry-${todayStampLocal()}.csv`, csv);
+    downloadCsv(`trade-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
 
   const [showTradeBookingsModal, setShowTradeBookingsModal] = useState(false);
@@ -6610,7 +6610,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
         <div
           className="text-[26px] font-semibold"
           style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.01em", color: "var(--ink)" }}
-        >Deal Enquiry</div>
+        >Trade Enquiry</div>
       </div>
 
       {error && (
@@ -8225,7 +8225,7 @@ function Dashboard() {
         {[
           {
             title: "Spot Volume",
-            sub: "Aggregated from SPOT trades booked in Deal Enquiry",
+            sub: "Aggregated from SPOT trades booked in Trade Enquiry",
             rows: [
               { label: "24h",  value: "—" },
               { label: "7d",   value: "—" },
@@ -8235,7 +8235,7 @@ function Dashboard() {
           },
           {
             title: "Perps Volume",
-            sub: "Aggregated from FUTURE / PERP trades booked in Deal Enquiry",
+            sub: "Aggregated from FUTURE / PERP trades booked in Trade Enquiry",
             rows: [
               { label: "24h Notional",  value: "—" },
               { label: "7d Notional",   value: "—" },
@@ -14142,7 +14142,7 @@ export default function TradeBookingForm() {
             />
 
             <NavTabRow
-              label="Deal Enquiry"
+              label="Trade Enquiry"
               active={appView === "booking" && view === "DEAL_ENQUIRY"}
               onClick={() => { setAppView("booking"); setView("DEAL_ENQUIRY"); }}
             />
