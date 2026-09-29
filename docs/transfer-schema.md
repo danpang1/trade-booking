@@ -65,7 +65,8 @@ direction.
 
 ## What is not on the row
 
-* **No portfolio.** Access control scopes every other book on `portfolio_id`;
+* **Cross-portfolio moves are allowed.** The form's Portfolio field only filters the account pickers; the "Cross-portfolio" checkbox beside Transfer Type lets the destination be any of our accounts in any portfolio. Nothing is stored for it: the two ends' own portfolios (refdata) say whether a transfer crossed one.
+* **No portfolio column.** Access control scopes every other book on `portfolio_id`;
   with nothing to scope on, `/api/transfer/*` is **admin-only**
   (`serverScope.mjs`). Deal Enquiry treats a 403 from the transfer feed as
   "none" for a non-admin. To lift this, derive portfolio from the own-side

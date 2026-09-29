@@ -12051,6 +12051,9 @@ export default function TradeBookingForm() {
     // transfer_type + direction; the other end is a counterparty.
     tr_type: "INTERNAL",
     tr_direction: "OUTGOING",
+    // UI-only: lets the destination picker span every portfolio. Not a
+    // column; the two ends' own portfolios say it after the fact.
+    tr_cross_ptf: false,
     tr_src_venue_type: "",
     tr_src_account_name: "",
     tr_src_product: "",
@@ -12630,7 +12633,7 @@ export default function TradeBookingForm() {
   // Both Account Type and Portfolio start blank and work as filters:
   // blank type = every account of every type; blank portfolio = every
   // portfolio. Picking an account name fills both in from refdata.
-  const trAccountPool = (venueType) => {
+  const trAccountPool = (venueType, anyPortfolio = false) => {
     const pool =
       venueType === "EXCHANGE" ? ACCOUNTS_EXCHANGE
       : venueType === "WALLET" ? ACCOUNTS_WALLET
@@ -12638,7 +12641,7 @@ export default function TradeBookingForm() {
       : venueType === "BANK" ? ACCOUNTS_BANK
       : bulkAllAccounts();
     const ptf = PORTFOLIOS.find((x) => String(x.number) === String(form.portfolio));
-    if (!ptf) return pool;
+    if (!ptf || anyPortfolio) return pool;
     // BANK accounts hang off the entity, the rest off the portfolio name.
     return pool.filter((a) => a.portfolio === ptf.name || a.portfolio === ptf.entity);
   };
@@ -12655,7 +12658,10 @@ export default function TradeBookingForm() {
     const k = (f) => `tr_${side}_${f}`;
     const label = side === "src" ? "Source" : "Destination";
     const vt = form[k("venue_type")];
-    const pool = own ? trAccountPool(vt) : [];
+    // Cross-portfolio: the destination may be any of our accounts, in
+    // any portfolio; the source stays inside the selected portfolio.
+    const anyPtf = side === "dst" && form.tr_type === "INTERNAL" && form.tr_cross_ptf;
+    const pool = own ? trAccountPool(vt, anyPtf) : [];
     const acct = pool.find((a) => a.name === form[k("account_name")]);
     const products = vt === "EXCHANGE" ? (acct?.products || []) : vt === "WALLET" ? (acct?.chains || []) : [];
     const productApplies = own && (vt === "EXCHANGE" || vt === "WALLET");
@@ -12666,7 +12672,7 @@ export default function TradeBookingForm() {
           className="col-span-12 text-[10px] uppercase tracking-[0.2em] font-mono pt-2"
           style={{ color: own ? BB.text : BB.mute, borderTop: `1px dashed ${BB.border}` }}
         >
-          {label} · {own ? "our account" : "counterparty"}
+          {label} · {own ? (anyPtf ? "our account · any portfolio" : "our account") : "counterparty"}
         </div>
         {own ? (
           <>
@@ -12688,7 +12694,9 @@ export default function TradeBookingForm() {
                   ...clearEnd,
                   [k("account_name")]: v,
                   [k("venue_type")]: bulkAccountType(v) || vt,
-                  portfolio: form.portfolio || trPortfolioNumberOf(v),
+                  // A cross-portfolio destination must not pull the
+                  // source's portfolio filter onto itself.
+                  portfolio: form.portfolio || (anyPtf ? "" : trPortfolioNumberOf(v)),
                 })}
                 options={pool}
                 placeholder={pool.length === 0 ? (form.portfolio ? "— no accounts of this type in this portfolio —" : "— no accounts of this type —") : vt ? "— select account —" : "— select account (any type) —"}
@@ -13399,11 +13407,18 @@ export default function TradeBookingForm() {
     const ptf = ownAcct
       ? PORTFOLIOS.find((x) => x.name === ownAcct.portfolio || x.entity === ownAcct.portfolio)
       : null;
+    // Cross-portfolio if the two own ends sit in different portfolios.
+    const ptfOf = (name) => (bulkAllAccounts().find((a) => a.name === name) || {}).portfolio || "";
+    const crossPtf =
+      row.transfer_type === "INTERNAL"
+      && !!ptfOf(row.source_account_name) && !!ptfOf(row.dest_account_name)
+      && ptfOf(row.source_account_name) !== ptfOf(row.dest_account_name);
     return {
       category: "TRANSFER",
       trade_id: row.deal_ref,
       tr_type: row.transfer_type,
       tr_direction: row.direction,
+      tr_cross_ptf: crossPtf,
       portfolio: ptf ? String(ptf.number) : "",
       portfolio_name_row: "",
       tr_src_venue_type: venueOf(row.source_account_name),
@@ -13776,6 +13791,7 @@ export default function TradeBookingForm() {
     TRANSFER: {
       tr_type: "INTERNAL",
       tr_direction: "OUTGOING",
+      tr_cross_ptf: false,
       tr_src_venue_type: "",
       tr_src_account_name: "",
       tr_src_product: "",
@@ -15262,8 +15278,33 @@ export default function TradeBookingForm() {
               kicker="Transfer · one row, both ends · no P&L"
               accent={form.tr_type === "INTERNAL" ? BB.magenta : (form.tr_direction === "INCOMING" ? BB.green : BB.red)}
             >
-              {/* transfer_type */}
-              <Field label="Transfer Type" required span={6}>
+              {/* transfer_type · cross-portfolio toggle (INTERNAL only) */}
+              <Field
+                label="Transfer Type"
+                required
+                span={6}
+                headerExtra={
+                  form.tr_type === "INTERNAL" ? (
+                    <label
+                      className="text-[10px] cursor-pointer flex items-center gap-1.5 font-mono"
+                      style={{ color: BB.text }}
+                      title="Destination may be an account in another portfolio"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!form.tr_cross_ptf}
+                        onChange={(e) => setMany({
+                          tr_cross_ptf: e.target.checked,
+                          // The destination pool changes: start it over.
+                          tr_dst_account_name: "", tr_dst_product: "", tr_dst_account_id: "",
+                        })}
+                        style={{ accentColor: BB.orange }}
+                      />
+                      Cross-portfolio
+                    </label>
+                  ) : null
+                }
+              >
                 <div className="flex gap-2">
                   {TRANSFER_TYPES.map((t) => {
                     const active = form.tr_type === t;
