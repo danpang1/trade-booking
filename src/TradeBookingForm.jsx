@@ -15870,10 +15870,12 @@ export default function TradeBookingForm() {
 
           {/* ═════ 3. COMMENTS & ATTACHMENTS ═════ */}
           <Section
-            title="Comments & Attachments"
+            title={form.category === "TRANSFER" ? "Comments" : "Comments & Attachments"}
             kicker={
               form.category === "LOAN"
                 ? "Term sheet · supporting docs · free-form notes"
+                : form.category === "TRANSFER"
+                ? "Free-form notes"
                 : "Supporting docs · free-form notes"
             }
             accent={BB.dim}
@@ -15886,6 +15888,9 @@ export default function TradeBookingForm() {
                 onChange={(e) => set("notes", e.target.value)}
               />
             </Field>
+            {/* Attachments — not for a transfer: the tx hash / venue id on the
+                row is its evidence. */}
+            {form.category !== "TRANSFER" && (
             <div className="col-span-12">
               <div
                 onClick={() => fileInputRef.current?.click()}
@@ -15963,6 +15968,7 @@ export default function TradeBookingForm() {
                 </div>
               )}
             </div>
+            )}
           </Section>
 
           {/* Validation block now lives in the right column, between the
