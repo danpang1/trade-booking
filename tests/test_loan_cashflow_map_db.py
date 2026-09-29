@@ -19,13 +19,13 @@ import loan_cashflow_map_db as lcm  # noqa: E402
 
 @pytest.mark.parametrize("cf_type,cf_dir,loan_dir,want", [
     # BORROW: money in is the disbursement, money out the repayment.
-    ("LOAN",           "INCOMING", "BORROW", "PRINCIPAL_DISBURSE"),
+    ("LOAN", "INCOMING", "BORROW", "PRINCIPAL_DISBURSE"),
     ("LOAN REPAYMENT", "OUTGOING", "BORROW", "PRINCIPAL_REPAY"),
     # LEND: the mirror image. The label does not get a vote.
-    ("LOAN",           "OUTGOING", "LEND",   "PRINCIPAL_DISBURSE"),
-    ("LOAN REPAYMENT", "OUTGOING", "LEND",   "PRINCIPAL_DISBURSE"),
-    ("LOAN",           "INCOMING", "LEND",   "PRINCIPAL_REPAY"),
-    ("LOAN REPAYMENT", "INCOMING", "LEND",   "PRINCIPAL_REPAY"),
+    ("LOAN", "OUTGOING", "LEND", "PRINCIPAL_DISBURSE"),
+    ("LOAN REPAYMENT", "OUTGOING", "LEND", "PRINCIPAL_DISBURSE"),
+    ("LOAN", "INCOMING", "LEND", "PRINCIPAL_REPAY"),
+    ("LOAN REPAYMENT", "INCOMING", "LEND", "PRINCIPAL_REPAY"),
     # A mislabelled BORROW is corrected the same way.
     ("LOAN REPAYMENT", "INCOMING", "BORROW", "PRINCIPAL_DISBURSE"),
 ])
@@ -34,9 +34,9 @@ def test_principal_follows_cash_direction_against_loan(cf_type, cf_dir, loan_dir
 
 
 @pytest.mark.parametrize("cf_type,cf_dir,want", [
-    ("LOAN",           "INCOMING", "PRINCIPAL_DISBURSE"),
+    ("LOAN", "INCOMING", "PRINCIPAL_DISBURSE"),
     ("LOAN REPAYMENT", "OUTGOING", "PRINCIPAL_REPAY"),
-    ("LOAN",           None,       "PRINCIPAL_DISBURSE"),
+    ("LOAN", None, "PRINCIPAL_DISBURSE"),
 ])
 def test_without_loan_direction_falls_back_to_the_label(cf_type, cf_dir, want):
     assert lcm.derive_mapping_type(cf_type, cf_dir) == want
