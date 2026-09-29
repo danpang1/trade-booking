@@ -12612,12 +12612,23 @@ export default function TradeBookingForm() {
     form.tr_type === "INTERNAL" ? ["src", "dst"]
     : form.tr_direction === "OUTGOING" ? ["src"]
     : ["dst"];
-  const trAccountPool = (venueType) =>
-    venueType === "EXCHANGE" ? ACCOUNTS_EXCHANGE
-    : venueType === "WALLET" ? ACCOUNTS_WALLET
-    : venueType === "BROKER" ? ACCOUNTS_BROKER
-    : venueType === "BANK" ? ACCOUNTS_BANK
-    : [];
+  // Portfolio is a picker-side filter only: it narrows the account pool
+  // and is never written (trades_transfer has no portfolio column). Blank
+  // means every account of the venue type. BANK accounts hang off the
+  // entity, the rest off the portfolio name, as in accountOptions.
+  const trAccountPool = (venueType) => {
+    const pool =
+      venueType === "EXCHANGE" ? ACCOUNTS_EXCHANGE
+      : venueType === "WALLET" ? ACCOUNTS_WALLET
+      : venueType === "BROKER" ? ACCOUNTS_BROKER
+      : venueType === "BANK" ? ACCOUNTS_BANK
+      : [];
+    const ptf = PORTFOLIOS.find((x) => String(x.number) === String(form.portfolio));
+    if (!ptf) return pool;
+    return venueType === "BANK"
+      ? pool.filter((a) => a.portfolio === ptf.entity)
+      : pool.filter((a) => a.portfolio === ptf.name);
+  };
   const transferEnd = (side) => {
     const own = trOwnSides.includes(side);
     const k = (f) => `tr_${side}_${f}`;
@@ -12653,7 +12664,7 @@ export default function TradeBookingForm() {
                 value={form[k("account_name")]}
                 onChange={(v) => setMany({ ...clearEnd, [k("account_name")]: v })}
                 options={pool}
-                placeholder={pool.length === 0 ? "— no accounts of this type —" : "— select account —"}
+                placeholder={pool.length === 0 ? (form.portfolio ? "— no accounts of this type in this portfolio —" : "— no accounts of this type —") : "— select account —"}
               />
             </Field>
             <Field label={`${label} Product`} required={productApplies && products.length > 0} span={4}>
@@ -13351,11 +13362,23 @@ export default function TradeBookingForm() {
   // on the default since its picker ignores it.
   function transferPayloadToFormState(row) {
     const venueOf = (name) => bulkAccountType(name) || "EXCHANGE";
+    // Portfolio is only a picker filter; seed it from whichever own end
+    // is in refdata so the reopened row's account is inside the pool.
+    const ownNames =
+      row.transfer_type === "INTERNAL" ? [row.source_account_name, row.dest_account_name]
+      : row.direction === "OUTGOING" ? [row.source_account_name]
+      : [row.dest_account_name];
+    const ownAcct = bulkAllAccounts().find((a) => ownNames.includes(a.name));
+    const ptf = ownAcct
+      ? PORTFOLIOS.find((x) => x.name === ownAcct.portfolio || x.entity === ownAcct.portfolio)
+      : null;
     return {
       category: "TRANSFER",
       trade_id: row.deal_ref,
       tr_type: row.transfer_type,
       tr_direction: row.direction,
+      portfolio: ptf ? String(ptf.number) : "",
+      portfolio_name_row: "",
       tr_src_venue_type: venueOf(row.source_account_name),
       tr_src_account_name: row.source_account_name || "",
       tr_src_product: row.source_product || "",
@@ -15272,6 +15295,22 @@ export default function TradeBookingForm() {
                   </div>
                 )}
               </Field>
+
+              {/* Portfolio — filters the own-account pickers below; not a column */}
+              <Field label="Portfolio" span={6} hint="filters the account lists · not stored on the transfer">
+                <PortfolioPicker
+                  value={form.portfolio}
+                  onChange={(v) => setMany({
+                    portfolio: v,
+                    // The pools change: start both ends over.
+                    tr_src_account_name: "", tr_src_product: "", tr_src_account_id: "",
+                    tr_dst_account_name: "", tr_dst_product: "", tr_dst_account_id: "",
+                  })}
+                  options={visiblePortfolios()}
+                  fallbackLabel={form.portfolio_name_row}
+                />
+              </Field>
+              <div className="col-span-6" />
 
               {/* source_account_name / source_product / source_account_id */}
               {transferEnd("src")}
