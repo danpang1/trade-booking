@@ -12659,7 +12659,7 @@ export default function TradeBookingForm() {
         </div>
         {own ? (
           <>
-            <Field label={`${label} Account Type`} span={3} hint="filter · fills in from the account">
+            <Field label={`${label} Account Type`} span={3}>
               <Select
                 value={vt}
                 onChange={(e) => setMany({ [k("venue_type")]: e.target.value, ...clearEnd })}
@@ -12703,7 +12703,7 @@ export default function TradeBookingForm() {
                 ))}
               </Select>
             </Field>
-            <Field label={`${label} Account ID`} span={12} hint="resolved from account + product on save">
+            <Field label={`${label} Account ID`} span={12}>
               <OwnAccountIdPreview
                 name={form[k("account_name")]}
                 venueType={vt}
@@ -12716,7 +12716,7 @@ export default function TradeBookingForm() {
           </>
         ) : (
           <>
-            <Field label={`${label} Account Name`} required span={5} hint="counterparty">
+            <Field label={`${label} Account Name`} required span={5}>
               <CounterpartyPicker
                 value={form[k("account_name")]}
                 onChange={(v) => set(k("account_name"), v)}
@@ -12732,7 +12732,7 @@ export default function TradeBookingForm() {
                 style={{ background: "#ece7dd", color: BB.dim, cursor: "not-allowed" }}
               />
             </Field>
-            <Field label={`${label} Account ID`} span={4} hint="wallet address / venue ref">
+            <Field label={`${label} Account ID`} span={4}>
               <Input
                 placeholder="0x… or the venue's reference"
                 value={form[k("account_id")]}
@@ -15275,7 +15275,7 @@ export default function TradeBookingForm() {
                 </div>
               </Field>
               {/* direction — INTERNAL is always OUTGOING from source to dest */}
-              <Field label="Direction" required span={6} hint="incoming = +amount · outgoing = −amount">
+              <Field label="Direction" required span={6}>
                 {form.tr_type === "INTERNAL" ? (
                   <div className="text-[11px] font-mono py-1.5" style={{ color: BB.mute }}>
                     OUTGOING · source → destination (both ours)
@@ -15313,7 +15313,7 @@ export default function TradeBookingForm() {
               </Field>
 
               {/* Portfolio — filters the own-account pickers below; not a column */}
-              <Field label="Portfolio" span={6} hint="filter · fills in from the account · not stored">
+              <Field label="Portfolio" span={6}>
                 <PortfolioPicker
                   value={form.portfolio}
                   onChange={(v) => setMany({
@@ -15353,13 +15353,13 @@ export default function TradeBookingForm() {
                   }}
                 />
               </Field>
-              <Field label="Amount" required span={3} hint="positive; stored signed by direction">
+              <Field label="Amount" required span={3}>
                 <NumberInput value={form.tr_amount} onChange={(v) => set("tr_amount", v)} />
               </Field>
               <Field label="Fee Asset" span={3}>
                 <AssetPicker value={form.fee_asset} onChange={(v) => set("fee_asset", v)} />
               </Field>
-              <Field label="Fee Amount" span={3} hint="paid by the source, on top">
+              <Field label="Fee Amount" span={3}>
                 <NumberInput value={form.fee_amount} onChange={(v) => set("fee_amount", v)} />
               </Field>
               {/* network */}
