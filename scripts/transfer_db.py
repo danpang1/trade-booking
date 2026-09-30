@@ -114,6 +114,19 @@ def mirror_leg(p: dict) -> dict:
     return m
 
 
+def pair_legs(p: dict) -> list[dict]:
+    """[leg as booked, mirror] for an INTERNAL transfer, with the fee on the
+    OUTGOING leg only. The sender pays the fee, so copying it onto both legs
+    would charge it to the receiver as well; booked from the receiver
+    (INCOMING), the fee moves onto the mirror.
+    """
+    booked = dict(p)
+    mirror = mirror_leg(p)
+    incoming = booked if booked.get("direction") == "INCOMING" else mirror
+    incoming["fee_asset"], incoming["fee_amount"] = None, None
+    return [booked, mirror]
+
+
 def _amount(p: dict) -> Decimal:
     try:
         return Decimal(str(p["amount"]))

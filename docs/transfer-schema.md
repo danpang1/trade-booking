@@ -58,7 +58,9 @@ positive). The insert adds the mirror automatically (`transfer_db.mirror_leg`): 
 `INCOMING`, amount positive, everything else shared. Each row reads from the
 point of view of its `source_account_name`, so a per-account position sums
 `source_*` rows only. The two legs are independent deal_refs (amend each on its
-own) and are tied by the same `ext_transfer_id` and `initiated_datetime`. The
+own) and are tied by the same `ext_transfer_id` and `initiated_datetime`. The fee
+is paid by the sender, so only the `OUTGOING` leg of a pair carries it
+(`transfer_db.pair_legs`). The
 form's "Mirror leg" box (on by default, like the INTER PTF FUNDING "Mirror
 Trade" box) sends `_meta.mirror: false` to book the one leg only. The same account at both ends is
 allowed only with two different products (spot → funding, chain A → chain B).
@@ -75,11 +77,30 @@ direction.
   (`serverScope.mjs`). Deal Enquiry treats a 403 from the transfer feed as
   "none" for a non-admin. To lift this, derive portfolio from the own-side
   account at query time.
-* **No tech-DB mirror.** `manual_trade` / `manual_cashflow` feed the position
-  service; a transfer is neither, and there is no `manual_transfer` table yet.
-  Every insert logs this to stderr.
 * **No bulk edit.** Transfer rows cannot be selected in Deal Enquiry's bulk
   editor; amend one at a time.
+
+## Tech-DB mirror: `manual_transfer`
+
+After the MO commit, every insert and amend is mirrored (best-effort, never
+failing the booking) into the tech DB's `manual_transfer`
+(`migrations/0002_manual_transfer.sql`, written by
+`manual_write.write_manual_transfer` / `write_manual_transfer_amend`), which
+nx-hft-position reads into its balance ledger as `TransferIn` / `TransferOut`.
+One `manual_transfer` row per MO row, i.e. per leg on one of our accounts:
+
+| manual_transfer | from the MO row |
+|---|---|
+| `source_account_id` / `dest_account_id` | verbatim. Our end — the position balance key — is `dest_account_id` on an EXTERNAL INCOMING, else `source_account_id`; blank there (a BANK account) → not mirrored, logged. No separate `account_id` |
+| `direction`, `updated_by`, `network`, `ext_transfer_id`, `comment` | verbatim. Names / products are not stored: our gateway id encodes account + product, the counterparty is `counterparty_id` |
+| `portfolio_id` | portfolio number of our end's account, from refdata (NULL if none, e.g. BANK) |
+| `counterparty_id` | reference_data id of the far end on an EXTERNAL; NULL on an INTERNAL |
+| `amount` | as booked (signed on our end) |
+| `fee_amount` / `fee_asset_id` | as booked; position charges it only on an outgoing leg |
+| `pair_deal_ref` | the other leg of an INTERNAL pair (set on insert, carried on amend) |
+| `status` | lowercased; position skips only `cancelled`, so pending / confirmed / completed all move the balance, as for `manual_cashflow` |
+| `ts_exchange_event` | `completed_datetime`, else `initiated_datetime` |
+| `internal_journal` | `'Y'` → true |
 
 ## API
 
