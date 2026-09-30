@@ -9,6 +9,8 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+import cashflow_db  # counterparty gate + refdata loaders
+
 REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
@@ -138,6 +140,12 @@ def _validate_one(p: dict, mode: str) -> None:
         raise ValidationError(
             f"portfolio_id must be integer, got {p['portfolio_id']!r}"
         ) from e
+    # Counterparty gate: exact refdata name, CID stamped server-side. A
+    # string of digits is the other portfolio on an internal spot.
+    try:
+        cashflow_db.stamp_counterparty(p, allow_portfolio=True)
+    except cashflow_db.ValidationError as e:
+        raise ValidationError(str(e)) from e
 
 
 def validate_payload(payload, *, mode: str) -> None:

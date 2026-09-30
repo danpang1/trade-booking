@@ -12,6 +12,8 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+import cashflow_db  # counterparty gate + refdata loaders
+
 REPO = Path(__file__).resolve().parents[1]
 ENV = REPO / ".env"
 
@@ -130,6 +132,11 @@ def _validate_one(p: dict, mode: str) -> None:
             raise ValidationError(
                 f"day_count_basis must be 360 or 365, got {dcb}"
             )
+    # Counterparty gate: exact refdata name, CID stamped server-side.
+    try:
+        cashflow_db.stamp_counterparty(p)
+    except cashflow_db.ValidationError as e:
+        raise ValidationError(str(e)) from e
     if p["status"] not in VALID_STATUSES:
         raise ValidationError(
             f"status must be one of {sorted(VALID_STATUSES)}, got {p['status']!r}"

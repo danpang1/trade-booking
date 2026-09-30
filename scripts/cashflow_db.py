@@ -159,6 +159,68 @@ def _load_counterparties_set() -> set:
         return {c["name"] for c in json.load(f) if c.get("name")}
 
 
+def _load_counterparties_map() -> dict:
+    """name -> refdata id (int), for stamping counterparty_id server-side."""
+    with open(REFDATA_DIR / "counterparties.json", encoding="utf-8") as f:
+        return {c["name"]: c.get("id") for c in json.load(f) if c.get("name")}
+
+
+def format_cid(raw) -> str | None:
+    """Refdata id -> the stored form, CID + 6 digits ('CID000177'). Mirrors
+    formatCID in TradeBookingForm.jsx so every writer stores the same shape."""
+    if raw in (None, ""):
+        return None
+    s = str(raw).strip()
+    if s.upper().startswith("CID"):
+        return s.upper()
+    return "CID" + s.zfill(6)
+
+
+def stamp_counterparty(p: dict, *, allow_portfolio: bool = False) -> None:
+    """The counterparty gate, shared by the cashflow / spot / loan books.
+
+    A named counterparty must exist in refdata, spelled exactly, and its
+    counterparty_id is stamped HERE from refdata -- the server is the
+    authority, whatever the client sent. Free text used to slip through
+    on spot and loan (no check at all) and arrive with no CID; the Slack
+    bot was the usual source.
+
+    allow_portfolio: a string of digits is the other portfolio's number
+    (internal spot / INTER PTF FUNDING) -- validated against portfolios,
+    counterparty_id NULL by design.
+
+    Fails open only when the refdata file cannot be read at all (empty
+    map): a refdata outage must not block the book, per the design.
+    """
+    name = p.get("counterparty")
+    if name is None or (isinstance(name, str) and not name.strip()):
+        return
+    name = str(name).strip()
+    if allow_portfolio and name.isdigit():
+        ports = _safe_load(_load_portfolio_ids_set)
+        if ports and int(name) not in ports:
+            raise ValidationError(
+                f"counterparty portfolio {name} not in refdata ({len(ports)} valid portfolios)"
+            )
+        p["counterparty"] = name
+        p["counterparty_id"] = None
+        return
+    cps = _safe_load(_load_counterparties_map)
+    if not cps:
+        return
+    if name not in cps:
+        hint = ""
+        folded = {k.upper(): k for k in cps}
+        if name.upper() in folded:
+            hint = f" -- did you mean {folded[name.upper()]!r}?"
+        raise ValidationError(
+            f"counterparty {name!r} not in refdata ({len(cps)} valid counterparties); "
+            f"free text is not accepted, pick the exact refdata name{hint}"
+        )
+    p["counterparty"] = name
+    p["counterparty_id"] = format_cid(cps[name])
+
+
 def _load_portfolio_ids_set() -> set:
     with open(REFDATA_DIR / "portfolios.json", encoding="utf-8") as f:
         return {
@@ -262,13 +324,9 @@ def _validate_one(p: dict, mode: str) -> None:
                 f"({len(ports)} valid portfolios) — INTER PTF FUNDING expects "
                 f"the receiving portfolio's number in the counterparty field"
             )
+        p["counterparty_id"] = None
     else:
-        cps = _safe_load(_load_counterparties_set)
-        if cps and p["counterparty"] not in cps:
-            raise ValidationError(
-                f"counterparty {p['counterparty']!r} not in refdata "
-                f"({len(cps)} valid counterparties available)"
-            )
+        stamp_counterparty(p)
 
     accts = _safe_load(_load_accounts_set)
     if accts and p["account"] not in accts:

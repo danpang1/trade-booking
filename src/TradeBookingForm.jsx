@@ -14135,7 +14135,7 @@ export default function TradeBookingForm() {
             className="text-[9px] tracking-[0.34em] uppercase font-mono"
             style={{ color: "#9a9488", fontWeight: 400, paddingLeft: 1 }}
           >
-            Trade Management System
+            Transaction Management System
           </span>
           )}
           </div>

@@ -141,7 +141,7 @@ default one to get moving.
 | `loan_type` | `EXTERNAL` / `INTERNAL` / `VIP LOAN` / `DEFI LENDING` |
 | `entity` | the booking entity |
 | `portfolio_id` + `portfolio_name` | must agree with each other |
-| `counterparty` | who we borrowed from or lent to |
+| `counterparty` | who we borrowed from or lent to — an exact refdata name (`counterparty-list`); the server rejects free text and stamps the CID itself |
 | `principal_asset` + `principal_amount` | must be > 0 |
 | `interest_asset` | often the same as principal |
 | `interest_type` | `FIXED` / `FLOATING` |

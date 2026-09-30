@@ -147,9 +147,13 @@ venue and a party on the other side, and a draft missing either is not reviewabl
   refdata account and set `account_type` to match. Otherwise **ask which
   account**. `account_type` is `EXCHANGE`, `WALLET`, or `BROKER`, and the account
   must exist in refdata.
-- `counterparty` — must be a NAMED counterparty in refdata. For an internal SPOT
-  between two Tokka portfolios it is the other portfolio's number. If the user
-  hasn't said who the trade faced, **ask**.
+- `counterparty` — must be a NAMED counterparty in refdata, spelled **exactly**
+  as `counterparty-list` prints it. The server rejects anything else (free text,
+  a different case, an abbreviation) and stamps `counterparty_id` itself from
+  refdata — never invent or pass a CID. For an internal SPOT between two Tokka
+  portfolios it is the other portfolio's number. If the user hasn't said who the
+  trade faced, **ask**; if their wording matches no refdata name, show the
+  closest names and ask them to pick, do not guess.
 
 ### `product` — the gateway sub-account, mandatory wherever there is a choice
 
