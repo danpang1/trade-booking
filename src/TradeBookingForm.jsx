@@ -2977,7 +2977,7 @@ const AUDIT_DIFF_FIELDS_TRANSFER = [
   "dest_account_name", "dest_product", "dest_account_id",
   "asset", "amount", "fee_asset", "fee_amount",
   "initiated_datetime", "completed_datetime", "network", "ext_transfer_id",
-  "status", "user_id", "updated_by", "comment",
+  "status", "user_id", "updated_by", "comment", "internal_journal",
 ];
 const AUDIT_DIFF_FIELDS_LOAN = [
   "direction", "loan_type", "counterparty",
@@ -8423,6 +8423,7 @@ const TRANSFER_DYNAMIC_FIELDS = [
   { key: "fee_asset",           label: "Fee Asset",        get: (r) => r.fee_asset || "" },
   { key: "user_id",             label: "Booked By",        get: (r) => r.user_id || "" },
   { key: "comment",             label: "Comment",          get: (r) => r.comment || "" },
+  { key: "internal_journal",    label: "Internal Journal", get: (r) => r.internal_journal || "" },
 ];
 
 // Every real column, in table order, so the export is the row.
@@ -8449,6 +8450,7 @@ const TRANSFER_CSV_COLUMNS = [
   { header: "Updated By",          key: "updated_by" },
   { header: "Status",              key: "status" },
   { header: "Comment",             key: "comment" },
+  { header: "Internal Journal",    key: "internal_journal" },
   { header: "Month Year",          get: (r) => fmtMonthYearUtc(r.initiated_datetime) },
 ];
 
@@ -8768,6 +8770,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
               <th className="px-3 py-1.5 text-left whitespace-nowrap">Completed</th>
               <th className="px-3 py-1.5 text-left whitespace-nowrap">Network</th>
               <th className="px-3 py-1.5 text-left whitespace-nowrap">Ext Transfer ID</th>
+              <th className="px-3 py-1.5 text-center whitespace-nowrap">Journal</th>
               <th className="px-3 py-1.5 text-left whitespace-nowrap">Booked By</th>
               <th className="px-3 py-1.5 text-left whitespace-nowrap">Status</th>
             </tr>
@@ -8775,7 +8778,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={16} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={17} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -8794,7 +8797,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
             )}
             {!loading && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={16} className="px-3 py-6 text-center opacity-60">
+                <td colSpan={17} className="px-3 py-6 text-center opacity-60">
                   {rows.length === 0
                     ? "No transfers booked yet — use + Book Transfer above."
                     : filtersActive
@@ -8891,6 +8894,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
                   <td className="px-3 py-1.5 whitespace-nowrap" style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.ext_transfer_id ? <HoverTip text={r.ext_transfer_id}>{r.ext_transfer_id}</HoverTip> : "—"}
                   </td>
+                  <td className="px-3 py-1.5 whitespace-nowrap text-center">{r.internal_journal === "Y" ? "Y" : ""}</td>
                   <td className="px-3 py-1.5 whitespace-nowrap">{r.user_id || "—"}</td>
                   <td className="px-3 py-1.5 whitespace-nowrap">{pill(st.bg, st.fg, r.status)}</td>
                 </tr>
@@ -12057,6 +12061,8 @@ export default function TradeBookingForm() {
     // UI-only: book the INCOMING mirror on the destination (default), or
     // just the one leg when the other side is booked elsewhere.
     tr_mirror: true,
+    // internal_journal column: "Y" when ticked, NULL otherwise.
+    tr_internal_journal: false,
     tr_src_venue_type: "",
     tr_src_account_name: "",
     tr_src_product: "",
@@ -12965,6 +12971,7 @@ export default function TradeBookingForm() {
         user_id: form.created_by || null,
         status: form.status,
         comment: form.notes || null,
+        internal_journal: form.tr_internal_journal ? "Y" : null,
         _meta: {
           attachments: form.attachments.map(({ _file, ...rest }) => rest),
           mirror: internal ? form.tr_mirror !== false : false,
@@ -13424,6 +13431,7 @@ export default function TradeBookingForm() {
       tr_direction: row.direction,
       tr_cross_ptf: crossPtf,
       tr_mirror: true,
+      tr_internal_journal: row.internal_journal === "Y",
       portfolio: ptf ? String(ptf.number) : "",
       portfolio_name_row: "",
       tr_src_venue_type: venueOf(row.source_account_name),
@@ -13798,6 +13806,7 @@ export default function TradeBookingForm() {
       tr_direction: "OUTGOING",
       tr_cross_ptf: false,
       tr_mirror: true,
+      tr_internal_journal: false,
       tr_src_venue_type: "",
       tr_src_account_name: "",
       tr_src_product: "",
@@ -15290,8 +15299,9 @@ export default function TradeBookingForm() {
                 required
                 span={6}
                 headerExtra={
-                  form.tr_type === "INTERNAL" ? (
-                    <span className="flex items-center gap-4">
+                  <span className="flex items-center gap-4">
+                  {form.tr_type === "INTERNAL" && (
+                    <>
                     <label
                       className="text-[10px] cursor-pointer flex items-center gap-1.5 font-mono"
                       style={{ color: BB.text }}
@@ -15322,8 +15332,22 @@ export default function TradeBookingForm() {
                       />
                       Cross-portfolio
                     </label>
-                    </span>
-                  ) : null
+                    </>
+                  )}
+                  <label
+                    className="text-[10px] cursor-pointer flex items-center gap-1.5 font-mono"
+                    style={{ color: BB.text }}
+                    title="Flag this movement as an internal journal (records Y on the row)"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!form.tr_internal_journal}
+                      onChange={(e) => set("tr_internal_journal", e.target.checked)}
+                      style={{ accentColor: BB.orange }}
+                    />
+                    Internal journal
+                  </label>
+                  </span>
                 }
               >
                 <div className="flex gap-2">

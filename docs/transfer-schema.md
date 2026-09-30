@@ -36,6 +36,7 @@ Column order approved 2026-09-28. DDL: `scripts/apply_schema_transfer.py`.
 | 22 | `status` | TEXT NOT NULL | PENDING / CONFIRMED / COMPLETED / CANCELLED |
 | 23 | `comment` | TEXT | |
 | 24 | `updated_by` | TEXT | who made this version |
+| 25 | `internal_journal` | TEXT | `Y` when the operator flags the movement as an internal journal (the "Internal journal" box on the form); NULL otherwise. CHECK `= 'Y'`. Added 2026-09-30, appended after `updated_by`. |
 
 Unique `(deal_ref, effective_start)`.
 

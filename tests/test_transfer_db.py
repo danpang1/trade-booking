@@ -244,3 +244,17 @@ def test_transfer_statuses_are_their_own_set():
     for bad in ("SETTLED", "PROCESSED"):
         with pytest.raises(transfer_db.ValidationError, match="status must be one of"):
             transfer_db.validate_payload(_internal(status=bad), mode="insert")
+
+
+def test_internal_journal_is_y_or_null():
+    p = _internal(internal_journal=True)
+    transfer_db.validate_payload(p, mode="insert")
+    assert p["internal_journal"] == "Y"
+    for off in (None, "", False, "N"):
+        q = _internal(internal_journal=off)
+        transfer_db.validate_payload(q, mode="insert")
+        assert q["internal_journal"] is None
+    with pytest.raises(transfer_db.ValidationError, match="internal_journal"):
+        transfer_db.validate_payload(_internal(internal_journal="maybe"), mode="insert")
+    # The mirror leg carries the flag with it.
+    assert transfer_db.mirror_leg(p)["internal_journal"] == "Y"

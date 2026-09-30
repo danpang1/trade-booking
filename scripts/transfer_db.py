@@ -205,6 +205,15 @@ def _validate_one(p: dict, mode: str) -> None:
             f"network {p['network']!r} not in NETWORKS list — must be one of "
             f"{len(VALID_NETWORKS)} uppercase chain names"
         )
+    # internal_journal is a Y / NULL flag. Accept the obvious spellings of
+    # "on" from a form and normalise in place; anything else is a mistake.
+    ij = p.get("internal_journal")
+    if ij in (None, "", False, 0, "N", "n", "false", "False"):
+        p["internal_journal"] = None
+    elif ij in (True, 1, "Y", "y", "true", "True"):
+        p["internal_journal"] = "Y"
+    else:
+        raise ValidationError(f"internal_journal must be 'Y' or empty, got {ij!r}")
 
 
 def validate_payload(payload, *, mode: str) -> None:
@@ -267,6 +276,8 @@ DATA_COLUMNS = (
     "comment",
     # Who made THIS version. user_id stays the original author.
     "updated_by",
+    # 'Y' = flagged as an internal journal by the operator; NULL otherwise.
+    "internal_journal",
 )
 
 

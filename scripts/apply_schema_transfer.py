@@ -60,9 +60,22 @@ CREATE TABLE IF NOT EXISTS transfer (
                           ('PENDING','CONFIRMED','COMPLETED','CANCELLED')),
   comment             TEXT,
   updated_by          TEXT,
+  -- 'Y' when the operator flags the movement as an internal journal
+  -- (book-keeping entry, not a real movement); NULL otherwise.
+  internal_journal    TEXT
+                        CONSTRAINT transfer_internal_journal_check CHECK (internal_journal = 'Y'),
   PRIMARY KEY (id),
   CONSTRAINT uq_transfer_version UNIQUE (deal_ref, effective_start)
 );
+
+-- Column added 2026-09-30 to a table that already existed on UAT; keeps
+-- the script idempotent on a table created by the earlier DDL.
+ALTER TABLE transfer ADD COLUMN IF NOT EXISTS internal_journal TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transfer_internal_journal_check') THEN
+    ALTER TABLE transfer ADD CONSTRAINT transfer_internal_journal_check CHECK (internal_journal = 'Y');
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_ttr_live
   ON transfer (deal_ref) WHERE effective_end IS NULL;
