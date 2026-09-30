@@ -7,10 +7,10 @@ envelope server.js sends. Writes to stdout:
   Success: {"ok": true, "rows": [<row>], "attachments": [...]}
   Failure: {"ok": false, "error": "...", "detail": "..."}  (non-zero exit)
 
-There is no tech-DB mirror yet. manual_trade / manual_cashflow feed the
-position service and a transfer is neither; until a manual_transfer table
-exists on that side, transfers live in the MO book only, and this is
-logged on every insert so it is not forgotten.
+After the MO commit the row(s) are mirrored into the tech DB's
+manual_transfer (manual_write.write_manual_transfer), which the position
+service reads as balance movements. Best-effort: a failed mirror is logged
+to stderr and never fails the booking.
 """
 from __future__ import annotations
 import json
@@ -35,6 +35,18 @@ def _insert_one(cur, payload: dict) -> dict:
     )
     out_cols = [d.name for d in cur.description]
     return transfer_db.row_to_payload(out_cols, cur.fetchone())
+
+
+def _dual_write_manual_transfer(rows: list[dict]) -> None:
+    """Best-effort mirror into the tech DB's manual_transfer (separate DB, own
+    connection), after the MO commit. Never affects the booking -- all errors
+    swallowed, including a failed import of the optional manual_write module."""
+    try:
+        import manual_write
+
+        manual_write.write_manual_transfer(rows)
+    except Exception as e:  # noqa: BLE001
+        print(f"manual dual-write: skip manual_transfer: {e!r}", file=sys.stderr)
 
 
 def main() -> int:
@@ -67,7 +79,7 @@ def main() -> int:
     transfer_db.stamp_account_ids(payload)
     legs = [payload]
     if payload.get("transfer_type") == "INTERNAL" and want_mirror:
-        legs.append(transfer_db.mirror_leg(payload))
+        legs = transfer_db.pair_legs(payload)
 
     conn = transfer_db.connect()
     try:
@@ -82,11 +94,7 @@ def main() -> int:
                     user_id=payload.get("user_id") or "unknown",
                 )
         print(json.dumps({"ok": True, "rows": rows, "attachments": inserted_atts}))
-        print(
-            "manual dual-write: no manual_transfer table in the tech DB yet - "
-            f"{', '.join(r['deal_ref'] for r in rows)} recorded in the MO book only",
-            file=sys.stderr,
-        )
+        _dual_write_manual_transfer(rows)
         return 0
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))
