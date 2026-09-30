@@ -205,7 +205,10 @@ def stamp_counterparty(p: dict, *, allow_portfolio: bool = False) -> None:
         p["counterparty"] = name
         p["counterparty_id"] = None
         return
-    cps = _safe_load(_load_counterparties_map)
+    # Names come from the set loader (the one every test stubs, and the
+    # one the cashflow check has always used); ids from the map. Each
+    # fails open on its own when the refdata file cannot be read.
+    cps = _safe_load(_load_counterparties_set)
     if not cps:
         return
     if name not in cps:
@@ -217,8 +220,9 @@ def stamp_counterparty(p: dict, *, allow_portfolio: bool = False) -> None:
             f"counterparty {name!r} not in refdata ({len(cps)} valid counterparties); "
             f"free text is not accepted, pick the exact refdata name{hint}"
         )
+    ids = _safe_load(_load_counterparties_map)
     p["counterparty"] = name
-    p["counterparty_id"] = format_cid(cps[name])
+    p["counterparty_id"] = format_cid(ids.get(name)) if ids else p.get("counterparty_id")
 
 
 def _load_portfolio_ids_set() -> set:

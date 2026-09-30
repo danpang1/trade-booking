@@ -67,7 +67,10 @@ def test_blank_counterparty_is_left_alone():
 
 
 def test_fails_open_when_refdata_unreadable(monkeypatch):
-    monkeypatch.setattr(cashflow_db, "_load_counterparties_map", lambda: (_ for _ in ()).throw(FileNotFoundError()))
+    def boom():
+        raise FileNotFoundError()
+    monkeypatch.setattr(cashflow_db, "_load_counterparties_set", boom)
+    monkeypatch.setattr(cashflow_db, "_load_counterparties_map", boom)
     p = {"counterparty": "ANYONE", "counterparty_id": None}
     cashflow_db.stamp_counterparty(p)
     assert p["counterparty_id"] is None
