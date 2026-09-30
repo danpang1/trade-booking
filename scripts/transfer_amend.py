@@ -1,6 +1,7 @@
 """Amend a transfer (SCD2: close the live row, insert a new version).
 
-Cancel is an amend with status='CANCELLED'. Reads a single-dict payload
+Cancel is an amend with status='CANCELLED'. After the MO commit the new
+version is mirrored into the tech DB's manual_transfer (best-effort). Reads a single-dict payload
 (deal_ref required) from stdin. Writes:
   Success:  {"ok": true, "rows": [<row>], "attachments": [...]}
   Conflict: {"ok": false, "error": "...", "code": "conflict"}   (exit 4)
@@ -13,6 +14,18 @@ import sys
 import attachments_db
 import transfer_db
 import authorship
+
+
+def _dual_write_manual_transfer_amend(row: dict) -> None:
+    """Best-effort manual_transfer mirror for any amend (incl. cancel): closes
+    the prior open version and inserts the new one (SCD2), after the MO
+    commit. Never affects the amend -- all errors (incl. import) swallowed."""
+    try:
+        import manual_write
+
+        manual_write.write_manual_transfer_amend(row)
+    except Exception as e:  # noqa: BLE001
+        print(f"manual dual-write: skip manual_transfer amend: {e!r}", file=sys.stderr)
 
 
 def main() -> int:
@@ -77,6 +90,7 @@ def main() -> int:
                     user_id=payload.get("user_id") or "unknown",
                 )
         print(json.dumps({"ok": True, "rows": [row], "attachments": inserted_atts}))
+        _dual_write_manual_transfer_amend(row)
         return 0
     except Exception as e:
         print(json.dumps({"ok": False, "error": "DB error", "detail": str(e)}))

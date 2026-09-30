@@ -1,7 +1,8 @@
-"""Apply the manual_trade / manual_cashflow schema to the tech-team Postgres.
+"""Apply the manual_trade / manual_cashflow / manual_transfer schema to the
+tech-team Postgres.
 
-Reads the DDL from migrations/0001_manual_trade_cashflow.sql (source of truth)
-and executes it against the TECH DB (creds via scripts/tech_db.py — TECH_DB_*
+Reads the DDL from migrations/0001_manual_trade_cashflow.sql and
+migrations/0002_manual_transfer.sql (source of truth), in order, and executes it against the TECH DB (creds via scripts/tech_db.py — TECH_DB_*
 env vars or the `# TECH DB` .env block). Idempotent: the DDL is all
 CREATE ... IF NOT EXISTS / DO-guarded, so re-running is safe.
 
@@ -13,21 +14,27 @@ from pathlib import Path
 import tech_db
 
 REPO = Path(__file__).resolve().parents[1]
-DDL_FILE = REPO / "migrations" / "0001_manual_trade_cashflow.sql"
+DDL_FILES = (
+    REPO / "migrations" / "0001_manual_trade_cashflow.sql",
+    REPO / "migrations" / "0002_manual_transfer.sql",
+)
 
-_TABLES = ("manual_trade", "manual_cashflow")
-_ENUMS = ("manual_status", "manual_trade_side", "manual_cashflow_kind")
+_TABLES = ("manual_trade", "manual_cashflow", "manual_transfer")
+_ENUMS = (
+    "manual_status", "manual_trade_side", "manual_cashflow_kind",
+    "manual_transfer_type", "manual_transfer_status",
+)
 _SEQUENCES = ("manual_trade_deal_ref_seq", "manual_cashflow_deal_ref_seq")
 
 
 def main() -> None:
-    ddl = DDL_FILE.read_text(encoding="utf-8")
-
     conn = tech_db.connect()
     conn.autocommit = True
     cur = conn.cursor()
-    cur.execute(ddl)
-    print(f"applied {DDL_FILE.relative_to(REPO)} OK\n")
+    for ddl_file in DDL_FILES:
+        cur.execute(ddl_file.read_text(encoding="utf-8"))
+        print(f"applied {ddl_file.relative_to(REPO)} OK")
+    print()
 
     # ── Verify enums ──────────────────────────────────────────────────
     cur.execute(
@@ -86,7 +93,7 @@ def main() -> None:
             print(f"    {row[0]}")
 
     conn.close()
-    print("\nOK — manual_trade / manual_cashflow present.")
+    print("\nOK — manual_trade / manual_cashflow / manual_transfer present.")
 
 
 if __name__ == "__main__":

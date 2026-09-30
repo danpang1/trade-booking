@@ -258,3 +258,17 @@ def test_internal_journal_is_y_or_null():
         transfer_db.validate_payload(_internal(internal_journal="maybe"), mode="insert")
     # The mirror leg carries the flag with it.
     assert transfer_db.mirror_leg(p)["internal_journal"] == "Y"
+
+
+def test_pair_legs_puts_the_fee_on_the_outgoing_leg_only():
+    """The sender pays the fee; the receiver's leg must not carry it too."""
+    booked, mirror = transfer_db.pair_legs(_internal())
+    assert booked["direction"] == "OUTGOING" and booked["fee_amount"] == "0.0005"
+    assert mirror["direction"] == "INCOMING" and mirror["fee_amount"] is None
+    assert mirror["fee_asset"] is None
+    # Booked from the receiver: the fee moves onto the (outgoing) mirror.
+    inc = transfer_db.mirror_leg(_internal())
+    booked, mirror = transfer_db.pair_legs(inc)
+    assert booked["direction"] == "INCOMING" and booked["fee_amount"] is None
+    assert mirror["direction"] == "OUTGOING" and mirror["fee_amount"] == "0.0005"
+    assert mirror["fee_asset"] == "BNB"
