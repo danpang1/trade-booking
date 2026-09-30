@@ -57,6 +57,14 @@ def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
                         updated_by=acting,
                     )
                     draft_trade_link.mirror_amend(public.get("category"), moved)
+                    # An INTERNAL transfer is a pair: retire the mirror too.
+                    for sib in draft_trade_link.sibling_refs(
+                            public.get("category"), public.get("payload")):
+                        m2 = draft_trade_link.amend_status(
+                            cur, public.get("category"), sib, "CANCELLED",
+                            updated_by=acting,
+                        )
+                        draft_trade_link.mirror_amend(public.get("category"), m2)
                 return "ok", public
     finally:
         conn.close()

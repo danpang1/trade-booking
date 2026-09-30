@@ -147,6 +147,8 @@ REFDATA_FIXTURE = {
         {"name": "TK006@BINANCE"},
         {"name": "TK818@BINANCE"},
         {"name": "TOKKA TREASURY WALLET"},
+        {"name": "TK801@BINANCE", "products": ["SPOT", "FUNDING"]},
+        {"name": "TRADING_06@HYPERLIQUID", "products": ["SPOT", "FUTURES"]},
     ],
     "counterparties": [
         {"name": "Galaxy"},
@@ -342,3 +344,60 @@ def test_validate_dispatch_routes_by_category():
     tokka_mo.validate("CASHFLOW", VALID_PAYLOAD, REFDATA_FIXTURE)
     with pytest.raises(tokka_mo.ValidationError, match="unknown category"):
         tokka_mo.validate("FUTURES", VALID_SPOT_PAYLOAD, REFDATA_FIXTURE)
+
+
+# ── TRANSFER ─────────────────────────────────────────────────────────
+
+def _transfer(**over):
+    p = {
+        "transfer_type": "INTERNAL", "direction": "OUTGOING",
+        "source_account_name": "TK801@BINANCE", "source_product": "SPOT",
+        "dest_account_name": "TRADING_06@HYPERLIQUID", "dest_product": "SPOT",
+        "asset": "USDT", "amount": "-100",
+        "initiated_datetime": "2026-09-30T08:00:00+00:00",
+        "user_id": "danny.pang", "status": "PENDING",
+    }
+    p.update(over)
+    return p
+
+
+def test_validate_transfer_happy_path():
+    tokka_mo.validate_transfer_payload(_transfer(), REFDATA_FIXTURE)
+
+
+def test_transfer_sign_follows_direction():
+    with pytest.raises(tokka_mo.ValidationError, match="sign must follow direction"):
+        tokka_mo.validate_transfer_payload(_transfer(amount="100"), REFDATA_FIXTURE)
+    with pytest.raises(tokka_mo.ValidationError, match="sign must follow direction"):
+        tokka_mo.validate_transfer_payload(_transfer(direction="INCOMING", amount="-100"), REFDATA_FIXTURE)
+
+
+def test_transfer_own_end_must_be_an_account_and_product_offered():
+    with pytest.raises(tokka_mo.ValidationError, match="dest_account_name .* not in refdata accounts"):
+        tokka_mo.validate_transfer_payload(_transfer(dest_account_name="HYPERLIQUID06"), REFDATA_FIXTURE)
+    with pytest.raises(tokka_mo.ValidationError, match="source_product is required"):
+        tokka_mo.validate_transfer_payload(_transfer(source_product=None), REFDATA_FIXTURE)
+    with pytest.raises(tokka_mo.ValidationError, match="not offered by"):
+        tokka_mo.validate_transfer_payload(_transfer(source_product="MARGIN"), REFDATA_FIXTURE)
+
+
+def test_transfer_external_far_end_is_a_counterparty():
+    p = _transfer(transfer_type="EXTERNAL", direction="OUTGOING",
+                  dest_account_name="Galaxy", dest_product=None, dest_account_id="0xabc")
+    tokka_mo.validate_transfer_payload(p, REFDATA_FIXTURE)
+    with pytest.raises(tokka_mo.ValidationError, match="dest_account_name .* not in refdata counterparties"):
+        tokka_mo.validate_transfer_payload(_transfer(transfer_type="EXTERNAL", dest_product=None), REFDATA_FIXTURE)
+
+
+def test_transfer_same_account_needs_two_products():
+    with pytest.raises(tokka_mo.ValidationError, match="two different products"):
+        tokka_mo.validate_transfer_payload(
+            _transfer(dest_account_name="TK801@BINANCE", dest_product="SPOT"), REFDATA_FIXTURE)
+    tokka_mo.validate_transfer_payload(
+        _transfer(dest_account_name="TK801@BINANCE", dest_product="FUNDING"), REFDATA_FIXTURE)
+
+
+def test_transfer_category_inferred_and_dispatched():
+    assert tokka_mo.infer_category(_transfer()) == "TRANSFER"
+    assert "TRANSFER" in tokka_mo.VALID_CATEGORIES
+    tokka_mo.validate("TRANSFER", _transfer(), REFDATA_FIXTURE)

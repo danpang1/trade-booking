@@ -188,7 +188,7 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
       ...new Set(
         ids
           .map((id) => rows.find((r) => r.id === id)?.category)
-          .map((c) => (c === "SPOT" ? "trades_spot" : c === "CASHFLOW" ? "trades_cashflow" : null))
+          .map((c) => (c === "SPOT" ? "trades_spot" : c === "CASHFLOW" ? "trades_cashflow" : c === "TRANSFER" ? "transfer" : null))
           .filter(Boolean)
       ),
     ];
@@ -290,7 +290,7 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
   }, [pending]);
 
   async function onApprove(d) {
-    if (!confirm(`Approve draft #${d.id}? This inserts into trades_cashflow.`)) return;
+    if (!confirm(`Approve draft #${d.id}? This confirms the booked ${d.category === "SPOT" ? "trades_spot" : d.category === "TRANSFER" ? "transfer" : "trades_cashflow"} row.`)) return;
     const { status, body } = await approveDraft(d.id);
     if (status !== 200 || !body?.ok) {
       setRowError((r) => ({ ...r, [d.id]: body?.error || `Approve failed (${status})` }));

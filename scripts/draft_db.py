@@ -17,7 +17,7 @@ import spot_db
 
 # ── Constants ──────────────────────────────────────────────────────
 
-CATEGORIES = ("CASHFLOW", "SPOT")
+CATEGORIES = ("CASHFLOW", "SPOT", "TRANSFER")
 STATUSES = ("PENDING_REVIEW", "APPROVED", "REJECTED")
 SOURCES = ("CLAUDE_CODE",)
 
@@ -56,6 +56,13 @@ def validate_payload_for_category(category: str, payload) -> None:
         try:
             spot_db.validate_payload(payload, mode="insert")
         except spot_db.ValidationError as e:
+            raise ValidationError(str(e)) from e
+        return
+    if category == "TRANSFER":
+        import transfer_db
+        try:
+            transfer_db.validate_payload(payload, mode="insert")
+        except transfer_db.ValidationError as e:
             raise ValidationError(str(e)) from e
         return
     raise ValidationError(f"unknown category: {category!r}")

@@ -23,13 +23,25 @@ from __future__ import annotations
 import authorship
 import cashflow_db
 import spot_db
+import transfer_db
 
 
 # category -> (table, db module). LOAN has no draft path.
 _TABLES = {
     "CASHFLOW": ("trades_cashflow", cashflow_db),
     "SPOT": ("trades_spot", spot_db),
+    "TRANSFER": ("transfer", transfer_db),
 }
+
+
+def sibling_refs(category, payload):
+    """Other live rows that must move with the draft's own row: an INTERNAL
+    transfer's mirror leg, whose deal_ref draft_insert left on the payload."""
+    if str(category or "").upper() != "TRANSFER" or not isinstance(payload, dict):
+        return []
+    meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+    ref = (meta.get("mirror_deal_ref") or "").strip()
+    return [ref] if ref else []
 
 
 class LinkError(Exception):
@@ -142,8 +154,11 @@ def mirror_amend(category, row):
     try:
         import manual_write
 
-        if str(category).upper() == "SPOT":
+        cat = str(category).upper()
+        if cat == "SPOT":
             manual_write.write_manual_trade_amend(row)
+        elif cat == "TRANSFER":
+            manual_write.write_manual_transfer_amend(row)
         else:
             manual_write.write_manual_cashflow_amend(row)
     except Exception:  # noqa: BLE001

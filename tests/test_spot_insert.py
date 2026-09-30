@@ -79,7 +79,7 @@ def test_draft_insert_routes_spot_and_cashflow():
     """The trade row is created at BOOKING time now, not on approval, so the
     inserter table lives on draft_insert. draft_approve only moves the row."""
     import draft_insert
-    assert set(draft_insert._INSERTERS) == {"CASHFLOW", "SPOT"}
+    assert set(draft_insert._INSERTERS) == {"CASHFLOW", "SPOT", "TRANSFER"}
     assert draft_insert._INSERTERS["SPOT"] is spot_insert._insert_one
 
 

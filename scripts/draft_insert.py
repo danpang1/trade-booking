@@ -27,6 +27,26 @@ import draft_db
 import scope
 from cashflow_insert import _insert_one as _cashflow_insert_one
 from spot_insert import _insert_one as _spot_insert_one
+import transfer_db
+import transfer_insert
+
+
+def _transfer_insert_pair(cur, payload):
+    """Book a TRANSFER draft the way /api/transfer/insert does: the leg as
+    booked plus its INTERNAL mirror (unless _meta.mirror is false), ids
+    stamped from refdata. The draft links to the booked leg; the mirror's
+    ref rides on the payload so approve / reject move both legs together."""
+    transfer_db.stamp_account_ids(payload)
+    meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+    legs = [payload]
+    if payload.get("transfer_type") == "INTERNAL" and meta.get("mirror", True) is not False:
+        legs = transfer_db.pair_legs(payload)
+    rows = [transfer_insert._insert_one(cur, leg) for leg in legs]
+    if len(rows) > 1:
+        payload.setdefault("_meta", {})["mirror_deal_ref"] = rows[1]["deal_ref"]
+    payload.setdefault("_meta", {})["_booked_rows"] = rows
+    return rows[0]
+
 
 # The trade row is created at BOOKING time now, not on approval. Same
 # inserters draft_approve used to call — identical validation, just earlier.
@@ -36,6 +56,7 @@ from spot_insert import _insert_one as _spot_insert_one
 _INSERTERS = {
     "CASHFLOW": _cashflow_insert_one,
     "SPOT": _spot_insert_one,
+    "TRANSFER": _transfer_insert_pair,
 }
 
 
@@ -121,15 +142,20 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
                 # either leaves neither: there is no window where a draft
                 # exists without its trade, or vice versa.
                 deal_ref = None
+                booked_rows = []
                 inserter = _INSERTERS.get(category)
                 if inserter is not None:
                     # Stamp the gateway account_id here too. The insert
                     # scripts do it in main(), which this path bypasses by
                     # calling _insert_one directly — without it every
                     # bot-booked trade would land with a NULL account_id.
-                    account_id_resolve.stamp(payload)
+                    # A transfer has two ends and stamps its own.
+                    if category != "TRANSFER":
+                        account_id_resolve.stamp(payload)
                     inserted = inserter(cur, payload)
                     deal_ref = inserted.get("deal_ref")
+                    if isinstance(payload.get("_meta"), dict):
+                        booked_rows = payload["_meta"].pop("_booked_rows", [])
 
                 cur.execute(
                     "INSERT INTO bookings_draft "
@@ -139,7 +165,12 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
                     "RETURNING *",
                     (category, json.dumps(payload), crid, acting, deal_ref),
                 )
-                return draft_db.row_to_public(cur, cur.fetchone()), False
+                public = draft_db.row_to_public(cur, cur.fetchone())
+        # After the MO commit: the tech-DB mirror a direct transfer insert
+        # would have written. Best-effort, never fails the draft.
+        if category == "TRANSFER" and booked_rows:
+            transfer_insert._dual_write_manual_transfer(booked_rows)
+        return public, False
     finally:
         conn.close()
 

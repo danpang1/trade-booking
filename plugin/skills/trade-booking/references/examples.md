@@ -184,3 +184,42 @@ JSON
 ```
 
 4. Report the single `batch_id` + all draft IDs + the review URL.
+
+
+## Example — TRANSFER between our accounts
+
+**User:** "transfer 100 USDT from tk801 binance spot to hyperliquid 06 spot"
+
+**Skill behavior:**
+
+1. Both ends resolve to refdata accounts (`TK801@BINANCE`, `TRADING_06@HYPERLIQUID`)
+   → `INTERNAL`, booked from the sender: `OUTGOING`, `amount = "-100"`.
+   Both accounts offer several products and the user named `spot` on each,
+   so `source_product = dest_product = SPOT`. Nothing to ask.
+2. Preview:
+
+```
+TRANSFER · INTERNAL · OUTGOING
+  source:        TK801@BINANCE · SPOT
+  destination:   TRADING_06@HYPERLIQUID · SPOT
+  amount:        -100 USDT
+  initiated:     2026-09-30T08:00:00+00:00
+  status:        PENDING
+  (the server books the INCOMING mirror on TRADING_06@HYPERLIQUID)
+```
+
+3. Ask "Submit? (y/N)"; on `y`:
+
+```bash
+echo '{"transfer_type":"INTERNAL","direction":"OUTGOING","source_account_name":"TK801@BINANCE","source_product":"SPOT","dest_account_name":"TRADING_06@HYPERLIQUID","dest_product":"SPOT","asset":"USDT","amount":"-100","initiated_datetime":"2026-09-30T08:00:00+00:00","user_id":"danny.pang","status":"PENDING"}' | ${CLAUDE_PLUGIN_ROOT}/bin/tokka-mo book --category TRANSFER
+```
+
+4. Report `Draft #<id> created (PENDING_REVIEW)` and the review URL. Two MTR
+   rows exist once approved: the OUTGOING leg on TK801@BINANCE and its INCOMING
+   mirror on TRADING_06@HYPERLIQUID.
+
+**Variant — to a counterparty's wallet:** "send 5,000 USDC from
+TOKKA TREASURY WALLET on Ethereum to Galaxy 0xabc…" → `EXTERNAL`, `OUTGOING`,
+`source_account_name = TOKKA TREASURY WALLET`, `source_product = ETHEREUM`,
+`dest_account_name = GALAXY` (exact refdata counterparty), `dest_product = null`,
+`dest_account_id = "0xabc…"`, `network = ETHEREUM`, `amount = "-5000"`.

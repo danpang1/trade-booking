@@ -4,6 +4,23 @@ Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-30
+### Added
+- **TRANSFER bookings.** `book --category TRANSFER` / `book-batch` accept the
+  transfer shape (one row, both ends on it: `source_*` / `dest_*`, signed
+  `amount`, `initiated_datetime`, `network`, `ext_transfer_id`). INTERNAL =
+  both ends ours (the server books the INCOMING mirror on the receiver);
+  EXTERNAL = one end a refdata counterparty. The local validator mirrors
+  `transfer_db`: sign follows direction, own ends must be refdata accounts
+  with a `*_product` wherever the account offers one, the far end a refdata
+  counterparty, same account both ends only across two products.
+- `trade-booking` skill: a "TRANSFER specifics" section and
+  `references/transfer-schema.md`. A movement between accounts is a transfer,
+  never a cashflow: it changes where a position sits, not P&L.
+### Changed
+- `counterparty` guidance: exact refdata name only; the server rejects free
+  text and stamps the CID itself (0.4.2).
+
 ## [0.4.0] — 2026-09-25
 ### Added
 - `product` (the gateway sub-account) is now a mandatory booking field wherever

@@ -79,11 +79,16 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         f"(booked before the double-write flow — amend it "
                         f"directly in the blotter instead)"
                     )
+                new_status = (payload or {}).get("status") or "CONFIRMED"
                 row = draft_trade_link.amend_status(
-                    cur, category, deal_ref,
-                    (payload or {}).get("status") or "CONFIRMED",
-                    updated_by=acting,
+                    cur, category, deal_ref, new_status, updated_by=acting,
                 )
+                # An INTERNAL transfer is a pair: its mirror leg follows.
+                for sib in draft_trade_link.sibling_refs(category, payload):
+                    moved = draft_trade_link.amend_status(
+                        cur, category, sib, new_status, updated_by=acting,
+                    )
+                    draft_trade_link.mirror_amend(category, moved)
 
                 cur.execute(
                     "UPDATE bookings_draft "

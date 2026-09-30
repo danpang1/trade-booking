@@ -11729,12 +11729,20 @@ export default function TradeBookingForm() {
     }
     const d = body.draft;
     const p = d.payload || {};
-    if (d.category !== "CASHFLOW" && d.category !== "SPOT") {
+    if (d.category !== "CASHFLOW" && d.category !== "SPOT" && d.category !== "TRANSFER") {
       setDraftLoadError(
-        `Draft #${id} is ${d.category}; only CASHFLOW and SPOT drafts can be opened in the form`
+        `Draft #${id} is ${d.category}; only CASHFLOW, SPOT and TRANSFER drafts can be opened in the form`
       );
       setDraftLoading(false);
       return false;
+    }
+    if (d.category === "TRANSFER") {
+      // The draft payload carries the transfer's own column names, so the
+      // booked-row mapper fits once the deal_ref is supplied from the draft.
+      setMany(transferPayloadToFormState({ ...p, deal_ref: d.approved_deal_ref || "" }));
+      setCategoryCache({});
+      setDraftLoading(false);
+      return true;
     }
     if (d.category === "SPOT") {
       // Inverse of the SPOT branch of outputRecord (~line 11563). The draft
@@ -14617,7 +14625,7 @@ export default function TradeBookingForm() {
             }}>
               {draftLoading
                 ? `Loading draft #${draftId}…`
-                : `Editing draft #${draftId}. Save Draft to keep editing later, or Approve & Book to insert into ${form.category === "SPOT" ? "trades_spot" : "trades_cashflow"}.`}
+                : `Editing draft #${draftId}. Save Draft to keep editing later, or Approve & Book to insert into ${form.category === "SPOT" ? "trades_spot" : form.category === "TRANSFER" ? "transfer" : "trades_cashflow"}.`}
             </div>
           )}
           {/* ═════ 1. SUMMARY (category-specific title) ═════ */}

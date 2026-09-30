@@ -624,7 +624,126 @@ def validate_spot_payload(payload, refdata) -> None:
             )
 
 
-VALID_CATEGORIES = {"CASHFLOW", "SPOT"}
+# ────────────────────────────────────────────────────�
+# TRANSFER validation. Mirrors scripts/transfer_db._validate_one (the
+# server's source of truth) plus the refdata-membership checks the server
+# does from its own copy. A transfer is a MOVEMENT of an asset between two
+# accounts, never P&L: one row with both ends on it. INTERNAL = both ends
+# are our accounts (the server books the INCOMING mirror on the receiver
+# itself); EXTERNAL = one end is ours, the other a refdata counterparty,
+# direction says which. Amount is signed by direction: OUTGOING negative,
+# INCOMING positive.
+# ────────────────────────────────────────────────────�
+
+REQUIRED_TRANSFER_FIELDS = (
+    "transfer_type", "direction", "source_account_name", "dest_account_name",
+    "asset", "amount", "initiated_datetime", "user_id", "status",
+)
+VALID_TRANSFER_TYPES = {"INTERNAL", "EXTERNAL"}
+VALID_TRANSFER_DIRECTIONS = {"INCOMING", "OUTGOING"}
+VALID_TRANSFER_STATUSES = {"PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"}
+
+
+def transfer_own_sides(payload):
+    """Which ends are OUR accounts: ('source','dest'), ('source',) or ('dest',)."""
+    if payload.get("transfer_type") == "INTERNAL":
+        return ("source", "dest")
+    return ("source",) if payload.get("direction") == "OUTGOING" else ("dest",)
+
+
+def validate_transfer_payload(payload, refdata) -> None:
+    """Raise ValidationError on any rule break. Otherwise return None."""
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be an object")
+    for field in REQUIRED_TRANSFER_FIELDS:
+        v = payload.get(field)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValidationError(f"required field missing or empty: {field}")
+    if payload["transfer_type"] not in VALID_TRANSFER_TYPES:
+        raise ValidationError(
+            f"transfer_type must be one of {sorted(VALID_TRANSFER_TYPES)}, "
+            f"got {payload['transfer_type']!r}"
+        )
+    if payload["direction"] not in VALID_TRANSFER_DIRECTIONS:
+        raise ValidationError(
+            f"direction must be one of {sorted(VALID_TRANSFER_DIRECTIONS)}, "
+            f"got {payload['direction']!r}"
+        )
+    if payload["status"] not in VALID_TRANSFER_STATUSES:
+        raise ValidationError(
+            f"status must be one of {sorted(VALID_TRANSFER_STATUSES)}, "
+            f"got {payload['status']!r}"
+        )
+    amount = _parse_numeric(payload["amount"], "amount")
+    if amount == 0:
+        raise ValidationError("amount must be non-zero")
+    if payload["direction"] == "OUTGOING" and amount > 0:
+        raise ValidationError(
+            f"amount sign must follow direction: OUTGOING is negative, got {payload['amount']!r}"
+        )
+    if payload["direction"] == "INCOMING" and amount < 0:
+        raise ValidationError(
+            f"amount sign must follow direction: INCOMING is positive, got {payload['amount']!r}"
+        )
+    fee_amount = payload.get("fee_amount")
+    if fee_amount not in (None, "", 0):
+        _parse_numeric(fee_amount, "fee_amount")
+
+    tokens = _refdata_values(refdata, "tokens", name_field="symbol")
+    if payload["asset"] not in tokens:
+        raise ValidationError(
+            f"asset {payload['asset']!r} not in refdata.{_suggest(payload['asset'], tokens)}"
+        )
+    fee_asset = payload.get("fee_asset")
+    if fee_asset and fee_asset not in tokens:
+        raise ValidationError(
+            f"fee_asset {fee_asset!r} not in refdata.{_suggest(fee_asset, tokens)}"
+        )
+
+    accounts = _refdata_values(refdata, "accounts")
+    counterparties = _refdata_values(refdata, "counterparties")
+    ours = transfer_own_sides(payload)
+    for side in ("source", "dest"):
+        name = payload[f"{side}_account_name"]
+        if side in ours:
+            if name not in accounts:
+                raise ValidationError(
+                    f"{side}_account_name {name!r} not in refdata accounts "
+                    f"(this end of a {payload['transfer_type']} {payload['direction']} "
+                    f"transfer is ours).{_suggest(name, accounts)}"
+                )
+            # product: mandatory wherever the account offers a choice, and it
+            # must be one of that account's options -- the gateway account_id
+            # is derived from account + product.
+            acct = refdata_account(refdata, name)
+            opts = product_options(acct)
+            prod = payload.get(f"{side}_product")
+            if opts and not prod:
+                raise ValidationError(
+                    f"{side}_product is required for {name!r}: one of {sorted(opts)}"
+                )
+            if prod and opts and prod not in opts:
+                raise ValidationError(
+                    f"{side}_product {prod!r} is not offered by {name!r}: one of {sorted(opts)}"
+                )
+        else:
+            if name not in counterparties:
+                raise ValidationError(
+                    f"{side}_account_name {name!r} not in refdata counterparties "
+                    f"(this end of a {payload['transfer_type']} {payload['direction']} "
+                    f"transfer is the counterparty).{_suggest(name, counterparties)}"
+                )
+    if (payload["transfer_type"] == "INTERNAL"
+            and payload["source_account_name"] == payload["dest_account_name"]):
+        sp, dp = payload.get("source_product"), payload.get("dest_product")
+        if not sp or not dp or str(sp).upper() == str(dp).upper():
+            raise ValidationError(
+                f"INTERNAL transfer from {payload['source_account_name']!r} to itself "
+                "needs two different products (e.g. SPOT -> FUNDING)"
+            )
+
+
+VALID_CATEGORIES = {"CASHFLOW", "SPOT", "TRANSFER"}
 
 
 def infer_category(payload):
@@ -634,6 +753,8 @@ def infer_category(payload):
             return "CASHFLOW"
         if payload.get("base_asset") or payload.get("quote_asset"):
             return "SPOT"
+        if payload.get("transfer_type") or payload.get("source_account_name"):
+            return "TRANSFER"
     return "CASHFLOW"
 
 
@@ -643,6 +764,8 @@ def validate(category, payload, refdata) -> None:
         validate_cashflow_payload(payload, refdata)
     elif category == "SPOT":
         validate_spot_payload(payload, refdata)
+    elif category == "TRANSFER":
+        validate_transfer_payload(payload, refdata)
     else:
         raise ValidationError(f"unknown category: {category!r}")
 
@@ -1299,9 +1422,9 @@ def build_parser() -> argparse.ArgumentParser:
     # book (single)
     sp = sub.add_parser(
         "book",
-        help="POST one CASHFLOW or SPOT draft. JSON payload on stdin.",
+        help="POST one CASHFLOW, SPOT or TRANSFER draft. JSON payload on stdin.",
     )
-    sp.add_argument("--category", choices=("CASHFLOW", "SPOT"), default=None,
+    sp.add_argument("--category", choices=("CASHFLOW", "SPOT", "TRANSFER"), default=None,
                     help="Booking category. Inferred from the payload if omitted.")
     sp.add_argument("--client-request-id", default=None,
                     help="Idempotency UUID. Auto-generated if omitted.")
@@ -1312,7 +1435,7 @@ def build_parser() -> argparse.ArgumentParser:
         "book-batch",
         help=(
             "POST N drafts atomically. JSON on stdin: {trades: [...]}. "
-            "Each trade may set its own category (CASHFLOW or SPOT)."
+            "Each trade may set its own category (CASHFLOW, SPOT or TRANSFER)."
         ),
     )
     sp.set_defaults(func=cmd_book_batch)
