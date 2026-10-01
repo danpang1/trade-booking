@@ -10,7 +10,7 @@ logged and the remaining venues still record. The process exits non-zero only
 if EVERY task fails, so a single-venue outage doesn't mark the whole CronJob
 failed.
 
-Venues: Native Core, Lighter, Phoenix, Bulk — all public, read-only APIs, so this
+Venues: Native Core, Lighter, Phoenix, Bulk, Velocity — all public, read-only APIs, so this
 runner needs no venue credentials. Bitstamp (signed spot CEX, Vault-backed key)
 runs in its OWN CronJob via scripts/snapshot_bitstamp.py, so a credential / Vault
 issue can't break these public-venue snapshots. Bitget remains intentionally
@@ -36,6 +36,8 @@ import stream_native
 import stream_native_balance
 import stream_phoenix
 import stream_phoenix_balance
+import stream_velocity
+import stream_velocity_balance
 
 log = logging.getLogger("snapshot_all")
 
@@ -51,6 +53,8 @@ TASKS = [
     ("phoenix.position", stream_phoenix),
     ("bulk.balance", stream_bulk_balance),
     ("bulk.position", stream_bulk),
+    ("velocity.balance", stream_velocity_balance),
+    ("velocity.position", stream_velocity),
 ]
 
 
