@@ -16,7 +16,7 @@ import stream_velocity as pos  # noqa: E402
 import stream_velocity_balance as bal  # noqa: E402
 
 FETCH_DT = datetime(2026, 10, 1, 7, 0, tzinfo=timezone.utc)
-ACC_ID, ACC_NAME = 999002, "TRADING01@VELOCITY-0"
+ACC_ID, ACC_NAME = 999002, "TRADING_01@VELOCITY-0"
 
 USER = {
     "account": {
@@ -118,7 +118,7 @@ def test_iter_accounts_skips_unmapped_and_raises_on_empty(monkeypatch):
     monkeypatch.setattr(pos, "fetch_user", lambda acc_id: {"account": {}, "_id": acc_id})
     got = list(pos._iter_accounts())
     assert [g[0] for g in got] == ["H6JKgKwUaMmGo9XcynpVqTg8ABcTJVtD3qRmSWRMMpt4"]
-    assert got[0][1]["name"] == "TRADING01@VELOCITY-0"
+    assert got[0][1]["name"] == "TRADING_01@VELOCITY-0"
 
     monkeypatch.setattr(pos, "fetch_subaccounts", lambda: [])
     with pytest.raises(RuntimeError, match="no sub-accounts"):
@@ -160,7 +160,7 @@ def test_balance_position_row():
 
 def test_balance_snap_once_dry_run_row_count(monkeypatch):
     meta = {"account_id": ACC_ID, "name": ACC_NAME, "sub": 0}
-    empty_meta = {"account_id": ACC_ID, "name": "TRADING01@VELOCITY-1", "sub": 1}
+    empty_meta = {"account_id": ACC_ID, "name": "TRADING_01@VELOCITY-1", "sub": 1}
     empty = {"account": {"balance": "0.000000"}, "positions": [], "balances": [], "orders": []}
     monkeypatch.setattr(
         bal, "_iter_accounts", lambda: iter([("H6JK", meta, USER), ("4JiX", empty_meta, empty)])

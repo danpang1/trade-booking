@@ -14,6 +14,8 @@ Convention
 - Sub-accounts are discovered via `/authority/{OWNER}/accounts` and must be
   mapped in ACCOUNT_MAP (keyed by Velocity accountId = sub-account pubkey);
   unmapped ones are logged and skipped so we never write under a wrong id.
+- MO account_id 239002 (reference_data.account_exchange id 239, TRADING_01@VELOCITY);
+  names TRADING_01@VELOCITY-{sub} follow the venue's own 0-based sub index.
 - USDT-margined perps; `baseAssetAmount` signed (positive = long, negative = short).
 - `pos_qty` = abs(baseAssetAmount); side from sign.
 - `avg_entry_price` = quoteEntryAmount / abs(baseAssetAmount)  (not returned directly).
@@ -61,28 +63,28 @@ QUOTE = "USDT"
 # On-chain authority that owns the sub-accounts (NOT the delegate key).
 OWNER = "Dbre9pdVZqUzfqYcDFhySZxjJi8o4iw4qnSWVT1a3B55"
 
-# TODO(refdata): no `reference_data.account_exchange` row exists for VELOCITY
-# yet (counterparty id 230 does). account_id follows the `<id>002` perps-venue
-# convention once the row is created; until then INSERT is refused.
-ACCOUNT_ID: int | None = None
+# reference_data.account_exchange id 239 (TRADING_01@VELOCITY, exchangeName
+# VELOCITY, portfolio CDA SOL) → `<id>002` perps-venue convention. Set to None
+# to make `_check_account_ids` refuse INSERT (dry-run still works).
+ACCOUNT_ID: int | None = 239002
 
 # Velocity accountId (sub-account pubkey) → (MO account_id, account_name).
 # Names mirror the venue's own sub-account index (tokka-labs-N → -N).
 ACCOUNT_MAP: dict[str, dict] = {
     "H6JKgKwUaMmGo9XcynpVqTg8ABcTJVtD3qRmSWRMMpt4": {
-        "account_id": ACCOUNT_ID, "name": "TRADING01@VELOCITY-0", "sub": 0,
+        "account_id": ACCOUNT_ID, "name": "TRADING_01@VELOCITY-0", "sub": 0,
     },
     "4JiXiZ3pkH2vGCUQyWi8v6mQmE983aQwEQEeAfDkWf1y": {
-        "account_id": ACCOUNT_ID, "name": "TRADING01@VELOCITY-1", "sub": 1,
+        "account_id": ACCOUNT_ID, "name": "TRADING_01@VELOCITY-1", "sub": 1,
     },
     "gqwHcyqkBW6C7FFnSnVQsyAxuK8M3JA9dLF7fjqE6MJ": {
-        "account_id": ACCOUNT_ID, "name": "TRADING01@VELOCITY-2", "sub": 2,
+        "account_id": ACCOUNT_ID, "name": "TRADING_01@VELOCITY-2", "sub": 2,
     },
     "6tG2no1AuEVFkYeakFgMsVeXyxihLGaYAyapTWtq7PFL": {
-        "account_id": ACCOUNT_ID, "name": "TRADING01@VELOCITY-3", "sub": 3,
+        "account_id": ACCOUNT_ID, "name": "TRADING_01@VELOCITY-3", "sub": 3,
     },
     "HJrBErHQZnk65Upw16PcRaVV5oKmYWcDCs2ZcCSQadFY": {
-        "account_id": ACCOUNT_ID, "name": "TRADING01@VELOCITY-4", "sub": 4,
+        "account_id": ACCOUNT_ID, "name": "TRADING_01@VELOCITY-4", "sub": 4,
     },
 }
 
