@@ -6,7 +6,7 @@ DDL = """
 CREATE TABLE IF NOT EXISTS bookings_draft (
   id                  SERIAL          PRIMARY KEY,
   category            TEXT            NOT NULL
-                        CHECK (category IN ('SPOT','CASHFLOW')),
+                        CHECK (category IN ('SPOT','CASHFLOW','TRANSFER')),
   payload             JSONB           NOT NULL,
   source              TEXT            NOT NULL
                         CHECK (source IN ('CLAUDE_CODE')),
@@ -36,6 +36,24 @@ CREATE INDEX IF NOT EXISTS idx_drafts_batch
 CREATE INDEX IF NOT EXISTS idx_drafts_pending
   ON bookings_draft (created_by, created_at DESC)
   WHERE status = 'PENDING_REVIEW';
+
+-- TRANSFER drafts (2026-09-30) on a table created before them: the CHECK
+-- above only applies to a fresh table, so re-create the constraint when the
+-- existing one does not list TRANSFER. Prod hit exactly this on 2026-10-07
+-- ("violates check constraint bookings_draft_category_check").
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint
+             WHERE conname = 'bookings_draft_category_check'
+               AND pg_get_constraintdef(oid) NOT LIKE '%TRANSFER%') THEN
+    ALTER TABLE bookings_draft DROP CONSTRAINT bookings_draft_category_check;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'bookings_draft_category_check') THEN
+    ALTER TABLE bookings_draft ADD CONSTRAINT bookings_draft_category_check
+      CHECK (category IN ('SPOT','CASHFLOW','TRANSFER'));
+  END IF;
+END $$;
 """
 
 
