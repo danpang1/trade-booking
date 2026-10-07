@@ -4,6 +4,20 @@ Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-10-07
+### Changed
+- `trade-booking` skill: do not ask for a transfer's `completed_datetime`.
+  The draft route fills it from `initiated_datetime` when blank (a bot
+  booking is after the fact, so the movement has landed); only the web
+  form reads blank as "still in flight" (server 0.0.151).
+- Docs only; the CLI is unchanged. Republished because the plugin image tag
+  is immutable and the pipeline pushes it on every build.
+
+## [0.5.1] — 2026-10-07
+### Changed
+- Version republish (plugin.json edited online) so the pipeline could tag a
+  fresh plugin image; no functional change over 0.5.0.
+
 ## [0.5.0] — 2026-09-30
 ### Added
 - **TRANSFER bookings.** `book --category TRANSFER` / `book-batch` accept the
