@@ -240,7 +240,9 @@ multi-product account is a question. A wallet's product is the chain.
 
 ### Amount and dates
 - `amount` is signed by direction: OUTGOING `"-100"`, INCOMING `"100"`.
-- `initiated_datetime` is when it was sent; `completed_datetime` when it landed
+- `initiated_datetime` is when it was sent; `completed_datetime` when it landed.
+  Do not ask for `completed_datetime`: when not given, the server sets it to
+  `initiated_datetime` (a bot booking is after the fact, so the movement has landed).
   (leave blank if still in flight). `network` is the chain when it moved
   on chain, `null` for a venue-internal move. `ext_transfer_id` is the tx hash
   or the venue's transfer id, if given.

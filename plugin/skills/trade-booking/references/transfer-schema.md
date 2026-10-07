@@ -44,7 +44,7 @@ submit **one** payload and two MTR rows appear. Do not submit the mirror.
 | Field | Type | Notes |
 |---|---|---|
 | `source_account_id` / `dest_account_id` | string | Ours: leave `null`, the server stamps the gateway id from account + product. Counterparty end: the wallet address or venue reference, if the user gave one. |
-| `completed_datetime` | ISO 8601 + tz | When it landed. Blank while in flight. |
+| `completed_datetime` | ISO 8601 + tz | When it landed. Leave blank unless the user gives one: the draft route fills it with `initiated_datetime` (bot bookings are after the fact). Only the web form treats blank as "still in flight". |
 | `fee_asset` / `fee_amount` | string / numeric string | Paid by the sender on top of `amount`. |
 | `network` | string | Chain name (`HYPEREVM`, `ARBITRUM`, `BINANCE SMART CHAIN`) when it moved on chain; `null` for a venue-internal move. |
 | `ext_transfer_id` | string | Tx hash or the venue's transfer id, if known. |

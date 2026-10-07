@@ -126,6 +126,25 @@ def insert_draft_rows(cur, category, payload, crid, acting, deal_ref,
     return [draft_db.row_to_public(cur, cur.fetchone()), second]
 
 
+def apply_transfer_time_defaults(payload, now_iso: str) -> dict:
+    """Fill a TRANSFER draft's times the way the bot's users expect.
+
+    A transfer booked through Colossus is almost always booked after the
+    fact, so a missing completed_datetime means "same moment as initiated",
+    not "still in flight" (Danny, 2026-10-07). A missing initiated_datetime
+    is now. The web form is untouched: there a blank completed time is the
+    operator saying the movement has not landed.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    out = dict(payload)
+    if not str(out.get("initiated_datetime") or "").strip():
+        out["initiated_datetime"] = now_iso
+    if not str(out.get("completed_datetime") or "").strip():
+        out["completed_datetime"] = out["initiated_datetime"]
+    return out
+
+
 def _is_missing_or_midnight(v) -> bool:
     """True if v is empty, or parses to a datetime at exact 00:00:00 UTC."""
     if not v:
@@ -179,6 +198,8 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
         if _is_missing_or_midnight(payload.get("value_date")):
             defaults["value_date"] = now_iso
         payload = {**payload, **defaults}
+        if category == "TRANSFER":
+            payload = apply_transfer_time_defaults(payload, now_iso)
     # Shape validation against the live cashflow_db rules — same code
     # path the form's POST /api/cashflow/insert uses.
     draft_db.validate_payload_for_category(category, payload)

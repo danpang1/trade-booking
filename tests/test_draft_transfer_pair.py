@@ -182,3 +182,33 @@ def test_prepare_rows_requires_a_deal_ref_on_every_leg():
     del p["deal_ref"]
     with pytest.raises(transfer_db.ValidationError):
         transfer_amend_batch.prepare_rows({"rows": [p]})
+
+
+# ── apply_transfer_time_defaults ────────────────────────────────────
+
+def test_completed_defaults_to_initiated_when_blank():
+    for blank in (None, "", "   "):
+        out = draft_insert.apply_transfer_time_defaults(
+            {"initiated_datetime": "2026-10-07T07:41:01+00:00", "completed_datetime": blank}, "NOW")
+        assert out["completed_datetime"] == "2026-10-07T07:41:01+00:00"
+    out = draft_insert.apply_transfer_time_defaults({"initiated_datetime": "2026-10-07T07:41:01+00:00"}, "NOW")
+    assert out["completed_datetime"] == "2026-10-07T07:41:01+00:00"
+
+
+def test_a_given_completed_time_is_kept():
+    out = draft_insert.apply_transfer_time_defaults(
+        {"initiated_datetime": "2026-10-07T07:41:01+00:00", "completed_datetime": "2026-10-08T00:00:00+00:00"},
+        "NOW")
+    assert out["completed_datetime"] == "2026-10-08T00:00:00+00:00"
+
+
+def test_initiated_defaults_to_now_and_completed_follows():
+    out = draft_insert.apply_transfer_time_defaults({}, "2026-10-07T09:00:00+00:00")
+    assert out["initiated_datetime"] == "2026-10-07T09:00:00+00:00"
+    assert out["completed_datetime"] == "2026-10-07T09:00:00+00:00"
+
+
+def test_time_defaults_do_not_mutate_the_input():
+    src = {"initiated_datetime": "2026-10-07T07:41:01+00:00"}
+    draft_insert.apply_transfer_time_defaults(src, "NOW")
+    assert "completed_datetime" not in src

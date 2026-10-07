@@ -89,6 +89,8 @@ def _insert_batch(body: dict) -> dict:
             if _is_missing_or_midnight(payload.get("value_date")):
                 defaults["value_date"] = now_iso
             payload = {**payload, **defaults}
+            if cat == "TRANSFER":
+                payload = draft_insert.apply_transfer_time_defaults(payload, now_iso)
         draft_db.validate_payload_for_category(cat, payload)
         prepared.append((cat, payload, crid))
 
