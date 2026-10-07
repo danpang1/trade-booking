@@ -8444,6 +8444,13 @@ function buildTransferBulkAmendPayload(row, enabled, vals) {
   return p;
 }
 
+// Amount for the review list; the enquiry's own formatter is local to it.
+function fmtTransferAmt(v) {
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
+}
+
 // Modal: pick fields + values, preview, then apply to every selected leg.
 function BulkEditTransfersModal({ rows, onClose, onApplied }) {
   const [enabled, setEnabled] = useState(() => new Set());
@@ -8605,7 +8612,7 @@ function BulkEditTransfersModal({ rows, onClose, onApplied }) {
               {rows.map((r) => (
                 <div key={r.deal_ref} style={{ display: "flex", gap: 10, padding: "4px 10px", borderTop: "1px solid var(--rule)", color: "var(--ink-2)" }}>
                   <span style={{ minWidth: 110 }}>{r.deal_ref}</span>
-                  <span>{r.direction} {fmtAmt(r.amount)} {r.asset} · {r.source_account_name}{r.source_product ? ` · ${r.source_product}` : ""} → {r.dest_account_name}{r.dest_product ? ` · ${r.dest_product}` : ""}</span>
+                  <span>{r.direction} {fmtTransferAmt(r.amount)} {r.asset} · {r.source_account_name}{r.source_product ? ` · ${r.source_product}` : ""} → {r.dest_account_name}{r.dest_product ? ` · ${r.dest_product}` : ""}</span>
                 </div>
               ))}
             </div>
