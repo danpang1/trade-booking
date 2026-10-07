@@ -44,6 +44,43 @@ def sibling_refs(category, payload):
     return [ref] if ref else []
 
 
+def move_sibling_draft(cur, payload, new_status, acting, reason=None):
+    """Settle the OTHER draft of an INTERNAL transfer pair with this one.
+
+    draft_insert books an INTERNAL transfer as two drafts, one per leg, each
+    naming the other in _meta.mirror_draft_id. Approving or rejecting either
+    card moves both legs of the transfer, so the twin draft must follow or it
+    would sit PENDING_REVIEW over a leg already CONFIRMED or CANCELLED.
+    Returns the twin's id when it was moved, else None (no twin, or the twin
+    was already decided).
+    """
+    meta = payload.get("_meta") if isinstance(payload, dict) else None
+    twin = (meta or {}).get("mirror_draft_id") if isinstance(meta, dict) else None
+    if not isinstance(twin, int) or twin <= 0:
+        return None
+    if new_status == "APPROVED":
+        cur.execute(
+            "UPDATE bookings_draft "
+            "   SET status = 'APPROVED', approved_at = now(), approved_by = %s "
+            " WHERE id = %s AND status = 'PENDING_REVIEW' "
+            "RETURNING id",
+            (acting, twin),
+        )
+    elif new_status == "REJECTED":
+        cur.execute(
+            "UPDATE bookings_draft "
+            "   SET status = 'REJECTED', rejected_at = now(), rejected_by = %s, "
+            "       rejection_reason = %s "
+            " WHERE id = %s AND status = 'PENDING_REVIEW' "
+            "RETURNING id",
+            (acting, reason, twin),
+        )
+    else:
+        raise LinkError(f"cannot move a sibling draft to {new_status!r}")
+    hit = cur.fetchone()
+    return hit[0] if hit else None
+
+
 class LinkError(Exception):
     """The draft's trade row is missing or not amendable."""
 

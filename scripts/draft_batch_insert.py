@@ -11,7 +11,10 @@ Stdin:
 A Bearer caller may add "requested_by": "<mo username>" inside any payload
 to book that trade on the named user's behalf (see draft_insert.py).
 
-Stdout success: {"ok": true, "batch_id": "<uuid>", "created": N, "rows": [...]}
+Stdout success: {"ok": true, "batch_id": "<uuid>", "created": N, "rows": [...],
+                 "mirrors": [...]}
+  `rows` is one draft per trade sent, in order. An INTERNAL transfer also
+  books its mirror leg, whose own draft is listed under `mirrors`.
 Stdout failure: {"ok": false, "error": "..."}
 
 If any single trade fails validation, the WHOLE batch rolls back
@@ -91,6 +94,8 @@ def _insert_batch(body: dict) -> dict:
 
     batch_id = str(uuid.uuid4())
     out_rows = []
+    mirrors = []
+    all_booked = []
     conn = draft_db.connect()
     try:
         with conn:
@@ -103,6 +108,13 @@ def _insert_batch(body: dict) -> dict:
                     existing = cur.fetchone()
                     if existing is not None:
                         out_rows.append(draft_db.row_to_public(cur, existing))
+                        cur.execute(
+                            "SELECT * FROM bookings_draft WHERE client_request_id = %s",
+                            (draft_insert.mirror_request_id(crid),),
+                        )
+                        twin = cur.fetchone()
+                        if twin is not None:
+                            mirrors.append(draft_db.row_to_public(cur, twin))
                         continue
                     # Book the live trade as PENDING alongside the draft, on
                     # the same cursor. The batch is already all-or-nothing, so
@@ -110,29 +122,36 @@ def _insert_batch(body: dict) -> dict:
                     # which matters most for an inter-PTF pair, where half a
                     # transfer in the book is worse than none.
                     deal_ref = None
+                    booked_rows = []
                     inserter = draft_insert._INSERTERS.get(cat)
                     if inserter is not None:
-                        account_id_resolve.stamp(payload)
+                        # A transfer has two ends and stamps its own ids.
+                        if cat != "TRANSFER":
+                            account_id_resolve.stamp(payload)
                         deal_ref = inserter(cur, payload).get("deal_ref")
-                    cur.execute(
-                        "INSERT INTO bookings_draft "
-                        "(category, payload, source, status, batch_id, "
-                        " client_request_id, created_by, approved_deal_ref) "
-                        "VALUES (%s, %s, 'CLAUDE_CODE', 'PENDING_REVIEW', "
-                        "        %s, %s, %s, %s) "
-                        "RETURNING *",
-                        (cat, json.dumps(payload), batch_id, crid, acting,
-                         deal_ref),
-                    )
-                    out_rows.append(draft_db.row_to_public(cur, cur.fetchone()))
+                        if isinstance(payload.get("_meta"), dict):
+                            booked_rows = payload["_meta"].pop("_booked_rows", [])
+                    drafts = draft_insert.insert_draft_rows(
+                        cur, cat, payload, crid, acting, deal_ref, booked_rows,
+                        batch_id=batch_id)
+                    out_rows.append(drafts[0])
+                    mirrors.extend(drafts[1:])
+                    if cat == "TRANSFER" and booked_rows:
+                        all_booked.extend(booked_rows)
     finally:
         conn.close()
+    # After the MO commit: the tech-DB mirror a direct transfer insert
+    # would have written. Best-effort, never fails the batch.
+    if all_booked:
+        import transfer_insert
+        transfer_insert._dual_write_manual_transfer(all_booked)
 
     return {
         "ok": True,
         "batch_id": batch_id,
         "created": len(out_rows),
         "rows": out_rows,
+        "mirrors": mirrors,
     }
 
 

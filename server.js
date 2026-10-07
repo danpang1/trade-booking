@@ -34,6 +34,7 @@ const SPOT_INSERT_SCRIPT  = resolve(__dirname, "scripts", "spot_insert.py");
 const SPOT_AMEND_SCRIPT   = resolve(__dirname, "scripts", "spot_amend.py");
 const CASHFLOW_AMEND_BATCH_SCRIPT = resolve(__dirname, "scripts", "cashflow_amend_batch.py");
 const SPOT_AMEND_BATCH_SCRIPT     = resolve(__dirname, "scripts", "spot_amend_batch.py");
+const TRANSFER_AMEND_BATCH_SCRIPT = resolve(__dirname, "scripts", "transfer_amend_batch.py");
 const SPOT_RECENT_SCRIPT  = resolve(__dirname, "scripts", "spot_recent.py");
 const SPOT_GET_SCRIPT     = resolve(__dirname, "scripts", "spot_get.py");
 const SPOT_HISTORY_SCRIPT = resolve(__dirname, "scripts", "spot_history.py");
@@ -1390,6 +1391,21 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/transfer/amend/batch  — bulk amend, all-or-nothing (one txn).
+  // Transfer Enquiry's bulk edit: N legs, the same curated fields on each.
+  if (req.url === "/api/transfer/amend/batch" && req.method === "POST") {
+    const body = await readBody(req);
+    const stampedBody = stampBatchUserId(body, req.sessionUser.username);
+    const t0 = Date.now();
+    const { code, json, stderr } = await spawnPython(TRANSFER_AMEND_BATCH_SCRIPT, stampScope(stampedBody, req));
+    console.log(`[transfer] amend-batch ${(json && json.count) || 0} rows (${Date.now() - t0}ms, exit ${code})`);
+    if (stderr) console.error(`[transfer:err] ${stderr.trim()}`);
+    res.statusCode = httpStatusFor(code, json);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(json));
+    return;
+  }
+
   // GET /api/transfer/recent?limit=N
   if (req.method === "GET" && req.url.startsWith("/api/transfer/recent")) {
     const url = new URL(req.url, "http://localhost");
@@ -1523,6 +1539,7 @@ server.listen(PORT, () => {
   console.log(`[server]   GET  /api/spot/:deal_ref/history — all SCD2 versions`);
   console.log(`[server]   POST /api/transfer/insert      — book a transfer (1 row, or 2 legs if INTERNAL)`);
   console.log(`[server]   POST /api/transfer/amend       — amend one transfer leg`);
+  console.log(`[server]   POST /api/transfer/amend/batch — bulk amend legs, all-or-nothing`);
   console.log(`[server]   GET  /api/transfer/recent      — list N recent live rows`);
   console.log(`[server]   GET  /api/transfer/:deal_ref   — fetch one live row`);
   console.log(`[server]   GET  /api/transfer/:deal_ref/history — all SCD2 versions`);

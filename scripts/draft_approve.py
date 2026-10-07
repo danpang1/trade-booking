@@ -4,7 +4,10 @@ the whole txn rolls back — draft stays PENDING_REVIEW, no orphan row.
 
 Stdin: {"id": 42, "_acting_user": "alice"}
 
-Stdout success:  {"ok": true, "row": {...draft public...}, "deal_ref": "MCF000123"}
+Stdout success:  {"ok": true, "row": {...draft public...}, "deal_ref": "MCF000123",
+                  "sibling_draft_id": 43 | null}
+  sibling_draft_id names the twin draft of an INTERNAL transfer pair that
+  this approval settled as well (see draft_trade_link.move_sibling_draft).
 Stdout 404:      {"ok": false, "code": "not_found"}
 Stdout 409:      {"ok": false, "code": "conflict", "error": "already approved or not pending"}
 Stdout 400:      {"ok": false, "error": "<insert-time validation>"}
@@ -17,8 +20,11 @@ import draft_db
 import draft_trade_link
 
 
-def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
-    """Returns (status, draft_row, deal_ref). status in {'ok','not_found','conflict','bad_payload'}."""
+def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None, int | None]:
+    """Returns (status, draft_row, deal_ref, sibling_draft_id).
+
+    status in {'ok', 'not_found', 'conflict', 'bad_payload'}.
+    """
     conn = draft_db.connect()
     try:
         with conn:
@@ -47,8 +53,8 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                     )
                     found = cur.fetchone()
                     if found is None:
-                        return "not_found", None, None
-                    return "conflict", None, None
+                        return "not_found", None, None, None
+                    return "conflict", None, None, None
 
                 _, category, payload, existing_ref = claim
                 # Approving a draft is the human "yes, book it" gate, so
@@ -89,6 +95,10 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                         cur, category, sib, new_status, updated_by=acting,
                     )
                     draft_trade_link.mirror_amend(category, moved)
+                # ...and so does the mirror leg's own draft card.
+                sibling_draft = draft_trade_link.move_sibling_draft(
+                    cur, payload, "APPROVED", acting,
+                )
 
                 cur.execute(
                     "UPDATE bookings_draft "
@@ -99,7 +109,7 @@ def _approve(draft_id: int, acting: str) -> tuple[str, dict | None, str | None]:
                 )
                 public = draft_db.row_to_public(cur, cur.fetchone())
                 draft_trade_link.mirror_amend(category, row)
-                return "ok", public, deal_ref
+                return "ok", public, deal_ref, sibling_draft
     finally:
         conn.close()
 
@@ -122,7 +132,7 @@ def main() -> int:
         return 3
 
     try:
-        status, row, deal_ref = _approve(draft_id, acting)
+        status, row, deal_ref, sibling_draft = _approve(draft_id, acting)
     except draft_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
@@ -139,7 +149,8 @@ def main() -> int:
                           "error": "already approved or not pending"}))
         return 7
 
-    print(json.dumps({"ok": True, "row": row, "deal_ref": deal_ref}))
+    print(json.dumps({"ok": True, "row": row, "deal_ref": deal_ref,
+                      "sibling_draft_id": sibling_draft}))
     return 0
 
 

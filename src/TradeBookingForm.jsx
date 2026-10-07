@@ -7031,7 +7031,7 @@ function DealEnquiry({ onSelect, onHistory, onMappingClick, BB, refreshSignal })
                       checked={selectedRefs.has(r.deal_ref)}
                       onChange={() => toggleRowSel(r)}
                       disabled={(batchType != null && r.txn_type !== batchType) || r.txn_type === "TRANSFER"}
-                      title={r.txn_type === "TRANSFER" ? "Transfers have no bulk edit yet — open the deal to amend it"
+                      title={r.txn_type === "TRANSFER" ? "Bulk edit transfers from Transfer Enquiry"
                         : batchType != null && r.txn_type !== batchType ? `Clear selection to switch to ${r.txn_type}` : "Select for bulk edit"}
                     />
                   </td>
@@ -8386,6 +8386,263 @@ function OwnAccountIdPreview({ name, venueType, product, productApplies, stored,
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Bulk amend (Transfer Enquiry) — select N legs and set one or more
+// common fields across all of them, applied in a single all-or-nothing
+// transaction via POST /api/transfer/amend/batch. Mirrors the Deal
+// Enquiry bulk edit. The movement itself (ends, asset, amount, direction)
+// is deliberately excluded: those are amended one leg at a time in the
+// form, where the mirror leg can be corrected to match.
+// ═══════════════════════════════════════════════════════════════════
+const TRANSFER_BULK_FIELD_DEFS = [
+  { key: "status", label: "Status" },
+  { key: "initiated_datetime", label: "Initiated" },
+  { key: "completed_datetime", label: "Completed" },
+  { key: "network", label: "Network" },
+  { key: "ext_transfer_id", label: "Ext Transfer ID" },
+  { key: "internal_journal", label: "Internal Journal" },
+  { key: "comment", label: "Comment" },
+];
+
+// Build a full transfer amend payload for one leg, overriding only the
+// enabled fields. The row carries the complete DB record (from /recent), so
+// untouched columns pass straight through. expected_effective_start drives
+// the server-side optimistic-concurrency check.
+function buildTransferBulkAmendPayload(row, enabled, vals) {
+  const has = (k) => enabled.has(k);
+  const p = {
+    deal_ref: row.deal_ref,
+    expected_effective_start: row.effective_start,
+    transfer_type: row.transfer_type,
+    direction: row.direction,
+    source_account_name: row.source_account_name,
+    source_product: row.source_product ?? null,
+    source_account_id: row.source_account_id ?? null,
+    dest_account_name: row.dest_account_name,
+    dest_product: row.dest_product ?? null,
+    dest_account_id: row.dest_account_id ?? null,
+    asset: row.asset,
+    amount: row.amount,
+    fee_asset: row.fee_asset ?? null,
+    fee_amount: row.fee_amount ?? "0",
+    initiated_datetime: row.initiated_datetime,
+    completed_datetime: row.completed_datetime ?? null,
+    network: row.network ?? null,
+    ext_transfer_id: row.ext_transfer_id ?? null,
+    user_id: row.user_id,
+    status: row.status,
+    comment: row.comment ?? null,
+    internal_journal: row.internal_journal ?? null,
+  };
+  if (has("status")) p.status = vals.status;
+  if (has("initiated_datetime")) p.initiated_datetime = vals.initiated_datetime;
+  if (has("completed_datetime")) p.completed_datetime = vals.completed_datetime || null;
+  if (has("network")) p.network = vals.network || null;
+  if (has("ext_transfer_id")) p.ext_transfer_id = vals.ext_transfer_id || null;
+  if (has("internal_journal")) p.internal_journal = vals.internal_journal === "Y" ? "Y" : null;
+  if (has("comment")) p.comment = vals.comment ?? null;
+  return p;
+}
+
+// Modal: pick fields + values, preview, then apply to every selected leg.
+function BulkEditTransfersModal({ rows, onClose, onApplied }) {
+  const [enabled, setEnabled] = useState(() => new Set());
+  const [vals, setVals] = useState({});
+  const [phase, setPhase] = useState("edit");   // edit | preview | applying
+  const [error, setError] = useState(null);
+
+  // Esc closes the modal (preventDefault so it can't bubble anywhere else).
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const defs = TRANSFER_BULK_FIELD_DEFS;
+  const toggleField = (k) => setEnabled((prev) => {
+    const next = new Set(prev);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const setVal = (k, v) => setVals((s) => ({ ...s, [k]: v }));
+
+  // Blank is a legitimate value for the optional columns: it clears them.
+  // Status and the initiated time are NOT NULL, so they need a value.
+  const CLEARABLE = new Set(["completed_datetime", "network", "ext_transfer_id", "comment"]);
+  const fieldReady = (k) => {
+    const v = vals[k];
+    if (CLEARABLE.has(k)) return v != null;
+    if (k === "internal_journal") return v === "Y" || v === "N";
+    return v != null && v !== "";
+  };
+  const enabledKeys = [...enabled];
+  const canApply = enabledKeys.length > 0 && enabledKeys.every(fieldReady);
+
+  const labelFor = (k) => (defs.find((d) => d.key === k) || {}).label || k;
+  const summarizeVal = (k) => {
+    const v = vals[k];
+    if (k === "network") return v ? String(v) : "(blank — off-chain / venue internal)";
+    if (k === "completed_datetime") return v ? String(v) : "(blank — still in flight)";
+    if (k === "internal_journal") return v === "Y" ? "Y — flagged as internal journal" : "(blank — not a journal)";
+    if (CLEARABLE.has(k)) return v === "" ? "(blank)" : String(v);
+    return String(v);
+  };
+
+  const apply = async () => {
+    setError(null);
+    setPhase("applying");
+    const payloads = rows.map((r) => buildTransferBulkAmendPayload(r, enabled, vals));
+    try {
+      const res = await api("/api/transfer/amend/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: payloads }),
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: "non-JSON server response" }));
+      if (j.ok) { onApplied(j.count || payloads.length); return; }
+      setError(j.deal_ref ? `${j.error} (${j.deal_ref})` : (j.error || `HTTP ${res.status}`));
+      setPhase("preview");
+    } catch (e) {
+      setError(String(e && e.message ? e.message : e));
+      setPhase("preview");
+    }
+  };
+
+  const renderEditor = (k) => {
+    if (k === "status") return (
+      <Select value={vals.status || ""} onChange={(e) => setVal("status", e.target.value)}>
+        <option value="">— pick status —</option>
+        {TRANSFER_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+      </Select>
+    );
+    if (k === "initiated_datetime" || k === "completed_datetime") return (
+      <div className="flex flex-col gap-1">
+        <DateTimePicker24 value={vals[k] || ""} onChange={(v) => setVal(k, v)} />
+        {k === "completed_datetime" && (
+          <button
+            type="button"
+            onClick={() => setVal(k, "")}
+            className="self-start text-[10px] tracking-[0.06em] uppercase"
+            style={{ background: "transparent", border: "none", padding: 0, color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}
+          >clear — mark as still in flight</button>
+        )}
+      </div>
+    );
+    if (k === "network") return (
+      <Select value={vals.network ?? ""} onChange={(e) => setVal("network", e.target.value)}>
+        <option value="">— off-chain / venue internal —</option>
+        {NETWORKS.map((x) => <option key={x} value={x}>{x}</option>)}
+      </Select>
+    );
+    if (k === "ext_transfer_id") return (
+      <Input type="text" value={vals.ext_transfer_id ?? ""} onChange={(e) => setVal("ext_transfer_id", e.target.value)} placeholder="Tx hash / venue reference (applies to all selected)" />
+    );
+    if (k === "internal_journal") return (
+      <Select value={vals.internal_journal || ""} onChange={(e) => setVal("internal_journal", e.target.value)}>
+        <option value="">— pick —</option>
+        <option value="Y">Y — internal journal</option>
+        <option value="N">blank — not a journal</option>
+      </Select>
+    );
+    if (k === "comment") return (
+      <Input type="text" value={vals.comment ?? ""} onChange={(e) => setVal("comment", e.target.value)} placeholder="New comment (applies to all selected)" />
+    );
+    return null;
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(13,13,13,0.45)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 80 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "var(--paper)", border: "1px solid var(--rule)", width: 760, maxWidth: "94vw", maxHeight: "82vh", overflowY: "auto", fontFamily: "var(--font-mono)", boxShadow: "0 24px 64px rgba(13,13,13,0.25)" }}>
+        <div className="flex items-center justify-between" style={{ padding: "12px 18px", borderBottom: "1px solid var(--rule)" }}>
+          <div className="text-[15px]" style={{ fontFamily: "var(--font-serif)", color: "var(--ink)" }}>
+            Bulk edit · {rows.length} transfer leg{rows.length === 1 ? "" : "s"}
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1, color: "var(--ink-3)" }} aria-label="Close">×</button>
+        </div>
+
+        {phase !== "preview" && (
+          <div style={{ padding: "8px 18px 14px" }}>
+            <div className="text-[10px] tracking-[0.06em] uppercase" style={{ color: "var(--ink-3)", padding: "6px 0" }}>
+              Tick the fields to change — only ticked fields are applied
+            </div>
+            {defs.map((d) => {
+              const on = enabled.has(d.key);
+              return (
+                <div key={d.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "8px 0", borderTop: "1px solid var(--rule)" }}>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 150, paddingTop: 6, cursor: "pointer", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: on ? "var(--ink)" : "var(--ink-3)" }}>
+                    <input type="checkbox" checked={on} onChange={() => toggleField(d.key)} />
+                    {d.label}
+                  </label>
+                  <div style={{ flex: 1, opacity: on ? 1 : 0.4, pointerEvents: on ? "auto" : "none" }}>
+                    {renderEditor(d.key)}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="text-[10px]" style={{ color: "var(--ink-3)", marginTop: 8 }}>
+              Each selected row is one leg. An INTERNAL transfer's two legs are separate rows — select both to change them together.
+            </div>
+          </div>
+        )}
+
+        {phase === "preview" && (
+          <div style={{ padding: "14px 18px" }}>
+            <div className="text-[12px]" style={{ color: "var(--ink)", marginBottom: 10 }}>
+              Apply the following to <b>{rows.length}</b> transfer leg{rows.length === 1 ? "" : "s"}:
+            </div>
+            <div style={{ border: "1px solid var(--rule)" }}>
+              {enabledKeys.map((k) => (
+                <div key={k} style={{ display: "flex", gap: 10, padding: "6px 10px", borderTop: "1px solid var(--rule)", fontSize: 12 }}>
+                  <span style={{ minWidth: 130, color: "var(--ink-3)", textTransform: "uppercase", fontSize: 10, letterSpacing: "0.08em", paddingTop: 2 }}>{labelFor(k)}</span>
+                  <span style={{ color: "var(--ink)" }}>{summarizeVal(k)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ border: "1px solid var(--rule)", marginTop: 10, maxHeight: 180, overflowY: "auto", fontSize: 11 }}>
+              {rows.map((r) => (
+                <div key={r.deal_ref} style={{ display: "flex", gap: 10, padding: "4px 10px", borderTop: "1px solid var(--rule)", color: "var(--ink-2)" }}>
+                  <span style={{ minWidth: 110 }}>{r.deal_ref}</span>
+                  <span>{r.direction} {fmtAmt(r.amount)} {r.asset} · {r.source_account_name}{r.source_product ? ` · ${r.source_product}` : ""} → {r.dest_account_name}{r.dest_product ? ` · ${r.dest_product}` : ""}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px]" style={{ color: "var(--ink-3)", marginTop: 8 }}>
+              This writes to the live transfer book as an amendment (all-or-nothing — if any row was changed since the page loaded, nothing changes).
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ margin: "0 18px 12px", padding: "8px 10px", background: "#fff0eb", border: "1px solid #e08a6a", color: "#7a1f00", fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3" style={{ padding: "12px 18px", borderTop: "1px solid var(--rule)" }}>
+          {phase === "edit" && (
+            <>
+              <button type="button" onClick={onClose} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink)", cursor: "pointer" }}>Cancel</button>
+              <button type="button" disabled={!canApply} onClick={() => setPhase("preview")} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: canApply ? "var(--ink)" : "transparent", color: canApply ? "var(--paper)" : "var(--ink-4)", border: `1px solid ${canApply ? "var(--ink)" : "var(--rule)"}`, cursor: canApply ? "pointer" : "not-allowed" }}>Review →</button>
+            </>
+          )}
+          {phase === "preview" && (
+            <>
+              <button type="button" onClick={() => setPhase("edit")} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink)", cursor: "pointer" }}>← Back</button>
+              <button type="button" onClick={apply} className="text-[11px] tracking-[0.18em] uppercase px-3 py-1.5" style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)", cursor: "pointer" }}>Apply to {rows.length}</button>
+            </>
+          )}
+          {phase === "applying" && (
+            <span className="text-[11px] tracking-[0.18em] uppercase" style={{ color: "var(--ink-3)" }}>Applying…</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── TransferEnquiry — separate view for transfer rows ─────────
 // Parallel to LoanEnquiry: its own filter card and grid over the transfer
 // book only. Deal Enquiry still merges transfers into the mixed table;
@@ -8518,6 +8775,41 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
     const csv = rowsToCsv(filteredRows, TRANSFER_CSV_COLUMNS);
     downloadCsv(`transfer-enquiry-${todayStampLocal()}.csv`, csv);
   }, [filteredRows]);
+
+  // ── Bulk-amend selection (one product type, so no batchType branching
+  // like Deal Enquiry needs; same shape as Loan Enquiry) ──────────────
+  const [selectedRefs, setSelectedRefs] = useState(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkNote, setBulkNote] = useState(null);
+  useEffect(() => { setSelectedRefs(new Set()); setBulkNote(null); }, [filters, refreshSignal]);
+  const rowsByRef = useMemo(() => {
+    const m = new Map();
+    for (const r of rows) m.set(r.deal_ref, r);
+    return m;
+  }, [rows]);
+  const selectedRows = useMemo(
+    () => [...selectedRefs].map((ref) => rowsByRef.get(ref)).filter(Boolean),
+    [selectedRefs, rowsByRef]
+  );
+  const toggleRowSel = (r) => {
+    setBulkNote(null);
+    setSelectedRefs((prev) => {
+      const next = new Set(prev);
+      if (next.has(r.deal_ref)) next.delete(r.deal_ref); else next.add(r.deal_ref);
+      return next;
+    });
+  };
+  const clearSel = () => setSelectedRefs(new Set());
+  const allPageSel = pagedRows.length > 0 && pagedRows.every((r) => selectedRefs.has(r.deal_ref));
+  const toggleSelAllPage = () => {
+    setBulkNote(null);
+    setSelectedRefs((prev) => {
+      const next = new Set(prev);
+      if (allPageSel) { for (const r of pagedRows) next.delete(r.deal_ref); }
+      else { for (const r of pagedRows) next.add(r.deal_ref); }
+      return next;
+    });
+  };
 
   const fetchRecent = useCallback(async () => {
     setLoading(true);
@@ -8727,6 +9019,22 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
       </div>
 
       {/* ─── Grid ─── */}
+      {(selectedRows.length > 0 || bulkNote) && (
+        <div className="flex items-center gap-4 mb-2" style={{ padding: "8px 12px", background: "var(--paper-2)", border: "1px solid var(--rule)" }}>
+          {selectedRows.length > 0 ? (
+            <>
+              <span className="text-[11px]" style={{ color: "var(--ink)" }}>
+                <b>{selectedRows.length}</b> leg{selectedRows.length === 1 ? "" : "s"} selected
+              </span>
+              <button type="button" onClick={() => setBulkOpen(true)} className="text-[10px] tracking-[0.18em] uppercase px-3 py-1" style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)", cursor: "pointer" }}>Bulk edit</button>
+              <button type="button" onClick={clearSel} className="text-[10px] tracking-[0.18em] uppercase px-3 py-1" style={{ background: "transparent", color: "var(--ink)", border: "1px solid var(--rule)", cursor: "pointer" }}>Clear</button>
+            </>
+          ) : (
+            <span className="text-[11px]" style={{ color: "var(--signal-buy)" }}>{bulkNote}</span>
+          )}
+        </div>
+      )}
+
       <div className="overflow-x-auto" style={{ border: `1px solid ${BB.border}` }}>
         <table className="w-full text-[12px]" style={{ fontFamily: "var(--font-mono)", borderCollapse: "collapse", minWidth: "100%" }}>
           <thead className="sticky top-0 z-10">
@@ -8734,6 +9042,15 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
               className="text-[10px] uppercase tracking-[0.06em] font-medium"
               style={{ background: "var(--paper-2)", color: "var(--ink-3)", borderBottom: "1px solid var(--rule)" }}
             >
+              <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Select">
+                <input
+                  type="checkbox"
+                  checked={allPageSel}
+                  onChange={toggleSelAllPage}
+                  disabled={pagedRows.length === 0}
+                  title={allPageSel ? "Clear this page" : "Select every leg on this page"}
+                />
+              </th>
               <th className="px-2 py-1.5 whitespace-nowrap text-center" aria-label="Refresh">
                 <button
                   type="button"
@@ -8778,7 +9095,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
           <tbody>
             {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-3 py-8 text-center opacity-70">
+                <td colSpan={18} className="px-3 py-8 text-center opacity-70">
                   <span className="inline-flex items-center gap-2">
                     <span
                       aria-hidden
@@ -8797,7 +9114,7 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
             )}
             {!loading && filteredRows.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-3 py-6 text-center opacity-60">
+                <td colSpan={18} className="px-3 py-6 text-center opacity-60">
                   {rows.length === 0
                     ? "No transfers booked yet — use + Book Transfer above."
                     : filtersActive
@@ -8835,6 +9152,14 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
                   onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = altBg}
                 >
+                  <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedRefs.has(r.deal_ref)}
+                      onChange={() => toggleRowSel(r)}
+                      title="Select for bulk edit"
+                    />
+                  </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     <button
                       type="button"
@@ -8915,6 +9240,19 @@ function TransferEnquiry({ onSelect, onHistory, onBook, BB, refreshSignal }) {
         totalRows={totalRows}
         BB={BB}
       />
+
+      {bulkOpen && selectedRows.length > 0 && (
+        <BulkEditTransfersModal
+          rows={selectedRows}
+          onClose={() => setBulkOpen(false)}
+          onApplied={(n) => {
+            setBulkOpen(false);
+            clearSel();
+            setBulkNote(`${n} transfer leg${n === 1 ? "" : "s"} updated`);
+            fetchRecent();
+          }}
+        />
+      )}
     </div>
   );
 }

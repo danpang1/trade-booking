@@ -21,6 +21,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import sys
+import uuid
 
 import account_id_resolve
 import draft_db
@@ -58,6 +59,71 @@ _INSERTERS = {
     "SPOT": _spot_insert_one,
     "TRANSFER": _transfer_insert_pair,
 }
+
+
+def mirror_request_id(client_request_id: str) -> str:
+    """client_request_id for the mirror leg's draft of an INTERNAL transfer.
+
+    Derived from the caller's id, not generated, so a retried booking lands
+    on the same pair of drafts and the UNIQUE constraint dedupes both.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_URL,
+                          "tokka-mo:mirror-draft:" + str(client_request_id)))
+
+
+def mirror_draft_payload(booked_rows) -> dict | None:
+    """The draft payload for the mirror leg, from the row as inserted, or
+    None when the booking has no mirror (EXTERNAL, or _meta.mirror false).
+
+    The payload is the mirror's own columns -- the ends swapped, the
+    direction flipped, the ids transfer_db stamped -- without the enquiry
+    aliases row_to_payload adds, so the Approvals page can open it in the
+    form and draft_patch validates it like any other TRANSFER draft.
+    """
+    if not isinstance(booked_rows, list) or len(booked_rows) < 2:
+        return None
+    mirror = booked_rows[1] or {}
+    return {c: mirror.get(c) for c in transfer_db.DATA_COLUMNS if c != "deal_ref"}
+
+
+_DRAFT_INSERT_SQL = (
+    "INSERT INTO bookings_draft "
+    "(category, payload, source, status, batch_id, "
+    " client_request_id, created_by, approved_deal_ref) "
+    "VALUES (%s, %s, 'CLAUDE_CODE', 'PENDING_REVIEW', %s, %s, %s, %s) "
+    "RETURNING *"
+)
+
+
+def insert_draft_rows(cur, category, payload, crid, acting, deal_ref,
+                      booked_rows, batch_id=None):
+    """INSERT the draft(s) for one booking; returns [primary, mirror?] public rows.
+
+    One draft per live row. An INTERNAL transfer books two legs (the leg as
+    booked plus its mirror on the receiving account), so it gets two drafts,
+    one per leg, the way the transfer book itself shows two rows. The pair is
+    cross-linked through _meta.mirror_deal_ref / _meta.mirror_draft_id so
+    approving or rejecting either card settles both legs and both drafts.
+    """
+    mirror = mirror_draft_payload(booked_rows) if category == "TRANSFER" else None
+    cur.execute(_DRAFT_INSERT_SQL,
+                (category, json.dumps(payload), batch_id, crid, acting, deal_ref))
+    primary = draft_db.row_to_public(cur, cur.fetchone())
+    if mirror is None:
+        return [primary]
+    mirror["_meta"] = {"mirror_deal_ref": deal_ref, "mirror_draft_id": primary["id"]}
+    mirror_ref = (booked_rows[1] or {}).get("deal_ref")
+    cur.execute(_DRAFT_INSERT_SQL,
+                (category, json.dumps(mirror), batch_id, mirror_request_id(crid),
+                 acting, mirror_ref))
+    second = draft_db.row_to_public(cur, cur.fetchone())
+    linked = dict(payload)
+    linked["_meta"] = {**(linked.get("_meta") or {}), "mirror_draft_id": second["id"]}
+    cur.execute(
+        "UPDATE bookings_draft SET payload = %s WHERE id = %s RETURNING *",
+        (json.dumps(linked), primary["id"]),
+    )
+    return [draft_db.row_to_public(cur, cur.fetchone()), second]
 
 
 def _is_missing_or_midnight(v) -> bool:
@@ -157,15 +223,11 @@ def _insert(payload_in: dict) -> tuple[dict, bool]:
                     if isinstance(payload.get("_meta"), dict):
                         booked_rows = payload["_meta"].pop("_booked_rows", [])
 
-                cur.execute(
-                    "INSERT INTO bookings_draft "
-                    "(category, payload, source, status, "
-                    " client_request_id, created_by, approved_deal_ref) "
-                    "VALUES (%s, %s, 'CLAUDE_CODE', 'PENDING_REVIEW', %s, %s, %s) "
-                    "RETURNING *",
-                    (category, json.dumps(payload), crid, acting, deal_ref),
-                )
-                public = draft_db.row_to_public(cur, cur.fetchone())
+                drafts = insert_draft_rows(cur, category, payload, crid, acting,
+                                           deal_ref, booked_rows)
+                public = drafts[0]
+                if len(drafts) > 1:
+                    public = {**public, "mirror": drafts[1]}
         # After the MO commit: the tech-DB mirror a direct transfer insert
         # would have written. Best-effort, never fails the draft.
         if category == "TRANSFER" and booked_rows:

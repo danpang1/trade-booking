@@ -2,7 +2,9 @@
 
 Stdin: {"id": 42, "reason": "optional text", "_acting_user": "alice"}
 
-Stdout success: {"ok": true, "row": {...}}
+Stdout success: {"ok": true, "row": {...}, "sibling_draft_id": 43 | null}
+  sibling_draft_id names the twin draft of an INTERNAL transfer pair that
+  this rejection retired as well (see draft_trade_link.move_sibling_draft).
 Stdout 404:     {"ok": false, "code": "not_found"}
 Stdout 409:     {"ok": false, "code": "conflict"}
 """
@@ -14,7 +16,7 @@ import draft_db
 import draft_trade_link
 
 
-def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
+def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None, int | None]:
     if reason is not None and not isinstance(reason, str):
         raise draft_db.ValidationError("reason must be a string or null")
     conn = draft_db.connect()
@@ -41,8 +43,8 @@ def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
                         (draft_id, acting),
                     )
                     if cur.fetchone() is None:
-                        return "not_found", None
-                    return "conflict", None
+                        return "not_found", None, None
+                    return "conflict", None, None
 
                 # The trade row was booked as PENDING when the draft was
                 # created, so a rejection has to retire it too — otherwise a
@@ -51,6 +53,7 @@ def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
                 # and it was refused" is worth keeping.
                 public = draft_db.row_to_public(cur, row)
                 deal_ref = (public.get("approved_deal_ref") or "").strip()
+                sibling_draft = None
                 if deal_ref:
                     moved = draft_trade_link.amend_status(
                         cur, public.get("category"), deal_ref, "CANCELLED",
@@ -65,7 +68,11 @@ def _reject(draft_id: int, reason, acting: str) -> tuple[str, dict | None]:
                             updated_by=acting,
                         )
                         draft_trade_link.mirror_amend(public.get("category"), m2)
-                return "ok", public
+                    # ...and the mirror leg's own draft card.
+                    sibling_draft = draft_trade_link.move_sibling_draft(
+                        cur, public.get("payload"), "REJECTED", acting, reason,
+                    )
+                return "ok", public, sibling_draft
     finally:
         conn.close()
 
@@ -88,7 +95,7 @@ def main() -> int:
         return 3
 
     try:
-        status, row = _reject(draft_id, body.get("reason"), acting)
+        status, row, sibling_draft = _reject(draft_id, body.get("reason"), acting)
     except draft_db.ValidationError as e:
         print(json.dumps({"ok": False, "error": str(e)}))
         return 3
@@ -103,7 +110,7 @@ def main() -> int:
         print(json.dumps({"ok": False, "code": "conflict", "error": "draft is not PENDING_REVIEW"}))
         return 7
 
-    print(json.dumps({"ok": True, "row": row}))
+    print(json.dumps({"ok": True, "row": row, "sibling_draft_id": sibling_draft}))
     return 0
 
 

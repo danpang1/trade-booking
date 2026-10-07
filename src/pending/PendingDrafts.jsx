@@ -40,10 +40,25 @@ function timeAgo(iso) {
   return `${days}d`;
 }
 
+// "TK818@BINANCE · SPOT" — one end of a transfer with its product/chain.
+function transferEnd(name, product) {
+  if (!name) return "?";
+  return product ? `${name} · ${product}` : name;
+}
+
 function summarize(payload) {
-  // One-line cashflow summary used in the card body and the
-  // "Recently decided" compact grid. Defensive about missing fields.
+  // One-line summary used in the card body and the "Recently decided"
+  // compact grid. Defensive about missing fields.
   if (!payload || typeof payload !== "object") return "(empty)";
+  if (payload.transfer_type) {
+    // A transfer reads from its source: "-88 USDC · TK818 · SPOT → TK801 · SPOT".
+    return [
+      payload.amount,
+      payload.asset,
+      `${transferEnd(payload.source_account_name, payload.source_product)} → ${transferEnd(payload.dest_account_name, payload.dest_product)}`,
+      payload.network,
+    ].filter(Boolean).join(" · ");
+  }
   const isIpf = payload.cashflow_type === "INTER PTF FUNDING";
   const cptyLabel = isIpf && payload.counterparty
     ? `ptf ${payload.counterparty}`
@@ -195,10 +210,17 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
     const target = tables.length > 0 ? tables.join(" / ") : "its category's trades table";
     if (!confirm(`Approve ${ids.length} draft${ids.length > 1 ? "s" : ""}? Each will insert into ${target}.`)) return;
     setBulkBusy(true);
+    // Approving one leg of an INTERNAL transfer settles its twin draft too
+    // (the server reports it as sibling_draft_id); skip the twin rather than
+    // send a second approve that would come back "already approved".
+    const done = new Set();
     for (const id of ids) {
+      if (done.has(id)) continue;
       const { status, body } = await approveDraft(id);
       if (status !== 200 || !body?.ok) {
         setRowError((r) => ({ ...r, [id]: body?.error || `Approve failed (${status})` }));
+      } else if (body.sibling_draft_id) {
+        done.add(body.sibling_draft_id);
       }
     }
     setBulkBusy(false);
@@ -211,10 +233,14 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
     const reason = prompt(`Reject ${ids.length} draft${ids.length > 1 ? "s" : ""} — reason (optional, applied to all):`) ?? null;
     if (!confirm(`Reject ${ids.length} draft${ids.length > 1 ? "s" : ""}?`)) return;
     setBulkBusy(true);
+    const done = new Set();
     for (const id of ids) {
+      if (done.has(id)) continue;
       const { status, body } = await rejectDraft(id, reason);
       if (status !== 200 || !body?.ok) {
         setRowError((r) => ({ ...r, [id]: body?.error || `Reject failed (${status})` }));
+      } else if (body.sibling_draft_id) {
+        done.add(body.sibling_draft_id);
       }
     }
     setBulkBusy(false);
@@ -311,10 +337,14 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
 
   async function onApproveAll(list) {
     if (!confirm(`Approve all ${list.length} pending drafts in this batch?`)) return;
+    const done = new Set();
     for (const d of list) {
+      if (done.has(d.id)) continue;
       const { status, body } = await approveDraft(d.id);
       if (status !== 200 || !body?.ok) {
         setRowError((r) => ({ ...r, [d.id]: body?.error || `Approve failed (${status})` }));
+      } else if (body.sibling_draft_id) {
+        done.add(body.sibling_draft_id);
       }
     }
     await load();
@@ -377,7 +407,14 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
             >
               #{d.id}
             </span>
+            {d.approved_deal_ref && (
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>
+                {d.approved_deal_ref}
+              </span>
+            )}
             {p.cashflow_type && <Pill tone="muted">{p.cashflow_type}</Pill>}
+            {p.transfer_type && <Pill tone="muted">{p.transfer_type} TRANSFER</Pill>}
+            {!p.cashflow_type && !p.transfer_type && d.category && <Pill tone="muted">{d.category}</Pill>}
             {p.direction && <Pill tone={directionTone(p.direction)}>{p.direction}</Pill>}
           </div>
           <div style={{
@@ -412,6 +449,15 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
           )}
           {p.portfolio_name && (
             <>· portfolio <b style={{ color: "var(--ink-2)" }}>{p.portfolio_name}</b></>
+          )}
+          {p.transfer_type && (
+            <>
+              from <b style={{ color: "var(--ink-2)" }}>{transferEnd(p.source_account_name, p.source_product)}</b>
+              {" "}to <b style={{ color: "var(--ink-2)" }}>{transferEnd(p.dest_account_name, p.dest_product)}</b>
+              {p._meta?.mirror_draft_id && (
+                <> · pair of <b style={{ color: "var(--ink-2)" }}>#{p._meta.mirror_draft_id}</b> (approving either settles both legs)</>
+              )}
+            </>
           )}
         </div>
 
@@ -500,7 +546,9 @@ export default function PendingDrafts({ onClose, onOpenDraft, onChanged }) {
               <span style={{ color: "var(--ink-3)" }}>
                 {d.payload?.cashflow_type
                   ? d.payload.cashflow_type.split(" ")[0]
-                  : "—"}
+                  : d.payload?.transfer_type
+                  ? "TRANSFER"
+                  : d.category || "—"}
               </span>
               <span style={{ color: "var(--ink-3)", fontVariantNumeric: "tabular-nums" }}>
                 {time}
