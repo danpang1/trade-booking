@@ -4,6 +4,14 @@ Plugin-specific release notes. Versioned independently of the server.
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-10-07
+### Fixed
+- `book` / `book-batch` waited only 10s for the server. A batch books every
+  trade and each INTERNAL transfer's mirror in one transaction; 31 transfers
+  took longer and the client raised a timeout after the server had already
+  committed. Now 120s for a single draft, 300s for a batch. A retry was
+  always safe (client_request_id dedupe) -- the failure was only the report.
+
 ## [0.5.2] — 2026-10-07
 ### Changed
 - `trade-booking` skill: do not ask for a transfer's `completed_datetime`.

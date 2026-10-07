@@ -1013,6 +1013,7 @@ def cmd_book(args) -> int:
             "payload": payload,
             "client_request_id": crid,
         },
+        timeout=120,
     )
     if status == 401:
         print("Token rejected — run: tokka-mo login", file=sys.stderr)
@@ -1273,9 +1274,13 @@ def cmd_book_batch(args) -> int:
         })
 
     # POST batch
+    # A batch books every trade (and each INTERNAL transfer's mirror) in one
+    # server transaction: 31 transfers took longer than the 10s default and
+    # the client gave up after the server had committed. Generous on purpose;
+    # client_request_ids make a retry idempotent either way.
     status, body, _ = _authed_request(
         "POST", "/api/bookings/draft/batch",
-        body={"trades": prepared},
+        body={"trades": prepared}, timeout=300,
     )
     if status == 401:
         print("Token rejected — run: tokka-mo login", file=sys.stderr)
